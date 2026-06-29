@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { createBackendApp } from '../backend/src/app.js';
 import { createGameApi } from '../frontend/src/api/gameApi.js';
+import { createImmediateViewActions } from '../frontend/src/ui/immediateViewActions.js';
 import { getView } from '../frontend/src/ui/views.js';
 
 test('frontend api client plays one turn through the backend contract', async () => {
@@ -39,4 +40,36 @@ test('frontend api client plays one turn through the backend contract', async ()
   assert.equal(next.mode, 'api');
   assert.match(next.log.at(-1).body, /服务端结算/);
   assert.match(story, /问道浮生/);
+});
+
+test('frontend api client resolves immediate actions through backend actions before submitting', async () => {
+  const backend = createBackendApp({
+    seed: 43,
+    now: () => new Date('2026-06-29T08:00:00.000Z'),
+    llm: {
+      async generateNarration({ afterGame, action }) {
+        return {
+          status: 'generated',
+          title: '即时行动联调',
+          body: `即时行动已兑换为后端行动${action.id}，第${afterGame.turn}回合由服务端结算。`,
+          npcLine: '林师姐道：“临时选项也要走宗门文书。”',
+          foreshadow: '功法阁旧册边缘出现青色焦痕。'
+        };
+      }
+    }
+  });
+  const api = createGameApi({
+    baseUrl: 'http://backend.test',
+    preferredMode: 'api',
+    fetchImpl: (input, init) => backend.handle(new Request(input, init))
+  });
+
+  const game = await api.createGame();
+  const [immediateAction] = createImmediateViewActions(game, getView('skills'));
+  const next = await api.submitDailyAction(game, immediateAction);
+
+  assert.equal(immediateAction.id, 'skills-immediate-0');
+  assert.equal(next.turn, 1);
+  assert.equal(next.mode, 'api');
+  assert.match(next.log.at(-1).body, /后端行动act_0_skills_0/);
 });

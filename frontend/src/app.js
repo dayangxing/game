@@ -1,5 +1,12 @@
 import { createGameApi } from './api/gameApi.js';
 import { getLayoutMode } from './ui/layoutModes.js';
+import {
+  getGuideStep,
+  guideSteps,
+  markGuideCompleted,
+  shouldAutoOpenGuide
+} from './ui/onboardingGuide.js';
+import { createImmediateViewActions } from './ui/immediateViewActions.js';
 import { getView, viewList } from './ui/views.js';
 
 const STORAGE_KEY = 'wendao-fusheng-frontend-save-v1';
@@ -16,6 +23,7 @@ const RANDOM_COMMANDS = [
 
 const initialMode = localStorage.getItem(MODE_KEY) || 'api';
 let startupNotice = '';
+let actionRefreshSequence = 0;
 const api = createGameApi({
   seed: 42,
   baseUrl: BACKEND_BASE_URL,
@@ -24,10 +32,11 @@ const api = createGameApi({
 const layoutMode = getLayoutMode();
 let game = await loadGame();
 let activeViewId = localStorage.getItem('wendao-fusheng-active-view') || 'home';
-let dailyActions = await loadDailyActions().catch((error) => {
+let dailyActions = await loadDailyActionsForGame(game, getView(activeViewId)).catch((error) => {
   startupNotice = apiErrorMessage(error);
-  return [];
+  return createImmediateViewActions(game, getView(activeViewId));
 });
+let guideStepIndex = 0;
 
 document.documentElement.dataset.layout = layoutMode.id;
 document.body.classList.add(layoutMode.shellClass);
@@ -55,6 +64,13 @@ const nodes = {
   actionGrid: document.querySelector('#actionGrid'),
   timeline: document.querySelector('#timeline'),
   foreshadows: document.querySelector('#foreshadows'),
+  guideBtn: document.querySelector('#guideBtn'),
+  guideOverlay: document.querySelector('#guideOverlay'),
+  guideTitle: document.querySelector('#guideTitle'),
+  guideBody: document.querySelector('#guideBody'),
+  guideProgress: document.querySelector('#guideProgress'),
+  guideNextBtn: document.querySelector('#guideNextBtn'),
+  guideSkipBtn: document.querySelector('#guideSkipBtn'),
   saveBtn: document.querySelector('#saveBtn'),
   exportBtn: document.querySelector('#exportBtn'),
   resetBtn: document.querySelector('#resetBtn'),
@@ -68,6 +84,7 @@ const nodes = {
 
 render();
 if (startupNotice) showToast(startupNotice);
+if (!startupNotice && shouldAutoOpenGuide(localStorage)) openGuide();
 
 nodes.actionGrid.addEventListener('click', async (event) => {
   const button = event.target.closest('button[data-command]');
@@ -82,8 +99,23 @@ nodes.topTabs.addEventListener('click', (event) => {
   if (!button) return;
   activeViewId = button.dataset.view;
   localStorage.setItem('wendao-fusheng-active-view', activeViewId);
-  refreshDailyActions().then(render).catch(handleApiError);
+  dailyActions = createImmediateViewActions(game, getView(activeViewId));
+  render();
+  refreshDailyActionsForView(activeViewId).catch(handleApiError);
 });
+
+nodes.guideBtn.addEventListener('click', () => openGuide());
+
+nodes.guideNextBtn.addEventListener('click', () => {
+  if (guideStepIndex >= guideSteps.length - 1) {
+    completeGuide();
+    return;
+  }
+  guideStepIndex += 1;
+  renderGuide();
+});
+
+nodes.guideSkipBtn.addEventListener('click', () => completeGuide());
 
 nodes.saveBtn.addEventListener('click', () => {
   saveGame();
@@ -101,8 +133,11 @@ nodes.exportBtn.addEventListener('click', async () => {
 
 nodes.resetBtn.addEventListener('click', async () => {
   try {
-    game = await api.createGame(game.mode);
-    dailyActions = await loadDailyActions();
+    const nextGame = await api.createGame(game.mode);
+    const nextActions = await loadDailyActionsForGame(nextGame, getView(activeViewId));
+    actionRefreshSequence += 1;
+    game = nextGame;
+    dailyActions = nextActions;
     saveGame();
     render();
     showToast(game.mode === 'api' ? '已刷新后端存档' : '新的一世已经开启');
@@ -130,9 +165,10 @@ nodes.apiMode.addEventListener('click', () => setMode('api'));
 async function submitDailyAction(action) {
   try {
     game = await api.submitDailyAction(game, action);
-    dailyActions = await loadDailyActions();
+    dailyActions = createImmediateViewActions(game, getView(activeViewId));
     saveGame();
     render();
+    refreshDailyActionsForView(activeViewId).catch(handleApiError);
     nodes.logList.scrollTo({ top: 0, behavior: 'smooth' });
   } catch (error) {
     handleApiError(error);
@@ -141,9 +177,11 @@ async function submitDailyAction(action) {
 
 async function setMode(mode) {
   try {
-    game = await api.setMode(game, mode);
-    localStorage.setItem(MODE_KEY, mode);
-    dailyActions = await loadDailyActions();
+    const nextGame = await api.setMode(game, mode);
+    const nextActions = await loadDailyActionsForGame(nextGame, getView(activeViewId));
+    actionRefreshSequence += 1;
+    game = nextGame;
+    dailyActions = nextActions;
     saveGame();
     render();
     showToast(mode === 'api' ? '已连接后端 API' : '已切换本地 Mock');
@@ -272,6 +310,27 @@ function renderMode() {
   nodes.worldMode.textContent = isApi ? '后端 API' : 'Mock 推演';
 }
 
+function openGuide() {
+  guideStepIndex = 0;
+  nodes.guideOverlay.hidden = false;
+  renderGuide();
+}
+
+function renderGuide() {
+  const step = getGuideStep(guideStepIndex);
+  nodes.guideTitle.textContent = step.title;
+  nodes.guideBody.textContent = step.body;
+  nodes.guideProgress.innerHTML = guideSteps.map((item, index) => `
+    <span class="${index === guideStepIndex ? 'active' : ''}" aria-label="${item.title}"></span>
+  `).join('');
+  nodes.guideNextBtn.textContent = guideStepIndex === guideSteps.length - 1 ? '开始修行' : '下一步';
+}
+
+function completeGuide() {
+  markGuideCompleted(localStorage);
+  nodes.guideOverlay.hidden = true;
+}
+
 async function loadGame() {
   const savedMode = localStorage.getItem(MODE_KEY) || initialMode;
   if (savedMode === 'api') {
@@ -290,12 +349,31 @@ async function loadGame() {
   }
 }
 
-async function loadDailyActions() {
-  return api.getDailyActions(game, getView(activeViewId));
+async function loadDailyActionsForGame(targetGame, targetView) {
+  return api.getDailyActions(targetGame, targetView);
 }
 
-async function refreshDailyActions() {
-  dailyActions = await loadDailyActions();
+async function refreshDailyActionsForView(viewId) {
+  const requestId = ++actionRefreshSequence;
+  const requestGame = game;
+  const requestView = getView(viewId);
+  const nextActions = await loadDailyActionsForGame(requestGame, requestView);
+
+  if (
+    requestId !== actionRefreshSequence ||
+    activeViewId !== requestView.id ||
+    !isSameGameSnapshot(game, requestGame)
+  ) {
+    return false;
+  }
+
+  dailyActions = nextActions;
+  render();
+  return true;
+}
+
+function isSameGameSnapshot(current, snapshot) {
+  return current.turn === snapshot.turn && current.version === snapshot.version;
 }
 
 function saveGame() {

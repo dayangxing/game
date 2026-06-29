@@ -348,6 +348,29 @@ shared/
 - 重复提交过期 action 会被拒绝。
 - LLM provider 关闭时，游戏仍可通过 fallback 文案运行。
 
+## 当前稳定版落地状态
+
+当前原型已经完成一轮前后端稳定联调，运行入口和验证方式记录在根目录 `README.md`。
+
+已落地：
+
+- 前端默认以后端 API 模式启动，后端不可用时保留清晰错误提示和 Mock 切换入口。
+- `frontend/src/api/gameApi.js` 是浏览器页面访问后端的唯一出口。
+- 后端 `GET /api/v1/game/state`、`POST /api/v1/daily-actions`、`POST /api/v1/turns`、`POST /api/v1/turns/:turn/narration`、`POST /api/v1/export-story` 已形成可测合同。
+- 后端 action 使用 `act_...` 权威 ID；前端即时 action 提交前必须通过 `/daily-actions` 兑换为后端 action。
+- 后端会拒绝过期 action 和不匹配的 `clientTurn`，避免旧客户端推进新存档。
+- 前端页签切换先展示即时 action，再异步刷新后端 action，减少等待空白。
+- 前端每日行动刷新带 request、view、turn/version 防护，旧请求不能覆盖当前页签或新回合状态。
+- 模式切换和重置流程先加载下一份 game/actions，再替换当前状态，避免半切换。
+- 首次访问的新手指引不会遮挡启动 API 错误。
+
+稳定版仍未包含：
+
+- 真实账号、多存档和数据库持久化。
+- 生产级鉴权、审计日志和内容安全服务。
+- 移动端专用布局。
+- 真实 LLM provider 的端到端线上凭证验证。
+
 ## 推荐开发顺序
 
 1. 后端先实现 `GET /game/state` 和内存存档。

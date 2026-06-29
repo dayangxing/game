@@ -50,13 +50,14 @@ export function createGameApi(options = {}) {
 
     async submitDailyAction(game, action) {
       if (shouldUseBackend(game, canUseBackend)) {
+        const backendAction = await resolveBackendAction({ baseUrl, fetchImpl, game, action });
         const data = await requestJson({
           baseUrl,
           fetchImpl,
           path: '/api/v1/turns',
           method: 'POST',
           body: {
-            actionId: action.id,
+            actionId: backendAction.id,
             clientTurn: game.turn
           }
         });
@@ -89,6 +90,41 @@ export function createGameApi(options = {}) {
       return exportNovel(game);
     }
   };
+}
+
+async function resolveBackendAction({ baseUrl, fetchImpl, game, action }) {
+  if (isBackendAction(action)) return action;
+
+  const viewId = action.llmRequest?.context?.view?.id;
+  if (!viewId) {
+    throw new BackendApiError('临时行动缺少界面信息，无法兑换为后端行动。', {
+      code: 'ACTION_VIEW_MISSING'
+    });
+  }
+
+  const data = await requestJson({
+    baseUrl,
+    fetchImpl,
+    path: '/api/v1/daily-actions',
+    method: 'POST',
+    body: {
+      viewId,
+      gameVersion: game.version
+    }
+  });
+  const backendAction = data.actions.find((candidate) => candidate.command === action.command);
+
+  if (!backendAction) {
+    throw new BackendApiError('后端未返回匹配的每日行动，请刷新后重试。', {
+      code: 'ACTION_NOT_MATCHED'
+    });
+  }
+
+  return backendAction;
+}
+
+function isBackendAction(action) {
+  return action.id?.startsWith('act_');
 }
 
 async function requestJson({ baseUrl, fetchImpl, path, method = 'GET', body }) {

@@ -200,7 +200,6 @@ button {
 .top-tabs button,
 .top-actions button,
 .mode-option,
-.command-box button,
 .utility-actions button {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -214,8 +213,7 @@ button {
 }
 
 .top-tabs button.active,
-.mode-option.active,
-.command-box button {
+.mode-option.active {
   border-color: rgba(47, 143, 112, 0.46);
   color: #fffdf2;
   background: linear-gradient(180deg, #3f9b7c, #2e765f);
@@ -263,8 +261,7 @@ button {
 }
 
 .paper-card,
-.hero-scroll,
-.command-box {
+.hero-scroll {
   border: 1px solid var(--line);
   border-radius: 8px;
   background:
@@ -647,29 +644,6 @@ blockquote {
   background: rgba(255, 252, 240, 0.48);
 }
 
-.command-box {
-  display: grid;
-  grid-template-columns: 1fr 92px;
-  gap: 10px;
-  padding: 10px;
-}
-
-.command-box input {
-  min-width: 0;
-  height: 48px;
-  padding: 0 14px;
-  border: 1px solid rgba(61, 68, 56, 0.18);
-  border-radius: 8px;
-  outline: none;
-  color: var(--ink);
-  background: rgba(255, 252, 240, 0.78);
-}
-
-.command-box input:focus {
-  border-color: rgba(47, 143, 112, 0.44);
-  box-shadow: 0 0 0 3px rgba(47, 143, 112, 0.1);
-}
-
 .resource-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -734,6 +708,91 @@ blockquote {
 
 .utility-actions button {
   min-height: 42px;
+}
+
+.guide-overlay {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(24, 33, 30, 0.32);
+  backdrop-filter: blur(6px);
+}
+
+.guide-overlay[hidden] {
+  display: none;
+}
+
+.guide-dialog {
+  width: 520px;
+  padding: 28px;
+  border: 1px solid var(--line-dark);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 86% 18%, rgba(181, 71, 63, 0.1), transparent 26%),
+    linear-gradient(135deg, rgba(255, 252, 240, 0.96), rgba(237, 229, 201, 0.94));
+  box-shadow: 0 32px 90px rgba(24, 33, 30, 0.3);
+}
+
+.guide-kicker {
+  width: fit-content;
+  margin-bottom: 10px;
+  padding: 5px 9px;
+  border: 1px solid rgba(181, 71, 63, 0.28);
+  border-radius: 8px;
+  color: var(--cinnabar);
+  background: rgba(255, 252, 240, 0.5);
+  font-size: 13px;
+}
+
+.guide-dialog h2 {
+  margin: 0;
+  font-size: 28px;
+}
+
+.guide-dialog p {
+  margin: 12px 0 0;
+  color: var(--ink-soft);
+  line-height: 1.75;
+}
+
+.guide-progress {
+  display: flex;
+  gap: 8px;
+  margin: 22px 0;
+}
+
+.guide-progress span {
+  width: 36px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(68, 81, 74, 0.18);
+}
+
+.guide-progress span.active {
+  background: var(--jade);
+}
+
+.guide-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.guide-actions button {
+  min-width: 92px;
+  height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: rgba(255, 252, 240, 0.68);
+}
+
+.guide-actions button:last-child {
+  border-color: rgba(47, 143, 112, 0.46);
+  color: #fffdf2;
+  background: linear-gradient(180deg, #3f9b7c, #2e765f);
 }
 
 .toast {

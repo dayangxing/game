@@ -183,6 +183,27 @@ test('POST /api/v1/turns rejects an expired action without advancing the game', 
   assert.equal(state.data.game.turn, 0);
 });
 
+test('POST /api/v1/turns rejects a stale client turn without advancing the game', async () => {
+  const app = createBackendApp({ seed: 31, now: fixedNow });
+  const actionsPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+    viewId: 'realm',
+    gameVersion: 0
+  })));
+  const [action] = actionsPayload.data.actions;
+
+  const response = await app.handle(makeRequest('POST', '/api/v1/turns', {
+    actionId: action.id,
+    clientTurn: -1
+  }));
+  const payload = await response.json();
+  const state = await jsonResponse(app.handle(makeRequest('GET', '/api/v1/game/state')));
+
+  assert.equal(response.status, 409);
+  assert.equal(payload.ok, false);
+  assert.equal(payload.error.code, 'TURN_MISMATCH');
+  assert.equal(state.data.game.turn, 0);
+});
+
 test('POST /api/v1/export-story exports the server-side save as text', async () => {
   const app = createBackendApp({ seed: 31, now: fixedNow });
   const payload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/export-story', {
