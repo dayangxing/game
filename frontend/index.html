@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>问道浮生 - 前端原型</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <div class="ink-backdrop" aria-hidden="true">
+      <span class="sun"></span>
+      <span class="ridge ridge-one"></span>
+      <span class="ridge ridge-two"></span>
+      <span class="mist mist-one"></span>
+      <span class="mist mist-two"></span>
+    </div>
+
+    <div class="app">
+      <header class="topbar">
+        <div class="brand">
+          <div class="seal">道</div>
+          <div>
+            <span>AI 文字修仙</span>
+            <h1>问道浮生</h1>
+          </div>
+        </div>
+
+        <nav class="top-tabs" id="topTabs" aria-label="主导航">
+          <button class="active" type="button" data-view="home">洞府</button>
+          <button type="button" data-view="cultivation">修炼</button>
+          <button type="button" data-view="skills">功法</button>
+          <button type="button" data-view="realm">秘境</button>
+          <button type="button" data-view="bag">行囊</button>
+        </nav>
+
+        <div class="top-actions">
+          <div class="mode-toggle">
+            <button class="mode-option active" id="mockMode" type="button">Mock</button>
+            <button class="mode-option" id="apiMode" type="button">API</button>
+          </div>
+          <button id="saveBtn" type="button">存档</button>
+          <button id="exportBtn" type="button">传记</button>
+        </div>
+      </header>
+
+      <main class="layout">
+        <aside class="sidebar left">
+          <section class="paper-card role-card">
+            <div class="role-head">
+              <div class="avatar" id="avatar">陆</div>
+              <div>
+                <p>求道者</p>
+                <h2 id="playerName">陆青玄</h2>
+                <span id="playerOrigin">山野孤子</span>
+              </div>
+            </div>
+            <div class="realm-block">
+              <span>境界</span>
+              <strong id="realm">炼气七层</strong>
+              <em id="spiritualRoot">雷木双灵根</em>
+            </div>
+            <div class="location" id="location">青云宗外门</div>
+            <div class="meters" id="meters"></div>
+          </section>
+
+          <section class="paper-card">
+            <div class="section-title">
+              <h3>主线任务</h3>
+              <span id="turnPill">第 0 回合</span>
+            </div>
+            <div class="quest-stack">
+              <article><strong>春试入门</strong><span>提升破境进度，争取内门名额</span></article>
+              <article><strong>秘境传闻</strong><span>追查雾隐秘境与身世线索</span></article>
+              <article><strong>宗门声望</strong><span>完成委托，提升青云宗关系</span></article>
+            </div>
+          </section>
+
+          <section class="paper-card">
+            <div class="section-title">
+              <h3>道友牵绊</h3>
+              <span id="sectRelationLabel">32</span>
+            </div>
+            <div class="bar sect"><i id="sectRelationBar"></i></div>
+            <div class="npc-list" id="npcList"></div>
+          </section>
+        </aside>
+
+        <section class="main-stage">
+          <section class="hero-scroll">
+            <div>
+              <p id="gameDate">玄历三年 春 第1月</p>
+              <h2 id="viewTitle">山门听雨，天机自生</h2>
+              <span id="viewDescription">每日行动由前端 API 适配层提供，后续可改为 AI 动态生成。</span>
+            </div>
+            <div class="status-pill" id="worldMode">Mock 推演</div>
+          </section>
+
+          <div class="api-banner" id="apiBanner" hidden>
+            API 模式已连接后端服务。每日行动、回合结算、剧情续写和导出都由服务端权威状态返回。
+          </div>
+
+          <section class="paper-card action-section">
+            <div class="section-title">
+              <h3 id="actionTitle">今日修行</h3>
+              <span id="actionMeta">每日行动</span>
+            </div>
+            <div class="action-grid" id="actionGrid"></div>
+          </section>
+
+          <section class="paper-card story-section">
+            <div class="section-title">
+              <h3>天机札记</h3>
+              <span>最近五回合</span>
+            </div>
+            <div class="log-list" id="logList"></div>
+          </section>
+
+          <section class="paper-card action-note">
+            <strong>每日行动接口</strong>
+            <p>当前选项来自本地 mock API。后续接入后端后，可由 AI 根据角色状态、世界事件和 NPC 记忆生成行动与剧情。</p>
+          </section>
+        </section>
+
+        <aside class="sidebar right">
+          <section class="paper-card resource-card">
+            <div class="section-title">
+              <h3>资源</h3>
+              <span>状态</span>
+            </div>
+            <div class="resource-grid" id="hudResources"></div>
+          </section>
+
+          <section class="paper-card">
+            <div class="section-title">
+              <h3>天机事件</h3>
+              <span>演化</span>
+            </div>
+            <div class="timeline" id="timeline"></div>
+          </section>
+
+          <section class="paper-card">
+            <div class="section-title">
+              <h3>长期伏笔</h3>
+              <span>记忆</span>
+            </div>
+            <div class="foreshadow-list" id="foreshadows"></div>
+          </section>
+
+          <section class="paper-card">
+            <div class="section-title">
+              <h3>前端操作</h3>
+              <span>本地</span>
+            </div>
+            <div class="utility-actions">
+              <button id="resetBtn" type="button">重开一世</button>
+              <button id="sampleBtn" type="button">随机行动</button>
+            </div>
+          </section>
+        </aside>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>

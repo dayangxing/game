@@ -1,0 +1,14 @@
+{
+  "name": "llm-cultivation-web-prototype",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "start:frontend": "python3 -m http.server 5173",
+    "start:backend": "node backend/src/server.js"
+  },
+  "dependencies": {
+    "@langchain/langgraph": "^1.4.7"
+  }
+}

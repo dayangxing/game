@@ -1,0 +1,362 @@
+import { createGameApi } from './api/gameApi.js';
+import { getLayoutMode } from './ui/layoutModes.js';
+import { getView, viewList } from './ui/views.js';
+
+const STORAGE_KEY = 'wendao-fusheng-frontend-save-v1';
+const MODE_KEY = 'wendao-fusheng-mode-v1';
+const BACKEND_BASE_URL = window.WENDAO_API_BASE_URL ?? 'http://127.0.0.1:8787';
+const RANDOM_COMMANDS = [
+  '闭关修炼三月，尝试突破',
+  '前往后山探索灵脉',
+  '找林师姐打听雾隐秘境的消息',
+  '炼制一炉聚气丹',
+  '挑战外门第十席',
+  '拜见玄衡长老求取功法'
+];
+
+const initialMode = localStorage.getItem(MODE_KEY) || 'api';
+let startupNotice = '';
+const api = createGameApi({
+  seed: 42,
+  baseUrl: BACKEND_BASE_URL,
+  preferredMode: initialMode
+});
+const layoutMode = getLayoutMode();
+let game = await loadGame();
+let activeViewId = localStorage.getItem('wendao-fusheng-active-view') || 'home';
+let dailyActions = await loadDailyActions().catch((error) => {
+  startupNotice = apiErrorMessage(error);
+  return [];
+});
+
+document.documentElement.dataset.layout = layoutMode.id;
+document.body.classList.add(layoutMode.shellClass);
+
+const nodes = {
+  playerName: document.querySelector('#playerName'),
+  playerOrigin: document.querySelector('#playerOrigin'),
+  avatar: document.querySelector('#avatar'),
+  topTabs: document.querySelector('#topTabs'),
+  viewTitle: document.querySelector('#viewTitle'),
+  viewDescription: document.querySelector('#viewDescription'),
+  actionTitle: document.querySelector('#actionTitle'),
+  actionMeta: document.querySelector('#actionMeta'),
+  hudResources: document.querySelector('#hudResources'),
+  realm: document.querySelector('#realm'),
+  spiritualRoot: document.querySelector('#spiritualRoot'),
+  location: document.querySelector('#location'),
+  meters: document.querySelector('#meters'),
+  sectRelationLabel: document.querySelector('#sectRelationLabel'),
+  sectRelationBar: document.querySelector('#sectRelationBar'),
+  npcList: document.querySelector('#npcList'),
+  gameDate: document.querySelector('#gameDate'),
+  turnPill: document.querySelector('#turnPill'),
+  logList: document.querySelector('#logList'),
+  actionGrid: document.querySelector('#actionGrid'),
+  timeline: document.querySelector('#timeline'),
+  foreshadows: document.querySelector('#foreshadows'),
+  saveBtn: document.querySelector('#saveBtn'),
+  exportBtn: document.querySelector('#exportBtn'),
+  resetBtn: document.querySelector('#resetBtn'),
+  sampleBtn: document.querySelector('#sampleBtn'),
+  mockMode: document.querySelector('#mockMode'),
+  apiMode: document.querySelector('#apiMode'),
+  apiBanner: document.querySelector('#apiBanner'),
+  worldMode: document.querySelector('#worldMode'),
+  toast: document.querySelector('#toast')
+};
+
+render();
+if (startupNotice) showToast(startupNotice);
+
+nodes.actionGrid.addEventListener('click', async (event) => {
+  const button = event.target.closest('button[data-command]');
+  if (!button) return;
+  const action = dailyActions.find((item) => item.id === button.dataset.actionId);
+  if (!action) return;
+  await submitDailyAction(action);
+});
+
+nodes.topTabs.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-view]');
+  if (!button) return;
+  activeViewId = button.dataset.view;
+  localStorage.setItem('wendao-fusheng-active-view', activeViewId);
+  refreshDailyActions().then(render).catch(handleApiError);
+});
+
+nodes.saveBtn.addEventListener('click', () => {
+  saveGame();
+  showToast(game.mode === 'api' ? '后端存档由服务端维护' : '前端存档已保存');
+});
+
+nodes.exportBtn.addEventListener('click', async () => {
+  try {
+    downloadText(await api.exportStory(game), `问道浮生-${game.player.name}-第${game.turn}回合.txt`);
+    showToast('传记已导出');
+  } catch (error) {
+    handleApiError(error);
+  }
+});
+
+nodes.resetBtn.addEventListener('click', async () => {
+  try {
+    game = await api.createGame(game.mode);
+    dailyActions = await loadDailyActions();
+    saveGame();
+    render();
+    showToast(game.mode === 'api' ? '已刷新后端存档' : '新的一世已经开启');
+  } catch (error) {
+    handleApiError(error);
+  }
+});
+
+nodes.sampleBtn.addEventListener('click', async () => {
+  if (!dailyActions.length && game.mode === 'api') {
+    showToast('后端行动未加载，请切换页签重试');
+    return;
+  }
+  const fallbackCommand = RANDOM_COMMANDS[(game.turn + game.seed) % RANDOM_COMMANDS.length];
+  const action = dailyActions.length ? dailyActions[(game.turn + game.seed) % dailyActions.length] : {
+    id: 'fallback-random',
+    command: fallbackCommand
+  };
+  await submitDailyAction(action);
+});
+
+nodes.mockMode.addEventListener('click', () => setMode('mock'));
+nodes.apiMode.addEventListener('click', () => setMode('api'));
+
+async function submitDailyAction(action) {
+  try {
+    game = await api.submitDailyAction(game, action);
+    dailyActions = await loadDailyActions();
+    saveGame();
+    render();
+    nodes.logList.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch (error) {
+    handleApiError(error);
+  }
+}
+
+async function setMode(mode) {
+  try {
+    game = await api.setMode(game, mode);
+    localStorage.setItem(MODE_KEY, mode);
+    dailyActions = await loadDailyActions();
+    saveGame();
+    render();
+    showToast(mode === 'api' ? '已连接后端 API' : '已切换本地 Mock');
+  } catch (error) {
+    handleApiError(error);
+  }
+}
+
+function render() {
+  renderTabs();
+  renderPlayer();
+  renderNpcs();
+  renderStory();
+  renderWorld();
+  renderMode();
+}
+
+function renderTabs() {
+  const view = getView(activeViewId);
+  nodes.viewTitle.textContent = view.title;
+  nodes.viewDescription.textContent = view.description;
+  nodes.actionTitle.textContent = view.label === '洞府' ? '今日修行' : view.title;
+  nodes.actionMeta.textContent = `${view.cards.length} 项`;
+
+  nodes.topTabs.innerHTML = viewList.map((item) => `
+    <button class="${item.id === view.id ? 'active' : ''}" type="button" data-view="${item.id}">${item.label}</button>
+  `).join('');
+}
+
+function renderPlayer() {
+  const { player } = game;
+  nodes.playerName.textContent = player.name;
+  nodes.playerOrigin.textContent = player.origin;
+  nodes.avatar.textContent = player.name.slice(0, 1);
+  nodes.realm.textContent = player.realm;
+  nodes.spiritualRoot.textContent = player.spiritualRoot;
+  nodes.location.textContent = player.location;
+  nodes.sectRelationLabel.textContent = player.sectRelation;
+  nodes.sectRelationBar.style.width = `${player.sectRelation}%`;
+
+  const resources = [
+    ['境界', player.realm, '境'],
+    ['灵石', player.spiritStones, '石'],
+    ['灵气', player.qi, '气'],
+    ['寿元', player.lifespan, '寿']
+  ];
+
+  nodes.hudResources.innerHTML = resources.map(([label, value, icon]) => `
+    <article class="resource">
+      <b>${icon}</b>
+      <span>${label}</span>
+      <strong>${value}</strong>
+    </article>
+  `).join('');
+
+  const meters = [
+    ['灵气', player.qi, 'qi'],
+    ['心境', player.mood, 'mood'],
+    ['破境', player.cultivationProgress, 'progress'],
+    ['灵石', player.spiritStones, 'stones']
+  ];
+
+  nodes.meters.innerHTML = meters.map(([label, value, kind]) => {
+    const percent = kind === 'stones' ? Math.min(100, value / 2) : Math.min(100, value);
+    return `
+      <div class="meter-row">
+        <div><span>${label}</span><strong>${value}</strong></div>
+        <div class="bar ${kind}"><i style="width:${percent}%"></i></div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderNpcs() {
+  nodes.npcList.innerHTML = game.npcs.map((npc) => `
+    <article class="npc-card">
+      <div>
+        <strong>${npc.name}</strong>
+        <span>${npc.role}</span>
+      </div>
+      <b>${npc.affinity}</b>
+    </article>
+  `).join('');
+}
+
+function renderStory() {
+  const activeView = getView(activeViewId);
+  nodes.gameDate.textContent = formatDate(game.calendar);
+  nodes.turnPill.textContent = `第 ${game.turn} 回合`;
+
+  nodes.actionGrid.innerHTML = buildActionCards(dailyActions).map((card) => `
+    <button class="action-card ${card.kind}" type="button" data-action-id="${escapeAttribute(card.id)}" data-command="${escapeAttribute(card.command)}">
+      <b>${card.icon}</b>
+      <span>${card.title}</span>
+      <strong>${card.command}</strong>
+      <em>${card.meta}</em>
+    </button>
+  `).join('');
+
+  nodes.logList.innerHTML = game.log.slice(-5).reverse().map((entry) => `
+    <article class="log-card">
+      <header><strong>${entry.title}</strong><span>${entry.command}</span></header>
+      <p>${entry.body}</p>
+      ${entry.npcLine ? `<blockquote>${entry.npcLine}</blockquote>` : ''}
+      ${entry.worldEvent ? `<em>${entry.worldEvent}</em>` : ''}
+    </article>
+  `).join('');
+}
+
+function renderWorld() {
+  nodes.timeline.innerHTML = game.timeline.slice(-6).reverse().map((item) => `
+    <article class="timeline-item">
+      <i></i>
+      <div><strong>${item.title}</strong><p>${item.detail}</p></div>
+    </article>
+  `).join('');
+
+  nodes.foreshadows.innerHTML = game.foreshadows.map((item) => `<article>${item}</article>`).join('');
+}
+
+function renderMode() {
+  const isApi = game.mode === 'api';
+  nodes.mockMode.classList.toggle('active', !isApi);
+  nodes.apiMode.classList.toggle('active', isApi);
+  nodes.apiBanner.hidden = !isApi;
+  nodes.worldMode.textContent = isApi ? '后端 API' : 'Mock 推演';
+}
+
+async function loadGame() {
+  const savedMode = localStorage.getItem(MODE_KEY) || initialMode;
+  if (savedMode === 'api') {
+    try {
+      return await api.createGame('api');
+    } catch (error) {
+      startupNotice = `后端连接失败，已切换本地 Mock：${apiErrorMessage(error)}`;
+    }
+  }
+
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? { ...JSON.parse(raw), mode: 'mock' } : await api.createGame('mock');
+  } catch {
+    return api.createGame('mock');
+  }
+}
+
+async function loadDailyActions() {
+  return api.getDailyActions(game, getView(activeViewId));
+}
+
+async function refreshDailyActions() {
+  dailyActions = await loadDailyActions();
+}
+
+function saveGame() {
+  localStorage.setItem(MODE_KEY, game.mode);
+  if (game.mode === 'mock') {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(game));
+  }
+}
+
+function showToast(message) {
+  nodes.toast.textContent = message;
+  nodes.toast.classList.add('show');
+  window.clearTimeout(showToast.timer);
+  showToast.timer = window.setTimeout(() => nodes.toast.classList.remove('show'), 1800);
+}
+
+function downloadText(text, filename) {
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function formatDate(calendar) {
+  return `玄历${calendar.year}年 ${calendar.season} 第${calendar.month}月`;
+}
+
+function escapeAttribute(value) {
+  return value.replaceAll('"', '&quot;');
+}
+
+function buildActionCards(actions) {
+  return actions.map((action) => ({
+    ...action,
+    kind: kindForCommand(action.command)
+  })).slice(0, 6);
+}
+
+function handleApiError(error) {
+  showToast(apiErrorMessage(error));
+}
+
+function apiErrorMessage(error) {
+  return error?.message ?? '后端 API 暂不可用，请稍后重试。';
+}
+
+function kindForCommand(command) {
+    if (command.includes('炼丹') || command.includes('丹') || command.includes('药')) {
+      return 'alchemy';
+    }
+    if (command.includes('挑战') || command.includes('斗法') || command.includes('斩妖')) {
+      return 'combat';
+    }
+    if (command.includes('林师姐') || command.includes('长老') || command.includes('打听') || command.includes('请教')) {
+      return 'social';
+    }
+    if (command.includes('修炼') || command.includes('闭关') || command.includes('突破') || command.includes('稳固')) {
+      return 'cultivate';
+    }
+  return 'explore';
+}
