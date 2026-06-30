@@ -61,8 +61,22 @@ test('startup api failure notice prevents the guide from covering the error toas
   assert.match(source, /if \(!startupNotice && shouldAutoOpenGuide\(localStorage\)\) openGuide\(\);/);
 });
 
+test('first run stage hides the main stage during onboarding and character creation', () => {
+  const source = fs.readFileSync('frontend/src/app.js', 'utf8');
+  const helper = extractFunction(source, 'renderFirstRunStage');
+
+  assert.ok(helper, 'renderFirstRunStage should exist');
+  assert.match(helper, /const needsOnboarding = game\.onboarding && !game\.onboarding\.completed;/);
+  assert.match(helper, /const needsCharacter = game\.onboarding\?\.completed && game\.player\.name === '陆青玄';/);
+  assert.match(helper, /nodes\.onboardingPanel\.hidden = !needsOnboarding;/);
+  assert.match(helper, /nodes\.characterPanel\.hidden = !needsCharacter;/);
+  assert.match(helper, /document\.querySelector\('\.main-stage'\)\.hidden = needsOnboarding \|\| needsCharacter;/);
+});
+
 function extractFunction(source, name) {
-  const start = source.indexOf(`async function ${name}`);
+  const start = source.indexOf(`async function ${name}`) !== -1
+    ? source.indexOf(`async function ${name}`)
+    : source.indexOf(`function ${name}`);
   assert.notEqual(start, -1, `${name} should exist`);
   const bodyStart = source.indexOf('{', start);
   let depth = 0;

@@ -1,5 +1,6 @@
 import { createGameApi } from './api/gameApi.js';
 import { getLayoutMode } from './ui/layoutModes.js';
+import { formatCharacterAttributeRows } from './ui/characterCreation.js';
 import {
   getGuideStep,
   guideSteps,
@@ -24,6 +25,8 @@ const RANDOM_COMMANDS = [
 const initialMode = localStorage.getItem(MODE_KEY) || 'api';
 let startupNotice = '';
 let actionRefreshSequence = 0;
+let pendingFormalGame = null;
+let pendingCharacterSeed = Number(localStorage.getItem('wendao-fusheng-character-seed') ?? Date.now());
 const api = createGameApi({
   seed: 42,
   baseUrl: BACKEND_BASE_URL,
@@ -79,6 +82,15 @@ const nodes = {
   apiMode: document.querySelector('#apiMode'),
   apiBanner: document.querySelector('#apiBanner'),
   worldMode: document.querySelector('#worldMode'),
+  onboardingPanel: document.querySelector('#onboardingPanel'),
+  onboardingTitle: document.querySelector('#onboardingTitle'),
+  onboardingBody: document.querySelector('#onboardingBody'),
+  onboardingActionBtn: document.querySelector('#onboardingActionBtn'),
+  characterPanel: document.querySelector('#characterPanel'),
+  characterNameInput: document.querySelector('#characterNameInput'),
+  characterRoll: document.querySelector('#characterRoll'),
+  rerollCharacterBtn: document.querySelector('#rerollCharacterBtn'),
+  startFormalGameBtn: document.querySelector('#startFormalGameBtn'),
   toast: document.querySelector('#toast')
 };
 
@@ -161,6 +173,44 @@ nodes.sampleBtn.addEventListener('click', async () => {
 
 nodes.mockMode.addEventListener('click', () => setMode('mock'));
 nodes.apiMode.addEventListener('click', () => setMode('api'));
+nodes.onboardingActionBtn.addEventListener('click', async () => {
+  try {
+    const [action] = await api.getDailyActions(game, getView(activeViewId));
+    await submitDailyAction(action);
+  } catch (error) {
+    handleApiError(error);
+  }
+});
+
+nodes.rerollCharacterBtn.addEventListener('click', async () => {
+  try {
+    pendingCharacterSeed += 1;
+    localStorage.setItem('wendao-fusheng-character-seed', String(pendingCharacterSeed));
+    pendingFormalGame = await api.createFormalGame({
+      name: nodes.characterNameInput.value,
+      rerollSeed: pendingCharacterSeed
+    });
+    renderCharacterRoll(pendingFormalGame.character);
+  } catch (error) {
+    handleApiError(error);
+  }
+});
+
+nodes.startFormalGameBtn.addEventListener('click', async () => {
+  try {
+    game = pendingFormalGame ?? await api.createFormalGame({
+      name: nodes.characterNameInput.value,
+      rerollSeed: pendingCharacterSeed
+    });
+    pendingFormalGame = null;
+    dailyActions = await loadDailyActionsForGame(game, getView(activeViewId));
+    actionRefreshSequence += 1;
+    saveGame();
+    render();
+  } catch (error) {
+    handleApiError(error);
+  }
+});
 
 async function submitDailyAction(action) {
   try {
@@ -191,12 +241,41 @@ async function setMode(mode) {
 }
 
 function render() {
+  renderFirstRunStage();
   renderTabs();
   renderPlayer();
   renderNpcs();
   renderStory();
   renderWorld();
   renderMode();
+}
+
+function renderFirstRunStage() {
+  const needsOnboarding = game.onboarding && !game.onboarding.completed;
+  const needsCharacter = game.onboarding?.completed && game.player.name === '陆青玄';
+  const onboardingStep = game.onboarding?.completed ? null : game.log.at(-1);
+
+  nodes.onboardingPanel.hidden = !needsOnboarding;
+  nodes.characterPanel.hidden = !needsCharacter;
+  document.querySelector('.main-stage').hidden = needsOnboarding || needsCharacter;
+
+  if (needsOnboarding && onboardingStep) {
+    nodes.onboardingTitle.textContent = onboardingStep.title;
+    nodes.onboardingBody.textContent = onboardingStep.body;
+  }
+
+  if (needsCharacter && pendingFormalGame?.character) {
+    renderCharacterRoll(pendingFormalGame.character);
+  }
+}
+
+function renderCharacterRoll(character = game.character) {
+  nodes.characterRoll.innerHTML = formatCharacterAttributeRows(character).map((row) => `
+    <div class="attribute-row">
+      <span>${row.label}</span>
+      <strong>${row.value}</strong>
+    </div>
+  `).join('');
 }
 
 function renderTabs() {

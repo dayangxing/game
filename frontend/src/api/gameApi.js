@@ -17,6 +17,26 @@ export function createGameApi(options = {}) {
       return withMode(createMockGame(seed), 'mock');
     },
 
+    async createFormalGame({ name, rerollSeed } = {}) {
+      if (canUseBackend) {
+        const data = await requestJson({
+          baseUrl,
+          fetchImpl,
+          path: '/api/v1/game/new',
+          method: 'POST',
+          body: { name, rerollSeed }
+        });
+        return withMode(data.game, 'api');
+      }
+
+      const mockGame = createMockGame(rerollSeed ?? seed);
+      return withMode({
+        ...mockGame,
+        player: { ...mockGame.player, name: name?.trim() || mockGame.player.name },
+        characterSeed: rerollSeed ?? seed
+      }, 'mock');
+    },
+
     async submitCommand(game, command) {
       return advanceTurn(game, command);
     },
