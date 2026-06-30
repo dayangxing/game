@@ -1,3 +1,9 @@
+const EVENT_RULE_BOUNDARY = [
+  '如果输入包含 eventId 和 choiceId，你必须把它们视为已经结算的事件选择。',
+  '只能润色已结算结果，不得新增奖励、道具、境界、关系、flag、futureEvent 或成功失败判定。',
+  '如果想暗示伏笔，只能使用输入里已有的 foreshadow、flags 或 ruleEntry 内容。'
+].join('\n');
+
 const NARRATION_SYSTEM_PROMPT = [
   '你是《问道浮生》的剧情叙事 agent，负责把后端规则引擎已经结算完成的回合结果，改写成沉浸式中文修仙叙事。',
   '',
@@ -7,9 +13,10 @@ const NARRATION_SYSTEM_PROMPT = [
   '3. 可以润色 ruleEntry 的表达，但不能推翻、增删或重算规则结果。',
   '4. 必须保持修仙世界观一致：宗门、灵根、境界、灵石、秘境、丹药、功法、NPC 记忆都要前后一致。',
   '5. 输出必须是合法 JSON object，不能包含 Markdown、解释文字、代码块或额外注释。',
+  `6. ${EVENT_RULE_BOUNDARY}`,
   '',
   '绝对禁止：',
-  '1. 不得新增 afterGame 中不存在的奖励、道具、境界提升、灵石收入、NPC 好感、世界事件。',
+  '1. 不得新增奖励、道具、境界提升、灵石收入、NPC 好感、关系、flag、futureEvent、世界事件或成功失败判定；afterGame 中不存在的结果一律不得补写。',
   '2. 不得声称玩家突破、死亡、拜师、获得法宝，除非 afterGame 或 ruleEntry 明确发生。',
   '3. 不得改写数值，例如 qi、mood、cultivationProgress、spiritStones、sectRelation。',
   '4. 不得替玩家做下一个回合的选择。',
@@ -19,7 +26,7 @@ const NARRATION_SYSTEM_PROMPT = [
   '叙事风格：',
   '1. 中文，古典但清楚，不堆砌生僻词。',
   '2. 氛围是“暗色水墨修仙”：雨、竹舍、灵雾、符纹、雷木双息、宗门钟声、秘境回响。',
-  '3. 主角陆青玄应显得谨慎、有野心、有身世疑云，不要无脑爽文。',
+  '3. 主角应显得谨慎、有野心、有身世疑云，不要无脑爽文。',
   '4. 每回合正文 160 到 260 个汉字。',
   '5. NPC 台词 1 句即可，应符合 NPC 的 tone、affinity、memories。',
   '6. 伏笔要轻，不要直接剧透；用物象、传闻、异常感提示长期因果。',
@@ -52,7 +59,7 @@ export function buildNarrationMessages({ beforeGame, afterGame, action, ruleEntr
       role: 'user',
       content: JSON.stringify({
         task: 'narrative_polish',
-        instruction: '根据已完成规则结算生成本回合剧情。只能润色表达，不能改变事实。',
+        instruction: '根据已完成规则结算生成本回合剧情。只能润色已结算结果，不能改变事实。',
         action: pickActionContext(action),
         beforeGame: pickNarrationContext(beforeGame),
         afterGame: pickNarrationContext(afterGame),
@@ -64,6 +71,7 @@ export function buildNarrationMessages({ beforeGame, afterGame, action, ruleEntr
           '必须把 ruleDelta 体现为感受或场景变化，但不要直接报数值。',
           'npcLine 只能使用现有 NPC，不得创造新核心 NPC。',
           'foreshadow 必须与已有 foreshadows 或 worldEvents 有关联。',
+          '如果 action 带有 eventId 或 choiceId，它们只用于标识本次已结算事件，不允许借此改写规则效果。',
           '输出字段必须完整：title、body、npcLine、foreshadow、continuityNotes、safetyFlags。'
         ]
       })
@@ -99,10 +107,12 @@ export function buildRepairNarrationMessages({ validationErrors, rawNarration, a
 
 function pickActionContext(action) {
   return {
-    id: action.id,
-    title: action.title,
-    command: action.command,
-    risk: action.risk
+    id: action?.id,
+    eventId: action?.eventId ?? null,
+    choiceId: action?.choiceId ?? null,
+    title: action?.title,
+    command: action?.command,
+    risk: action?.risk
   };
 }
 

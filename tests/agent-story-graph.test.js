@@ -77,6 +77,40 @@ test('story graph preserves saved progress and returns retryable llm unavailable
   assert.match(result.narration.body, /已保存/);
 });
 
+test('story graph passes event identity without allowing rule mutation', async () => {
+  let seen;
+  const graph = createStoryGraph({
+    llm: {
+      async generateNarration(input) {
+        seen = input;
+        return {
+          title: '事件润色',
+          body: '竹雾沿着山道一寸寸散开，青铜铃余音仍停在檐角。陆青玄只是循着已落定的结果收束心神，听见石阶边的水声与风声缠在一处，知道这一回合留下的波澜已成定局，只待日后在更深的因果里回响。',
+          npcLine: '林师姐道：“结果已定。”',
+          foreshadow: '旧伏笔继续发酵。',
+          continuityNotes: ['事件身份仅用于叙事对齐。'],
+          safetyFlags: []
+        };
+      }
+    }
+  });
+
+  await graph.invoke({
+    beforeGame: { turn: 0, player: {} },
+    afterGame: {
+      turn: 1,
+      player: {},
+      foreshadows: ['旧伏笔继续发酵。'],
+      log: [{ title: '雾中青铜铃', body: '铜铃响起。' }]
+    },
+    action: { eventId: 'mist_bronze_bell', choiceId: 'approach', title: '靠近铜铃' },
+    ruleEntry: { title: '雾中青铜铃', body: '铜铃响起。' }
+  });
+
+  assert.equal(seen.action.eventId, 'mist_bronze_bell');
+  assert.equal(seen.action.choiceId, 'approach');
+});
+
 function makeGraphInput() {
   return {
     beforeGame: { turn: 0, player: { name: '陆青玄' } },
