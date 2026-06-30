@@ -317,20 +317,16 @@ function renderPlayer() {
   nodes.sectRelationLabel.textContent = player.sectRelation;
   nodes.sectRelationBar.style.width = `${player.sectRelation}%`;
 
-  const resources = [
-    ['境界', player.realm, '境'],
-    ['灵石', player.spiritStones, '石'],
-    ['灵气', player.qi, '气'],
-    ['寿元', player.lifespan, '寿']
-  ];
-
-  nodes.hudResources.innerHTML = resources.map(([label, value, icon]) => `
-    <article class="resource">
-      <b>${icon}</b>
-      <span>${label}</span>
-      <strong>${value}</strong>
-    </article>
-  `).join('');
+  nodes.hudResources.innerHTML = [
+    '<h3>寿元压力</h3>',
+    `<div class="state-row"><span>寿元</span><strong>${game.player.lifespan}</strong></div>`,
+    '<h3>因果</h3>',
+    renderKarmaState(),
+    '<h3>门派</h3>',
+    renderSectState(),
+    '<h3>丹药/材料</h3>',
+    renderInventoryState()
+  ].join('');
 
   const meters = [
     ['灵气', player.qi, 'qi'],
@@ -373,6 +369,7 @@ function renderStory() {
       <span>${card.title}</span>
       <strong>${card.command}</strong>
       <em>${card.meta}</em>
+      ${card.eventMeta}
     </button>
   `).join('');
 
@@ -503,10 +500,39 @@ function escapeAttribute(value) {
   return value.replaceAll('"', '&quot;');
 }
 
+function renderKarmaState() {
+  const karma = game.karma ?? { karma: 0, evil: 0, futureEventFlags: [] };
+  return `
+    <div class="state-row"><span>善缘</span><strong>${karma.karma ?? 0}</strong></div>
+    <div class="state-row"><span>业力</span><strong>${karma.evil ?? 0}</strong></div>
+    <div class="state-row"><span>因果伏笔</span><strong>${karma.futureEventFlags?.length ?? 0}</strong></div>
+  `;
+}
+
+function renderInventoryState() {
+  const inventory = game.inventory ?? { materials: {}, pills: {} };
+  const materials = Object.entries(inventory.materials ?? {}).map(([name, count]) => `${name} x${count}`).join('、') || '无';
+  const pills = Object.entries(inventory.pills ?? {}).map(([name, count]) => `${name} x${count}`).join('、') || '无';
+  return `
+    <div class="state-row"><span>材料</span><strong>${materials}</strong></div>
+    <div class="state-row"><span>丹药</span><strong>${pills}</strong></div>
+  `;
+}
+
+function renderSectState() {
+  const sect = game.sect ?? { name: '青云宗', contribution: game.player.sectRelation ?? 0, rank: '外门弟子' };
+  return `
+    <div class="state-row"><span>宗门</span><strong>${sect.name}</strong></div>
+    <div class="state-row"><span>身份</span><strong>${sect.rank}</strong></div>
+    <div class="state-row"><span>贡献</span><strong>${sect.contribution ?? game.player.sectRelation ?? 0}</strong></div>
+  `;
+}
+
 function buildActionCards(actions) {
   return actions.map((action) => ({
     ...action,
-    kind: kindForCommand(action.command)
+    kind: kindForCommand(action.command),
+    eventMeta: action.eventId ? `<div class="event-meta">${action.eventId} / ${action.choiceId}</div>` : ''
   })).slice(0, 6);
 }
 
