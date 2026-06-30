@@ -1,6 +1,8 @@
 import { advanceTurn, createGame, exportNovel } from '../../src/engine.js';
 import { createStoryGraph } from './agents/storyGraph.js';
 import { createDailyActions, hasView } from './domain/actions.js';
+import { applyCharacterToGame, rollCharacter } from './domain/characterCreation.js';
+import { canCreateFormalCharacter, createOnboardingState } from './domain/onboarding.js';
 import { buildTurnResult } from './domain/turnResult.js';
 import { createBailianClient } from './llm/bailianClient.js';
 import { getModelSelection } from './llm/modelSelection.js';
@@ -38,6 +40,11 @@ export function createBackendApp(options = {}) {
 
         if (route === 'GET /api/v1/model-selection') {
           return jsonResponse(200, requestId, { modelSelection: state.modelSelection });
+        }
+
+        if (route === 'POST /api/v1/game/new') {
+          const body = await readJson(request);
+          return handleNewFormalGame({ body, requestId, state });
         }
 
         if (route === 'POST /api/v1/daily-actions') {
@@ -113,6 +120,33 @@ function handleDailyActions({ body, requestId, state, now }) {
   });
 
   return jsonResponse(200, requestId, { actions });
+}
+
+function handleNewFormalGame({ body, requestId, state }) {
+  if (!canCreateFormalCharacter(state.game.onboarding)) {
+    return errorResponse(409, requestId, 'ONBOARDING_REQUIRED', '完成新手任务后才能创建正式角色。');
+  }
+
+  const name = String(body.name ?? '').trim();
+  if (name.length > 12) {
+    return errorResponse(400, requestId, 'CHARACTER_NAME_INVALID', '角色名最多 12 个字符。');
+  }
+
+  try {
+    const seed = Number.isInteger(body.rerollSeed) ? body.rerollSeed : state.game.seed + state.requestSequence + 101;
+    const character = rollCharacter({ seed, name });
+    state.game = normalizeGame(applyCharacterToGame(createGame(seed), character, seed));
+    state.game.mode = 'api';
+    return jsonResponse(200, requestId, {
+      game: state.game,
+      character
+    });
+  } catch (error) {
+    if (error.message.startsWith('CHARACTER_ROLL_INVALID')) {
+      return errorResponse(500, requestId, 'CHARACTER_ROLL_INVALID', '角色随机属性超出可玩范围，请重新生成。');
+    }
+    throw error;
+  }
 }
 
 async function handleTurn({ body, requestId, state, now }) {
@@ -205,12 +239,47 @@ function handleExportStory({ body, requestId, state }) {
 }
 
 function normalizeGame(game) {
+  const onboarding = game.onboarding ?? createOnboardingState();
+  const character = game.character ?? {
+    name: game.player?.name ?? '陆青玄',
+    origin: game.player?.origin ?? '山野孤子',
+    spiritualRoot: game.player?.spiritualRoot ?? '雷木双灵根',
+    traits: ['新手序章'],
+    comprehension: 50,
+    physique: 50,
+    luck: 50,
+    karmaAffinity: 0,
+    initialLifespan: game.player?.lifespan ?? 93,
+    startingResources: {
+      spiritStones: game.player?.spiritStones ?? 126,
+      materials: { 凝露草: 2 },
+      pills: {}
+    }
+  };
+
   return {
     id: game.id ?? 'game_local',
     version: game.turn,
     ...game,
     id: game.id ?? 'game_local',
-    version: game.turn
+    version: game.turn,
+    onboarding,
+    characterSeed: game.characterSeed ?? game.seed ?? 1,
+    character,
+    inventory: game.inventory ?? {
+      materials: character.startingResources.materials,
+      pills: character.startingResources.pills
+    },
+    karma: game.karma ?? {
+      karma: 0,
+      evil: 0,
+      fate: character.karmaAffinity,
+      debts: [],
+      vendettas: [],
+      futureEventFlags: []
+    },
+    flags: game.flags ?? {},
+    cooldowns: game.cooldowns ?? {}
   };
 }
 

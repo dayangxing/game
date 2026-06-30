@@ -28,6 +28,53 @@ test('GET /api/v1/game/state returns the authoritative game state envelope', asy
   assert.equal(payload.data.game.turn, 0);
 });
 
+test('GET /api/v1/game/state starts in tutorial onboarding mode', async () => {
+  const app = createBackendApp({ seed: 31, now: fixedNow });
+  const payload = await jsonResponse(app.handle(makeRequest('GET', '/api/v1/game/state')));
+
+  assert.equal(payload.data.game.player.name, '陆青玄');
+  assert.equal(payload.data.game.onboarding.completed, false);
+  assert.equal(payload.data.game.onboarding.stepId, 'awakening');
+  assert.equal(payload.data.game.character.name, '陆青玄');
+  assert.equal(payload.data.game.inventory.materials.凝露草 >= 0, true);
+  assert.deepEqual(payload.data.game.flags, {});
+});
+
+test('POST /api/v1/game/new is locked until onboarding is complete', async () => {
+  const app = createBackendApp({ seed: 31, now: fixedNow });
+  const response = await app.handle(makeRequest('POST', '/api/v1/game/new', {
+    name: '顾清河',
+    rerollSeed: 52
+  }));
+  const payload = await response.json();
+
+  assert.equal(response.status, 409);
+  assert.equal(payload.ok, false);
+  assert.equal(payload.error.code, 'ONBOARDING_REQUIRED');
+});
+
+test('POST /api/v1/game/new creates a seeded formal character after onboarding', async () => {
+  const app = createBackendApp({ seed: 31, now: fixedNow });
+  app.getState().game.onboarding = {
+    completed: true,
+    stepId: 'formal_life',
+    completedStepIds: ['awakening', 'breathing', 'sect_contact', 'alchemy_trial', 'mist_bell', 'karma_choice', 'heaven_contract', 'formal_life'],
+    unlockedCharacterCreation: true
+  };
+
+  const payload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/game/new', {
+    name: '顾清河',
+    rerollSeed: 52
+  })));
+
+  assert.equal(payload.ok, true);
+  assert.equal(payload.data.character.name, '顾清河');
+  assert.equal(payload.data.game.player.name, '顾清河');
+  assert.notEqual(payload.data.game.player.name, '陆青玄');
+  assert.equal(payload.data.game.characterSeed, 52);
+  assert.equal(payload.data.game.mode, 'api');
+});
+
 test('POST /api/v1/daily-actions returns validated fallback actions for the requested view', async () => {
   const app = createBackendApp({ seed: 31, now: fixedNow });
   const response = await app.handle(makeRequest('POST', '/api/v1/daily-actions', {
