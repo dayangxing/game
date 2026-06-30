@@ -1,4 +1,5 @@
 import { EVENT_CATALOG } from './eventCatalog.js';
+import { canAffordEffects } from './effectResolver.js';
 import { isEventEligible } from './triggerMatcher.js';
 
 const FEATURED_EVENT_PRIORITY_BOOSTS = {
@@ -18,7 +19,9 @@ export function selectEventActions({ game, viewId, now, sequenceStart = 0 }) {
 
   const expiresAt = new Date(now.getTime() + 30 * 60 * 1000).toISOString();
   return eligible
-    .flatMap((event, eventIndex) => event.choices.map((choice, choiceIndex) => ({
+    .flatMap((event, eventIndex) => event.choices
+      .filter((choice) => canAffordEffects(game, choice.success.effects))
+      .map((choice, choiceIndex) => ({
       id: `act_${game.turn}_${viewId}_${sequenceStart + eventIndex}_${choiceIndex}`,
       title: choice.label,
       icon: event.category.slice(0, 1),

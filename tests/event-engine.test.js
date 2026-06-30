@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { EVENT_CATALOG, TRUTH_FLAGS } from '../backend/src/domain/events/eventCatalog.js';
+import { selectEventActions } from '../backend/src/domain/events/eventSelector.js';
 import { isEventEligible } from '../backend/src/domain/events/triggerMatcher.js';
 import { applyEffects, resolveChoice } from '../backend/src/domain/events/effectResolver.js';
 import { createGame } from '../src/engine.js';
@@ -59,6 +60,45 @@ test('unsupported effects fail closed before mutating game state', () => {
 
   assert.throws(() => applyEffects(game, [{ type: 'unknown', id: 'bad' }]), /RULE_EFFECT_INVALID/);
   assert.equal(game.turn, 0);
+});
+
+test('item costs fail closed before creating free crafting results', () => {
+  const game = {
+    ...formalGame(),
+    inventory: { materials: { 凝露草: 0, 雷纹草: 1 }, pills: {} }
+  };
+  const effects = [
+    { type: 'item', path: 'materials.凝露草', delta: -1 },
+    { type: 'item', path: 'pills.聚气丹', delta: 1 }
+  ];
+
+  assert.throws(() => applyEffects(game, effects), /CHOICE_REQUIREMENT_FAILED:materials\.凝露草/);
+  assert.deepEqual(game.inventory, { materials: { 凝露草: 0, 雷纹草: 1 }, pills: {} });
+});
+
+test('formal selector returns at least three deterministic event actions for every primary view', () => {
+  const game = formalGame();
+  const now = new Date('2026-06-30T08:00:00.000Z');
+
+  for (const viewId of ['home', 'cultivation', 'skills', 'realm', 'bag']) {
+    const actions = selectEventActions({ game, viewId, now });
+    assert.ok(actions.length >= 3, `${viewId} should expose at least three event actions`);
+    assert.ok(actions.every((action) => action.source === 'event'));
+  }
+});
+
+test('bag selector filters out crafting choices that cannot pay their material costs', () => {
+  const game = {
+    ...formalGame(),
+    inventory: { materials: { 凝露草: 0, 雷纹草: 1 }, pills: {} }
+  };
+  const actions = selectEventActions({
+    game,
+    viewId: 'bag',
+    now: new Date('2026-06-30T08:00:00.000Z')
+  });
+
+  assert.equal(actions.some((action) => action.eventId === 'alchemy_make_qi_pill'), false);
 });
 
 test('relation effects target the intended npc only', () => {

@@ -32,7 +32,20 @@ export function resolveChoice({ game, event, choice, now }) {
 }
 
 export function applyEffects(game, effects) {
+  preflightEffects(game, effects);
   return effects.reduce((next, effect) => applyEffect(next, effect), structuredClone(game));
+}
+
+export function canAffordEffects(game, effects) {
+  try {
+    preflightEffects(game, effects);
+    return true;
+  } catch (error) {
+    if (error.message.startsWith('CHOICE_REQUIREMENT_FAILED:')) {
+      return false;
+    }
+    throw error;
+  }
 }
 
 function applyEffect(game, effect) {
@@ -89,6 +102,26 @@ function updateItem(game, path, delta) {
       }
     }
   };
+}
+
+function preflightEffects(game, effects) {
+  const itemBalances = new Map();
+
+  for (const effect of effects) {
+    if (effect.type !== 'item' || effect.delta >= 0) continue;
+    const [bucket, id] = effect.path.split('.');
+    const key = `${bucket}.${id}`;
+    const current = itemBalances.has(key)
+      ? itemBalances.get(key)
+      : game.inventory?.[bucket]?.[id] ?? 0;
+    const next = current + effect.delta;
+
+    if (next < 0) {
+      throw new Error(`CHOICE_REQUIREMENT_FAILED:${bucket}.${id}`);
+    }
+
+    itemBalances.set(key, next);
+  }
 }
 
 function isTargetNpc(npc, npcId) {

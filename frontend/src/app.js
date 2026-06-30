@@ -25,6 +25,7 @@ const RANDOM_COMMANDS = [
 const initialMode = localStorage.getItem(MODE_KEY) || 'api';
 let startupNotice = '';
 let actionRefreshSequence = 0;
+let pendingApiImmediateActions = false;
 let pendingFormalGame = null;
 let pendingCharacterSeed = Number(localStorage.getItem('wendao-fusheng-character-seed') ?? Date.now());
 const api = createGameApi({
@@ -111,8 +112,7 @@ nodes.topTabs.addEventListener('click', (event) => {
   if (!button) return;
   activeViewId = button.dataset.view;
   localStorage.setItem('wendao-fusheng-active-view', activeViewId);
-  dailyActions = createImmediateViewActions(game, getView(activeViewId));
-  render();
+  showImmediateActionsForView(activeViewId);
   refreshDailyActionsForView(activeViewId).catch(handleApiError);
 });
 
@@ -148,6 +148,7 @@ nodes.resetBtn.addEventListener('click', async () => {
     const nextGame = await api.createGame(game.mode);
     const nextActions = await loadDailyActionsForGame(nextGame, getView(activeViewId));
     actionRefreshSequence += 1;
+    pendingApiImmediateActions = false;
     game = nextGame;
     dailyActions = nextActions;
     saveGame();
@@ -186,11 +187,8 @@ nodes.rerollCharacterBtn.addEventListener('click', async () => {
   try {
     pendingCharacterSeed += 1;
     localStorage.setItem('wendao-fusheng-character-seed', String(pendingCharacterSeed));
-    pendingFormalGame = await api.createFormalGame({
-      name: nodes.characterNameInput.value,
-      rerollSeed: pendingCharacterSeed
-    });
-    renderCharacterRoll(pendingFormalGame.character);
+    pendingFormalGame = null;
+    renderCharacterRoll(buildPendingCharacterPreview());
   } catch (error) {
     handleApiError(error);
   }
@@ -198,13 +196,14 @@ nodes.rerollCharacterBtn.addEventListener('click', async () => {
 
 nodes.startFormalGameBtn.addEventListener('click', async () => {
   try {
-    game = pendingFormalGame ?? await api.createFormalGame({
+    game = await api.createFormalGame({
       name: nodes.characterNameInput.value,
       rerollSeed: pendingCharacterSeed
     });
     pendingFormalGame = null;
     dailyActions = await loadDailyActionsForGame(game, getView(activeViewId));
     actionRefreshSequence += 1;
+    pendingApiImmediateActions = false;
     saveGame();
     render();
   } catch (error) {
@@ -213,11 +212,14 @@ nodes.startFormalGameBtn.addEventListener('click', async () => {
 });
 
 async function submitDailyAction(action) {
+  if (shouldBlockImmediateApiAction(action)) {
+    showToast('后端行动刷新中，请稍候再试');
+    return;
+  }
   try {
     game = await api.submitDailyAction(game, action);
-    dailyActions = createImmediateViewActions(game, getView(activeViewId));
     saveGame();
-    render();
+    showImmediateActionsForView(activeViewId);
     refreshDailyActionsForView(activeViewId).catch(handleApiError);
     nodes.logList.scrollTo({ top: 0, behavior: 'smooth' });
   } catch (error) {
@@ -230,6 +232,7 @@ async function setMode(mode) {
     const nextGame = await api.setMode(game, mode);
     const nextActions = await loadDailyActionsForGame(nextGame, getView(activeViewId));
     actionRefreshSequence += 1;
+    pendingApiImmediateActions = false;
     game = nextGame;
     dailyActions = nextActions;
     saveGame();
@@ -264,8 +267,8 @@ function renderFirstRunStage() {
     nodes.onboardingBody.textContent = onboardingStep.body;
   }
 
-  if (needsCharacter && pendingFormalGame?.character) {
-    renderCharacterRoll(pendingFormalGame.character);
+  if (needsCharacter) {
+    renderCharacterRoll(pendingFormalGame?.character ?? buildPendingCharacterPreview());
   }
 }
 
@@ -292,6 +295,34 @@ function renderCharacterRoll(character = game.character) {
       <strong>${row.value}</strong>
     </div>
   `).join('');
+}
+
+function buildPendingCharacterPreview() {
+  const seed = Number.isFinite(pendingCharacterSeed) ? pendingCharacterSeed : (game.characterSeed ?? game.seed ?? 1);
+  const traitPool = ['早慧', '命火绵长', '经脉坚韧', '福缘深厚', '丹道亲和', '剑心微明'];
+  const firstIndex = positiveModulo(seed, traitPool.length);
+  const secondIndex = (firstIndex + 2) % traitPool.length;
+  const fallbackCharacter = game.character ?? {};
+
+  return {
+    name: String(nodes.characterNameInput?.value ?? '').trim() || fallbackCharacter.name || game.player.name,
+    origin: fallbackCharacter.origin ?? game.player.origin,
+    spiritualRoot: fallbackCharacter.spiritualRoot ?? game.player.spiritualRoot,
+    traits: [traitPool[firstIndex], traitPool[secondIndex]],
+    comprehension: clampStat(52 + positiveModulo(seed, 17)),
+    physique: clampStat(47 + positiveModulo(seed, 19)),
+    luck: clampStat(45 + positiveModulo(seed, 23)),
+    karmaAffinity: positiveModulo(seed, 21) - 10,
+    initialLifespan: 80 + positiveModulo(seed, 31),
+    startingResources: {
+      spiritStones: 60 + positiveModulo(seed, 41),
+      materials: {
+        凝露草: 1 + positiveModulo(seed, 3),
+        雷纹草: positiveModulo(seed, 2)
+      },
+      pills: {}
+    }
+  };
 }
 
 function renderTabs() {
@@ -364,7 +395,7 @@ function renderStory() {
   nodes.turnPill.textContent = `第 ${game.turn} 回合`;
 
   nodes.actionGrid.innerHTML = buildActionCards(dailyActions).map((card) => `
-    <button class="action-card ${card.kind}" type="button" data-action-id="${escapeAttribute(card.id)}" data-command="${escapeAttribute(card.command)}">
+    <button class="action-card ${card.kind}" type="button" data-action-id="${escapeAttribute(card.id)}" data-command="${escapeAttribute(card.command)}"${card.disabled ? ' disabled aria-disabled="true"' : ''}>
       <b>${card.icon}</b>
       <span>${card.title}</span>
       <strong>${card.command}</strong>
@@ -459,9 +490,16 @@ async function refreshDailyActionsForView(viewId) {
     return false;
   }
 
+  pendingApiImmediateActions = false;
   dailyActions = nextActions;
   render();
   return true;
+}
+
+function showImmediateActionsForView(viewId) {
+  pendingApiImmediateActions = game.mode === 'api';
+  dailyActions = createImmediateViewActions(game, getView(viewId));
+  render();
 }
 
 function isSameGameSnapshot(current, snapshot) {
@@ -532,8 +570,13 @@ function buildActionCards(actions) {
   return actions.map((action) => ({
     ...action,
     kind: kindForCommand(action.command),
+    disabled: shouldBlockImmediateApiAction(action),
     eventMeta: action.eventId ? `<div class="event-meta">${action.eventId} / ${action.choiceId}</div>` : ''
   })).slice(0, 6);
+}
+
+function shouldBlockImmediateApiAction(action) {
+  return game.mode === 'api' && pendingApiImmediateActions && action.source === 'immediate';
 }
 
 function handleApiError(error) {
@@ -545,17 +588,25 @@ function apiErrorMessage(error) {
 }
 
 function kindForCommand(command) {
-    if (command.includes('炼丹') || command.includes('丹') || command.includes('药')) {
-      return 'alchemy';
-    }
-    if (command.includes('挑战') || command.includes('斗法') || command.includes('斩妖')) {
-      return 'combat';
-    }
-    if (command.includes('林师姐') || command.includes('长老') || command.includes('打听') || command.includes('请教')) {
-      return 'social';
-    }
-    if (command.includes('修炼') || command.includes('闭关') || command.includes('突破') || command.includes('稳固')) {
-      return 'cultivate';
-    }
+  if (command.includes('炼丹') || command.includes('丹') || command.includes('药')) {
+    return 'alchemy';
+  }
+  if (command.includes('挑战') || command.includes('斗法') || command.includes('斩妖')) {
+    return 'combat';
+  }
+  if (command.includes('林师姐') || command.includes('长老') || command.includes('打听') || command.includes('请教')) {
+    return 'social';
+  }
+  if (command.includes('修炼') || command.includes('闭关') || command.includes('突破') || command.includes('稳固')) {
+    return 'cultivate';
+  }
   return 'explore';
+}
+
+function clampStat(value) {
+  return Math.max(20, Math.min(95, value));
+}
+
+function positiveModulo(value, modulus) {
+  return ((value % modulus) + modulus) % modulus;
 }

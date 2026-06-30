@@ -83,6 +83,11 @@ export function createGameApi(options = {}) {
 
     async submitDailyAction(game, action) {
       if (shouldUseBackend(game, canUseBackend)) {
+        if (action.source === 'immediate') {
+          throw new BackendApiError('后端行动刷新中，请稍候再试。', {
+            code: 'ACTION_REFRESH_PENDING'
+          });
+        }
         const backendAction = await resolveBackendAction({ baseUrl, fetchImpl, game, action });
         const data = await requestJson({
           baseUrl,

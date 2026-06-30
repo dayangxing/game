@@ -15,8 +15,28 @@ test('tab navigation renders immediate actions before refreshing backend actions
   const [, handler] = source.match(/nodes\.topTabs\.addEventListener\('click', \(event\) => \{([\s\S]*?)\n\}\);/) ?? [];
 
   assert.ok(handler, 'top tab click handler should exist');
-  assert.match(handler, /createImmediateViewActions\(game,\s*getView\(activeViewId\)\)/);
+  assert.match(handler, /showImmediateActionsForView\(activeViewId\);/);
+  assert.match(source, /function showImmediateActionsForView\(viewId\) \{/);
+  assert.match(source, /dailyActions = createImmediateViewActions\(game,\s*getView\(viewId\)\);/);
   assert.ok(handler.indexOf('render();') < handler.indexOf('refreshDailyActionsForView(activeViewId)'));
+});
+
+test('api mode locks provisional immediate actions until backend actions refresh', () => {
+  const source = fs.readFileSync('frontend/src/app.js', 'utf8');
+  const submitHelper = extractFunction(source, 'submitDailyAction');
+  const refreshHelper = extractFunction(source, 'refreshDailyActionsForView');
+  const cardBuilder = extractFunction(source, 'buildActionCards');
+
+  assert.match(source, /let pendingApiImmediateActions = false;/);
+  assert.ok(submitHelper, 'submitDailyAction helper should exist');
+  assert.match(submitHelper, /if \(shouldBlockImmediateApiAction\(action\)\) \{/);
+  assert.match(submitHelper, /showToast\('后端行动刷新中，请稍候再试'\);/);
+  assert.match(source, /function shouldBlockImmediateApiAction\(action\) \{/);
+  assert.match(source, /return game\.mode === 'api' && pendingApiImmediateActions && action\.source === 'immediate';/);
+  assert.ok(refreshHelper, 'refreshDailyActionsForView helper should exist');
+  assert.match(refreshHelper, /pendingApiImmediateActions = false;/);
+  assert.ok(cardBuilder, 'buildActionCards helper should exist');
+  assert.match(cardBuilder, /disabled:\s*shouldBlockImmediateApiAction\(action\)/);
 });
 
 test('daily action refresh is guarded by request, view, and game context', () => {

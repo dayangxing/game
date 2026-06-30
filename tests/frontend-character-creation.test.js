@@ -79,3 +79,39 @@ test('frontend app wires onboarding and character creation actions', () => {
   assert.match(source, /nodes\.startFormalGameBtn\.addEventListener/);
   assert.match(source, /api\.createFormalGame/);
 });
+
+test('reroll only updates local preview and start action performs the formal game creation', () => {
+  const source = fs.readFileSync('frontend/src/app.js', 'utf8');
+  const [, rerollHandler] = source.match(/nodes\.rerollCharacterBtn\.addEventListener\('click', async \(\) => \{([\s\S]*?)\n\}\);/) ?? [];
+  const [, startHandler] = source.match(/nodes\.startFormalGameBtn\.addEventListener\('click', async \(\) => \{([\s\S]*?)\n\}\);/) ?? [];
+  const renderFirstRunStage = extractFunction(source, 'renderFirstRunStage');
+
+  assert.ok(rerollHandler, 'reroll handler should exist');
+  assert.ok(startHandler, 'start handler should exist');
+  assert.ok(renderFirstRunStage, 'renderFirstRunStage helper should exist');
+
+  assert.match(source, /function buildPendingCharacterPreview\(\) \{/);
+  assert.doesNotMatch(rerollHandler, /api\.createFormalGame/);
+  assert.match(rerollHandler, /pendingFormalGame = null;/);
+  assert.match(rerollHandler, /renderCharacterRoll\(buildPendingCharacterPreview\(\)\);/);
+  assert.match(renderFirstRunStage, /renderCharacterRoll\(pendingFormalGame\?\.character \?\? buildPendingCharacterPreview\(\)\);/);
+  assert.match(startHandler, /game = await api\.createFormalGame\(\{/);
+});
+
+function extractFunction(source, name) {
+  const start = source.indexOf(`async function ${name}`) !== -1
+    ? source.indexOf(`async function ${name}`)
+    : source.indexOf(`function ${name}`);
+  assert.notEqual(start, -1, `${name} should exist`);
+  const bodyStart = source.indexOf('{', start);
+  let depth = 0;
+
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === '{') depth += 1;
+    if (character === '}') depth -= 1;
+    if (depth === 0) return source.slice(bodyStart + 1, index);
+  }
+
+  assert.fail(`${name} should have a complete function body`);
+}

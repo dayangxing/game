@@ -18,9 +18,10 @@ test('frontend source renders event state panels through the existing hud resour
 test('sect state falls back to the current player sect relation field', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
 
-  assert.match(source, /game\.sect\s*\?\?\s*\{\s*name:\s*'青云宗'/);
+  assert.match(source, /const sect = game\.sect \?\? \{/);
   assert.match(source, /contribution:\s*game\.player\.sectRelation\s*\?\?\s*0/);
-  assert.match(source, /rank:\s*'外门弟子'/);
+  assert.match(source, /<span>宗门<\/span><strong>\$\{sect\.name\}<\/strong>/);
+  assert.match(source, /<span>身份<\/span><strong>\$\{sect\.rank\}<\/strong>/);
 });
 
 test('action cards show backend event metadata when an action is event-backed', () => {

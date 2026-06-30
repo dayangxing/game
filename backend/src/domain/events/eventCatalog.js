@@ -127,7 +127,17 @@ export const EVENT_CATALOG = [
     choice('ask', '请教瓶颈', '向玄衡长老请教突破瓶颈', 'low', [
       stat('player.cultivationProgress', 10),
       relation('xuanheng', 5)
-    ], '玄衡长老指出你周天里最危险的一处逆行。')
+    ], '玄衡长老指出你周天里最危险的一处逆行。'),
+    choice('stabilize', '求稳灵息', '请玄衡长老指点稳固灵息之法', 'low', [
+      stat('player.qi', 6),
+      stat('player.mood', 4),
+      relation('xuanheng', 3)
+    ], '玄衡长老让你先稳住吐纳节奏，再谈更高层的术诀。'),
+    choice('analyze', '拆解术诀', '请玄衡长老拆解掌心雷的运劲诀窍', 'medium', [
+      stat('player.cultivationProgress', 6),
+      stat('player.qi', -3),
+      relation('xuanheng', 4)
+    ], '长老以指代笔，在石案上拆开掌心雷的每一道转劲。')
   ])
 ];
 

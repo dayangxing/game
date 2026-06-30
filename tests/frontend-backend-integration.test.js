@@ -43,7 +43,7 @@ test('frontend api client plays one turn through the backend contract', async ()
   assert.match(story, /问道浮生/);
 });
 
-test('frontend api client resolves immediate actions through backend actions before submitting', async () => {
+test('frontend api client rejects provisional immediate actions while backend refresh is pending', async () => {
   const backend = createBackendApp({
     seed: 43,
     now: () => new Date('2026-06-29T08:00:00.000Z'),
@@ -72,12 +72,12 @@ test('frontend api client resolves immediate actions through backend actions bef
 
   const game = await api.createGame();
   const [immediateAction] = createImmediateViewActions(game, getView('skills'));
-  const next = await api.submitDailyAction(game, immediateAction);
-
-  assert.equal(immediateAction.id, 'skills-immediate-0');
-  assert.equal(next.turn, 1);
-  assert.equal(next.mode, 'api');
-  assert.match(next.log.at(-1).body, /后端行动act_0_skills_0/);
+  await assert.rejects(() => api.submitDailyAction(game, immediateAction), (error) => {
+    assert.equal(error.name, 'BackendApiError');
+    assert.equal(error.details.code, 'ACTION_REFRESH_PENDING');
+    assert.match(error.message, /后端行动刷新中/);
+    return true;
+  });
 });
 
 function completedOnboardingState() {
