@@ -67,10 +67,25 @@ test('first run stage hides the main stage during onboarding and character creat
 
   assert.ok(helper, 'renderFirstRunStage should exist');
   assert.match(helper, /const needsOnboarding = game\.onboarding && !game\.onboarding\.completed;/);
-  assert.match(helper, /const needsCharacter = game\.onboarding\?\.completed && game\.player\.name === '陆青玄';/);
+  assert.match(helper, /const needsCharacter = shouldShowCharacterCreation\(game\);/);
   assert.match(helper, /nodes\.onboardingPanel\.hidden = !needsOnboarding;/);
   assert.match(helper, /nodes\.characterPanel\.hidden = !needsCharacter;/);
   assert.match(helper, /document\.querySelector\('\.main-stage'\)\.hidden = needsOnboarding \|\| needsCharacter;/);
+});
+
+test('character creation gate uses explicit state instead of literal player name', () => {
+  const source = fs.readFileSync('frontend/src/app.js', 'utf8');
+  const helper = extractFunction(source, 'shouldShowCharacterCreation');
+  const predicate = extractFunction(source, 'hasFormalCharacterData');
+
+  assert.ok(helper, 'shouldShowCharacterCreation should exist');
+  assert.doesNotMatch(helper, /player\.name === '陆青玄'/);
+  assert.match(helper, /if \(!game\.onboarding\?\.completed\) return false;/);
+  assert.match(helper, /if \(!game\.onboarding\?\.unlockedCharacterCreation\) return false;/);
+  assert.match(helper, /return !game\.characterSeed \|\| !hasFormalCharacterData\(game\.character\);/);
+  assert.ok(predicate, 'hasFormalCharacterData should exist');
+  assert.match(predicate, /if \(character\.traits\.includes\('新手序章'\)\) return false;/);
+  assert.match(predicate, /typeof character\.startingResources\?\.spiritStones === 'number'/);
 });
 
 function extractFunction(source, name) {

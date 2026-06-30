@@ -29,11 +29,24 @@ export function createGameApi(options = {}) {
         return withMode(data.game, 'api');
       }
 
-      const mockGame = createMockGame(rerollSeed ?? seed);
+      const formalSeed = rerollSeed ?? seed;
+      const mockGame = createMockGame(formalSeed);
+      const character = createMockFormalCharacter(mockGame, {
+        name,
+        rerollSeed: formalSeed
+      });
       return withMode({
         ...mockGame,
-        player: { ...mockGame.player, name: name?.trim() || mockGame.player.name },
-        characterSeed: rerollSeed ?? seed
+        player: {
+          ...mockGame.player,
+          name: character.name,
+          origin: character.origin,
+          spiritualRoot: character.spiritualRoot,
+          lifespan: character.initialLifespan,
+          spiritStones: character.startingResources.spiritStones
+        },
+        characterSeed: formalSeed,
+        character
       }, 'mock');
     },
 
@@ -215,4 +228,37 @@ function buildStoryHook(card, view) {
     `行动指令：${card.command}`,
     `生成要求：结合角色状态、NPC记忆和世界事件，生成本日剧情。`
   ].join('\n');
+}
+
+function createMockFormalCharacter(game, { name, rerollSeed }) {
+  return {
+    name: String(name ?? '').trim() || game.player.name,
+    origin: game.player.origin,
+    spiritualRoot: game.player.spiritualRoot,
+    traits: buildMockTraits(rerollSeed),
+    comprehension: clampStat(52 + (rerollSeed % 17)),
+    physique: clampStat(47 + (rerollSeed % 19)),
+    luck: clampStat(45 + (rerollSeed % 23)),
+    karmaAffinity: (rerollSeed % 21) - 10,
+    initialLifespan: 80 + (rerollSeed % 31),
+    startingResources: {
+      spiritStones: 60 + (rerollSeed % 41),
+      materials: {
+        凝露草: 1 + (rerollSeed % 3),
+        雷纹草: rerollSeed % 2
+      },
+      pills: {}
+    }
+  };
+}
+
+function buildMockTraits(seed) {
+  const traitPool = ['早慧', '命火绵长', '经脉坚韧', '福缘深厚', '丹道亲和', '剑心微明'];
+  const firstIndex = Math.abs(seed) % traitPool.length;
+  const secondIndex = (firstIndex + 2) % traitPool.length;
+  return [traitPool[firstIndex], traitPool[secondIndex]];
+}
+
+function clampStat(value) {
+  return Math.max(20, Math.min(90, value));
 }

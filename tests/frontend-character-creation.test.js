@@ -28,6 +28,22 @@ test('frontend api can create a formal random character through backend', async 
   assert.equal(game.characterSeed, 52);
 });
 
+test('mock formal game exposes a usable character object', async () => {
+  const api = createGameApi({ seed: 21, preferredMode: 'mock' });
+
+  const game = await api.createFormalGame({ name: '陆青玄', rerollSeed: 77 });
+
+  assert.equal(game.mode, 'mock');
+  assert.equal(game.player.name, '陆青玄');
+  assert.equal(game.characterSeed, 77);
+  assert.equal(game.character.name, '陆青玄');
+  assert.ok(Array.isArray(game.character.traits));
+  assert.equal(typeof game.character.origin, 'string');
+  assert.equal(typeof game.character.spiritualRoot, 'string');
+  assert.equal(typeof game.character.initialLifespan, 'number');
+  assert.equal(typeof game.character.startingResources.spiritStones, 'number');
+});
+
 test('character rows expose readable random attributes', () => {
   const rows = formatCharacterAttributeRows({
     origin: '山野孤子',

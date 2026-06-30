@@ -252,7 +252,7 @@ function render() {
 
 function renderFirstRunStage() {
   const needsOnboarding = game.onboarding && !game.onboarding.completed;
-  const needsCharacter = game.onboarding?.completed && game.player.name === '陆青玄';
+  const needsCharacter = shouldShowCharacterCreation(game);
   const onboardingStep = game.onboarding?.completed ? null : game.log.at(-1);
 
   nodes.onboardingPanel.hidden = !needsOnboarding;
@@ -267,6 +267,22 @@ function renderFirstRunStage() {
   if (needsCharacter && pendingFormalGame?.character) {
     renderCharacterRoll(pendingFormalGame.character);
   }
+}
+
+function shouldShowCharacterCreation(game) {
+  if (!game.onboarding?.completed) return false;
+  if (!game.onboarding?.unlockedCharacterCreation) return false;
+  return !game.characterSeed || !hasFormalCharacterData(game.character);
+}
+
+function hasFormalCharacterData(character) {
+  if (!character) return false;
+  if (!Array.isArray(character.traits) || character.traits.length < 2) return false;
+  if (character.traits.includes('新手序章')) return false;
+  return typeof character.initialLifespan === 'number'
+    && typeof character.startingResources?.spiritStones === 'number'
+    && typeof character.origin === 'string'
+    && typeof character.spiritualRoot === 'string';
 }
 
 function renderCharacterRoll(character = game.character) {
