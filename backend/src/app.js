@@ -2,6 +2,9 @@ import { advanceTurn, createGame, exportNovel } from '../../src/engine.js';
 import { createStoryGraph } from './agents/storyGraph.js';
 import { createDailyActions, hasView } from './domain/actions.js';
 import { applyCharacterToGame, rollCharacter } from './domain/characterCreation.js';
+import { resolveChoice } from './domain/events/effectResolver.js';
+import { selectEventActions } from './domain/events/eventSelector.js';
+import { eventNarrationFallback, stripInternalActionFields } from './domain/events/eventResult.js';
 import { canCreateFormalCharacter, createOnboardingState, createTutorialAction, resolveTutorialAction } from './domain/onboarding.js';
 import { buildTurnResult } from './domain/turnResult.js';
 import { createBailianClient } from './llm/bailianClient.js';
@@ -111,6 +114,36 @@ function handleDailyActions({ body, requestId, state, now }) {
     return jsonResponse(200, requestId, { actions: [action] });
   }
 
+  const eventActions = selectEventActions({
+    game: state.game,
+    viewId,
+    now: now(),
+    sequenceStart: state.actionSequence
+  });
+
+  if (eventActions.length > 0) {
+    state.actionSequence += eventActions.length;
+
+    for (const action of eventActions) {
+      state.pendingActions.set(action.id, {
+        ...action,
+        turn: state.game.turn,
+        consumed: false
+      });
+    }
+
+    state.auditLog.push({
+      type: 'daily-actions',
+      viewId,
+      actionIds: eventActions.map((action) => action.id),
+      at: now().toISOString()
+    });
+
+    return jsonResponse(200, requestId, {
+      actions: eventActions.map(stripInternalActionFields)
+    });
+  }
+
   const actions = createDailyActions({
     game: state.game,
     viewId,
@@ -201,6 +234,50 @@ async function handleTurn({ body, requestId, state, now }) {
   }
 
   const before = state.game;
+  if (action.source === 'event') {
+    const resolution = resolveChoice({
+      game: before,
+      event: action.event,
+      choice: action.choice,
+      now: now()
+    });
+
+    action.consumed = true;
+    state.game = normalizeGame(resolution.game);
+    state.turnSnapshots.set(state.game.turn, {
+      beforeGame: before,
+      afterGame: state.game,
+      action: { ...action },
+      ruleEntry: resolution.entry
+    });
+
+    const narration = await resolveTurnNarration({
+      before,
+      after: state.game,
+      action,
+      state
+    }).catch(() => eventNarrationFallback(resolution));
+    state.game = applyNarrationToGame(state.game, state.game.turn, narration);
+    const baseTurnResult = buildTurnResult({ before, after: state.game, actionId: action.id, narration });
+    const turnResult = {
+      ...baseTurnResult,
+      ruleResult: {
+        ...baseTurnResult.ruleResult,
+        ...resolution.ruleResult
+      }
+    };
+    state.auditLog.push({
+      type: 'turn',
+      actionId: action.id,
+      command: action.command,
+      ruleResult: turnResult.ruleResult,
+      llm: turnResult.narration.status,
+      at: now().toISOString()
+    });
+
+    return jsonResponse(200, requestId, { game: state.game, turnResult });
+  }
+
   const after = normalizeGame(advanceTurn(before, action.command));
 
   action.consumed = true;

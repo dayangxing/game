@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createBackendApp } from '../backend/src/app.js';
+import { EVENT_CATALOG } from '../backend/src/domain/events/eventCatalog.js';
 import { getModelSelection } from '../backend/src/llm/modelSelection.js';
 
 test('model selection defaults to Bailian qwen-plus without exposing an API key', () => {
@@ -164,9 +165,14 @@ test('POST /api/v1/daily-actions rejects stale game version during tutorial onbo
   assert.equal(payload.error.code, 'GAME_VERSION_MISMATCH');
 });
 
-test('POST /api/v1/daily-actions returns validated fallback actions for the requested view', async () => {
+test('POST /api/v1/daily-actions falls back when no eligible event actions remain for a formal view', async () => {
   const app = createBackendApp({ seed: 31, now: fixedNow });
   app.getState().game.onboarding = completedOnboardingState();
+  app.getState().game.cooldowns = Object.fromEntries(
+    EVENT_CATALOG
+      .filter((event) => event.trigger?.viewIds?.includes('cultivation'))
+      .map((event) => [event.id, app.getState().game.turn])
+  );
   const response = await app.handle(makeRequest('POST', '/api/v1/daily-actions', {
     viewId: 'cultivation',
     gameVersion: 0
@@ -180,6 +186,41 @@ test('POST /api/v1/daily-actions returns validated fallback actions for the requ
   assert.ok(payload.data.actions.every((action) => action.source === 'fallback'));
   assert.ok(payload.data.actions.some((action) => action.command.includes('闭关')));
   assert.ok(payload.data.actions.every((action) => action.expiresAt === '2026-06-29T08:30:00.000Z'));
+});
+
+test('POST /api/v1/daily-actions returns event choices for formal games', async () => {
+  const app = createBackendApp({ seed: 31, now: fixedNow });
+  app.getState().game.onboarding = completedOnboardingState();
+
+  const payload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+    viewId: 'realm',
+    gameVersion: 0
+  })));
+
+  assert.equal(payload.ok, true);
+  assert.ok(payload.data.actions.length >= 3);
+  assert.ok(payload.data.actions.every((action) => action.source === 'event'));
+  assert.ok(payload.data.actions.some((action) => action.eventId === 'mist_bronze_bell'));
+});
+
+test('POST /api/v1/turns resolves selected event effects deterministically', async () => {
+  const app = createBackendApp({ seed: 31, now: fixedNow });
+  app.getState().game.onboarding = completedOnboardingState();
+  const actionsPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+    viewId: 'realm',
+    gameVersion: 0
+  })));
+  const action = actionsPayload.data.actions.find((candidate) => candidate.eventId === 'mist_bronze_bell');
+
+  const turnPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/turns', {
+    actionId: action.id,
+    clientTurn: 0
+  })));
+
+  assert.equal(turnPayload.ok, true);
+  assert.equal(turnPayload.data.game.flags.bronze_bell, true);
+  assert.equal(turnPayload.data.turnResult.ruleResult.eventId, 'mist_bronze_bell');
+  assert.equal(turnPayload.data.game.turn, 1);
 });
 
 test('POST /api/v1/turns advances one authoritative turn and ignores client state', async () => {
