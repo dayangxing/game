@@ -86,6 +86,24 @@ test('formal character is applied without inheriting tutorial protagonist stats'
   assert.equal(formalGame.character.name, '顾清河');
   assert.equal(formalGame.player.name, '顾清河');
   assert.notEqual(formalGame.player.name, '陆青玄');
+  assert.deepEqual(formalGame.player, {
+    name: '顾清河',
+    origin: character.origin,
+    realm: '炼气一层',
+    spiritualRoot: character.spiritualRoot,
+    lifespan: character.initialLifespan,
+    spiritStones: character.startingResources.spiritStones,
+    qi: 50,
+    mood: 50,
+    cultivationProgress: 0,
+    sectRelation: 0,
+    location: '青云宗山门'
+  });
+  assert.notEqual(formalGame.player.realm, game.player.realm);
+  assert.notEqual(formalGame.player.qi, game.player.qi);
+  assert.notEqual(formalGame.player.mood, game.player.mood);
+  assert.notEqual(formalGame.player.sectRelation, game.player.sectRelation);
+  assert.notEqual(formalGame.player.location, game.player.location);
   assert.equal(formalGame.player.lifespan, character.initialLifespan);
   assert.deepEqual(formalGame.inventory.materials, character.startingResources.materials);
 });

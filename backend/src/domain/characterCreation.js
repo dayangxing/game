@@ -50,15 +50,7 @@ export function applyCharacterToGame(game, character, seed) {
     characterSeed: seed,
     character,
     mode: game.mode,
-    player: {
-      ...game.player,
-      name: character.name,
-      origin: character.origin,
-      spiritualRoot: character.spiritualRoot,
-      lifespan: character.initialLifespan,
-      spiritStones: character.startingResources.spiritStones,
-      cultivationProgress: 0
-    },
+    player: createFormalPlayer(character),
     inventory: {
       materials: character.startingResources.materials,
       pills: character.startingResources.pills
@@ -117,4 +109,20 @@ function randomName(rng) {
 
 function sanitizeName(name) {
   return String(name ?? '').trim().slice(0, 12);
+}
+
+function createFormalPlayer(character) {
+  return {
+    name: character.name,
+    origin: character.origin,
+    realm: '炼气一层',
+    spiritualRoot: character.spiritualRoot,
+    lifespan: character.initialLifespan,
+    spiritStones: character.startingResources.spiritStones,
+    qi: 50,
+    mood: 50,
+    cultivationProgress: 0,
+    sectRelation: 0,
+    location: '青云宗山门'
+  };
 }
