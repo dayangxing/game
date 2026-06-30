@@ -18,16 +18,26 @@ import { createGame } from '../src/engine.js';
 test('onboarding exposes the fixed tutorial task chain in order', () => {
   assert.deepEqual(ONBOARDING_STEPS.map((step) => step.id), [
     'awakening',
+    'qingyun_rules',
     'breathing',
+    'lifespan_lamp',
     'sect_contact',
     'alchemy_trial',
+    'sect_trial',
     'mist_bell',
     'karma_choice',
+    'mist_archive',
     'heaven_contract',
     'formal_life'
   ]);
   assert.equal(ONBOARDING_STEPS[0].protagonist, '陆青玄');
-  assert.match(ONBOARDING_STEPS[6].body, /天门契/);
+  assert.equal(ONBOARDING_STEPS.length, 12);
+  assert.ok(ONBOARDING_STEPS.every((step) => step.body.length >= 70));
+  assert.match(ONBOARDING_STEPS.map((step) => step.body).join('\n'), /青云宗/);
+  assert.match(ONBOARDING_STEPS.map((step) => step.body).join('\n'), /雾隐秘境/);
+  assert.match(ONBOARDING_STEPS.map((step) => step.body).join('\n'), /寿元/);
+  assert.match(ONBOARDING_STEPS.map((step) => step.body).join('\n'), /天门残契|天门契/);
+  assert.match(ONBOARDING_STEPS.at(-1).body, /创建.*角色/);
 });
 
 test('onboarding completes one step at a time before character creation unlocks', () => {

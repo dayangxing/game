@@ -2,6 +2,9 @@ import { createServer } from 'node:http';
 import { pathToFileURL } from 'node:url';
 
 import { createBackendApp } from './app.js';
+import { loadLocalEnv } from './config/env.js';
+
+loadLocalEnv();
 
 export function startBackendServer({
   host = process.env.HOST || '127.0.0.1',

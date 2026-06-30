@@ -21,10 +21,34 @@ function formalGame() {
 }
 
 test('event catalog seeds enough content and all truth flags', () => {
-  assert.ok(EVENT_CATALOG.length >= 18);
+  assert.ok(EVENT_CATALOG.length >= 28);
   for (const flag of TRUTH_FLAGS) {
     assert.ok(EVENT_CATALOG.some((event) => JSON.stringify(event).includes(flag)), `${flag} is seeded`);
   }
+});
+
+test('event catalog covers the core Qingyun, mist, lifespan, ascension and npc arcs', () => {
+  const requiredEvents = [
+    'qingyun_life_register',
+    'elder_private_warning',
+    'mist_lantern_path',
+    'mist_archive_full',
+    'lifespan_debt_collector',
+    'false_ascender_name',
+    'lin_shijie_warning',
+    'xuanheng_private_confession'
+  ];
+
+  for (const id of requiredEvents) {
+    assert.ok(EVENT_CATALOG.some((event) => event.id === id), `${id} should be seeded`);
+  }
+
+  const storyText = EVENT_CATALOG.map((event) => JSON.stringify(event)).join('\n');
+  assert.match(storyText, /青云宗/);
+  assert.match(storyText, /雾隐秘境/);
+  assert.match(storyText, /寿元|命灯/);
+  assert.match(storyText, /飞升|天门/);
+  assert.match(storyText, /林师姐|玄衡长老/);
 });
 
 test('trigger matcher respects view and flag requirements', () => {

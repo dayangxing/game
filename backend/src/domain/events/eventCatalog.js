@@ -138,7 +138,83 @@ export const EVENT_CATALOG = [
       stat('player.qi', -3),
       relation('xuanheng', 4)
     ], '长老以指代笔，在石案上拆开掌心雷的每一道转劲。')
-  ])
+  ]),
+  event('qingyun_life_register', '青云命簿复核', 'sect', ['home', 'skills'], [
+    choice('inspect', '复核命簿', '陪玄衡长老复核青云宗命簿寿元', 'medium', [
+      flag('lifespan_mark', true),
+      relation('xuanheng', 3),
+      futureEvent('lifespan_debt_collector')
+    ], '命簿页脚有一枚淡灰小印，像是有人提前在你的寿元旁记了一笔债。')
+  ]),
+  event('sect_archive_key', '藏经阁钥牌', 'sect', ['home', 'skills'], [
+    choice('borrow', '借阅旧档', '请林师姐借来雾隐秘境旧档钥牌', 'medium', [
+      relation('lin_shijie', 3),
+      item('materials.残缺玉简', 1),
+      futureEvent('mist_archive_full')
+    ], '林师姐把钥牌压在案上，提醒你只看雾隐秘境旧档，不要碰飞升名录。')
+  ]),
+  event('lin_shijie_warning', '师姐夜谈', 'social', ['home', 'realm'], [
+    choice('listen', '听师姐示警', '听林师姐讲青云宗封门旧事', 'low', [
+      relation('lin_shijie', 6),
+      futureEvent('elder_private_warning')
+    ], '林师姐说青云宗曾有人带队入雾，回来后只剩命簿空页和一枚不肯停响的铜铃。')
+  ]),
+  event('elder_private_warning', '长老私诫', 'sect', ['home', 'skills'], [
+    choice('accept', '收下私诫', '听玄衡长老私下警告天门契', 'medium', [
+      relation('xuanheng', 6),
+      flag('sect_elder_split', true),
+      futureEvent('mist_lantern_path')
+    ], '玄衡长老承认宗内长老分裂已久，所谓封门不是怯懦，而是怕弟子被天门契诱成燃料。')
+  ], { requiresFutureEvent: 'elder_private_warning' }),
+  event('mist_lantern_path', '雾灯石径', 'realm', ['realm'], [
+    choice('follow', '循雾灯前行', '沿雾隐秘境雾灯石径深入', 'high', [
+      stat('player.qi', -6),
+      flag('bronze_bell', true),
+      futureEvent('mist_archive_full')
+    ], '雾灯一盏盏亮起，青铜铃声在石径尽头回旋，像在核对每个闯入者的命格。')
+  ]),
+  event('mist_archive_full', '雾隐全档', 'realm', ['realm', 'skills'], [
+    choice('decode', '解读全档', '解读雾隐秘境飞升名录全档', 'high', [
+      flag('mist_archive', true),
+      stat('player.mood', -5),
+      futureEvent('false_ascender_name')
+    ], '全档显示数名飞升者在上界仍有回信，可他们的下界宗族却在同年气运枯竭。')
+  ], { requiresFutureEvent: 'mist_archive_full' }),
+  event('lifespan_debt_collector', '命债来客', 'cultivation', ['home', 'cultivation'], [
+    choice('confront', '追问命债', '追问命灯灰印背后的寿元债', 'high', [
+      stat('player.lifespan', -3),
+      stat('player.mood', -6),
+      futureEvent('false_ascender_name')
+    ], '梦中来客自称天门司簿，口口声声说每个求飞升者都先欠下三年灯油。')
+  ], { requiresFlags: ['lifespan_mark'] }),
+  event('false_ascender_name', '假飞升者名讳', 'heaven', ['home', 'skills'], [
+    choice('compare', '核对名讳', '核对飞升名录中仍在人间的名字', 'high', [
+      flag('ascension_contract', true),
+      stat('player.mood', -4),
+      futureEvent('heaven_gate_tally')
+    ], '你发现一位传说已飞升的祖师，竟在青云宗密档里留下晚年批注：天门不是门，是账房。')
+  ], { requiresFutureEvent: 'false_ascender_name' }),
+  event('xuanheng_private_confession', '玄衡旧伤', 'social', ['home', 'skills'], [
+    choice('ask', '询问旧伤', '询问玄衡长老为何惧怕飞升契约', 'medium', [
+      relation('xuanheng', 8),
+      flag('sect_elder_split', true),
+      futureEvent('heaven_gate_tally')
+    ], '玄衡长老卷起袖口，腕上契痕仍在。他曾送师兄飞升，却只等回一封收取下界气运的账帖。')
+  ]),
+  event('heaven_gate_tally', '天门账帖', 'heaven', ['cultivation', 'realm'], [
+    choice('seal', '封存账帖', '封存天门账帖并取走秘钥纹片', 'high', [
+      flag('heaven_gate_key', true),
+      item('materials.天门碎片', 1),
+      stat('player.qi', -8)
+    ], '账帖化作冰冷纹片，刻着每一次飞升背后被抽走的下界气数。')
+  ], { requiresFutureEvent: 'heaven_gate_tally' }),
+  event('contract_scar_recurrence', '契痕复燃', 'cultivation', ['cultivation'], [
+    choice('suppress', '压制契痕', '以周天灵息压制天门契痕回潮', 'high', [
+      stat('player.lifespan', -5),
+      stat('player.mood', -5),
+      futureEvent('heaven_gate_key_fragment')
+    ], '契痕像灰火一样爬过命灯，你压住它，却明白飞升骗局的结局必须有人亲手拆开。')
+  ], { requiresFlags: ['ascension_contract'] })
 ];
 
 function event(id, title, category, viewIds, choices, trigger = {}) {

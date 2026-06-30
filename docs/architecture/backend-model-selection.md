@@ -9,6 +9,7 @@
 - 高质量可选模型：`qwen3.7-max`
 - 默认 Base URL：`https://dashscope.aliyuncs.com/compatible-mode/v1`
 - 密钥来源：`BAILIAN_API_KEY`，兼容读取 `DASHSCOPE_API_KEY`
+- 本地配置文件：项目根目录 `.env.local`，由 `backend/src/config/env.js` 在服务启动前加载
 
 ## 选择理由
 
@@ -29,6 +30,18 @@ LangGraph 在 `generate_narration` 后执行 `validate_narration`。如果输出
 
 ## 环境变量
 
+推荐开发环境使用 `.env.local`：
+
+```bash
+BAILIAN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+BAILIAN_API_KEY="..."
+BAILIAN_CHAT_MODEL="qwen3.7-plus"
+BAILIAN_FAST_MODEL="qwen3.6-flash"
+BAILIAN_PREMIUM_MODEL="qwen3.7-max"
+```
+
+也可以直接通过 shell 环境变量注入：
+
 ```bash
 export BAILIAN_API_KEY="..."
 export BAILIAN_CHAT_MODEL="qwen3.7-plus"
@@ -37,3 +50,5 @@ export BAILIAN_PREMIUM_MODEL="qwen3.7-max"
 ```
 
 不要把 API key 写入仓库、测试快照、浏览器代码或审计日志。
+
+后端提供 `GET /api/v1/model-health` 用于检查当前模型配置。该接口只返回 provider、baseUrl、模型名、`hasApiKey` 和 `status`，不会返回 key 原文。

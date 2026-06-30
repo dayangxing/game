@@ -5,7 +5,7 @@ import { applyCharacterToGame, rollCharacter } from './domain/characterCreation.
 import { resolveChoice } from './domain/events/effectResolver.js';
 import { selectEventActions } from './domain/events/eventSelector.js';
 import { eventNarrationFallback, stripInternalActionFields } from './domain/events/eventResult.js';
-import { canCreateFormalCharacter, createOnboardingState, createTutorialAction, resolveTutorialAction } from './domain/onboarding.js';
+import { ONBOARDING_STEPS, canCreateFormalCharacter, createOnboardingState, createTutorialAction, resolveTutorialAction } from './domain/onboarding.js';
 import { buildTurnResult } from './domain/turnResult.js';
 import { createBailianClient } from './llm/bailianClient.js';
 import { getModelSelection } from './llm/modelSelection.js';
@@ -43,6 +43,12 @@ export function createBackendApp(options = {}) {
 
         if (route === 'GET /api/v1/model-selection') {
           return jsonResponse(200, requestId, { modelSelection: state.modelSelection });
+        }
+
+        if (route === 'GET /api/v1/model-health') {
+          return jsonResponse(200, requestId, {
+            modelHealth: createModelHealth(state.modelSelection)
+          });
         }
 
         if (route === 'POST /api/v1/game/new') {
@@ -399,8 +405,20 @@ function createCompletedFormalOnboardingState() {
   return {
     completed: true,
     stepId: 'formal_life',
-    completedStepIds: ['awakening', 'breathing', 'sect_contact', 'alchemy_trial', 'mist_bell', 'karma_choice', 'heaven_contract', 'formal_life'],
+    completedStepIds: ONBOARDING_STEPS.map((step) => step.id),
     unlockedCharacterCreation: true
+  };
+}
+
+function createModelHealth(selection) {
+  return {
+    provider: selection.provider,
+    baseUrl: selection.baseUrl,
+    chatModel: selection.chatModel,
+    fastModel: selection.fastModel,
+    premiumModel: selection.premiumModel,
+    hasApiKey: selection.hasApiKey,
+    status: selection.hasApiKey ? 'configured' : 'missing_key'
   };
 }
 

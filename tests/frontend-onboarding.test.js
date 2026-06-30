@@ -51,9 +51,28 @@ test('onboarding completion writes through browser localStorage API', () => {
 });
 
 test('onboarding guide defines concrete steps for the main desktop flow', () => {
-  assert.ok(guideSteps.length >= 4);
-  assert.deepEqual(guideSteps.map((step) => step.id), ['tabs', 'actions', 'story', 'state']);
-  assert.equal(getGuideStep(99).id, 'state');
+  assert.equal(guideSteps.length, 6);
+  assert.deepEqual(guideSteps.map((step) => step.id), [
+    'layout',
+    'actions',
+    'state',
+    'lifespan',
+    'prologue',
+    'save'
+  ]);
+  assert.equal(getGuideStep(99).id, 'save');
+});
+
+test('onboarding guide copy stays player-facing and implementation-free', () => {
+  const copy = guideSteps.map((step) => `${step.title}\n${step.body}`).join('\n');
+
+  assert.doesNotMatch(copy, /API|LLM|AI|backend|后端|接口|schema|id|debug|字段/i);
+  assert.doesNotMatch(copy, /陆青玄|天门契|飞升骗局/);
+  assert.match(copy, /洞府/);
+  assert.match(copy, /每日行动/);
+  assert.match(copy, /寿元/);
+  assert.match(copy, /序章/);
+  assert.match(copy, /创建角色/);
 });
 
 test('frontend page exposes manual onboarding trigger and modal shell', () => {

@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 
 import { createBackendApp } from '../backend/src/app.js';
 import { EVENT_CATALOG } from '../backend/src/domain/events/eventCatalog.js';
+import { ONBOARDING_STEPS } from '../backend/src/domain/onboarding.js';
 import { getModelSelection } from '../backend/src/llm/modelSelection.js';
 
-test('model selection defaults to Bailian qwen-plus without exposing an API key', () => {
+test('model selection defaults to Bailian qwen3.7-plus without exposing an API key', () => {
   const selection = getModelSelection({});
 
   assert.equal(selection.provider, 'bailian');
@@ -126,10 +127,10 @@ test('POST /api/v1/game/new invalidates stale pending actions and saved turn sna
   assert.equal(staleNarrationPayload.error.code, 'TURN_SNAPSHOT_NOT_FOUND');
 });
 
-test('tutorial actions complete onboarding through daily-actions and turns', async () => {
+test('prologue actions complete onboarding through daily-actions and turns', async () => {
   const app = createBackendApp({ seed: 31, now: fixedNow });
 
-  for (const expectedStep of ['awakening', 'breathing', 'sect_contact', 'alchemy_trial', 'mist_bell', 'karma_choice', 'heaven_contract', 'formal_life']) {
+  for (const expectedStep of ONBOARDING_STEPS.map((step) => step.id)) {
     const actionsPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
       viewId: 'home',
       gameVersion: app.getState().game.version
@@ -448,7 +449,7 @@ function completedOnboardingState() {
   return {
     completed: true,
     stepId: 'formal_life',
-    completedStepIds: ['awakening', 'breathing', 'sect_contact', 'alchemy_trial', 'mist_bell', 'karma_choice', 'heaven_contract', 'formal_life'],
+    completedStepIds: ONBOARDING_STEPS.map((step) => step.id),
     unlockedCharacterCreation: true
   };
 }
