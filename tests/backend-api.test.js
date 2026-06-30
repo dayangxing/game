@@ -203,6 +203,21 @@ test('POST /api/v1/daily-actions returns event choices for formal games', async 
   assert.ok(payload.data.actions.some((action) => action.eventId === 'mist_bronze_bell'));
 });
 
+test('POST /api/v1/daily-actions returns a single eligible event action instead of fallback', async () => {
+  const app = createBackendApp({ seed: 31, now: fixedNow });
+  app.getState().game.onboarding = completedOnboardingState();
+
+  const payload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+    viewId: 'skills',
+    gameVersion: 0
+  })));
+
+  assert.equal(payload.ok, true);
+  assert.equal(payload.data.actions.length, 1);
+  assert.equal(payload.data.actions[0].source, 'event');
+  assert.equal(payload.data.actions[0].eventId, 'master_guidance');
+});
+
 test('POST /api/v1/turns resolves selected event effects deterministically', async () => {
   const app = createBackendApp({ seed: 31, now: fixedNow });
   app.getState().game.onboarding = completedOnboardingState();

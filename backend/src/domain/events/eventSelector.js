@@ -6,7 +6,6 @@ const FEATURED_EVENT_PRIORITY_BOOSTS = {
     mist_bronze_bell: 100
   }
 };
-const MIN_EVENT_ACTIONS = 2;
 
 export function selectEventActions({ game, viewId, now, sequenceStart = 0 }) {
   const eligible = EVENT_CATALOG
@@ -18,7 +17,7 @@ export function selectEventActions({ game, viewId, now, sequenceStart = 0 }) {
     .slice(0, 6);
 
   const expiresAt = new Date(now.getTime() + 30 * 60 * 1000).toISOString();
-  const actions = eligible
+  return eligible
     .flatMap((event, eventIndex) => event.choices.map((choice, choiceIndex) => ({
       id: `act_${game.turn}_${viewId}_${sequenceStart + eventIndex}_${choiceIndex}`,
       title: choice.label,
@@ -39,8 +38,6 @@ export function selectEventActions({ game, viewId, now, sequenceStart = 0 }) {
       choice
     })))
     .slice(0, 4);
-
-  return actions.length >= MIN_EVENT_ACTIONS ? actions : [];
 }
 
 function compareEvents(left, right, viewId) {

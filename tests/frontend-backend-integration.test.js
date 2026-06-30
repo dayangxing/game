@@ -60,6 +60,10 @@ test('frontend api client resolves immediate actions through backend actions bef
     }
   });
   backend.getState().game.onboarding = completedOnboardingState();
+  backend.getState().game.cooldowns = {
+    ...backend.getState().game.cooldowns,
+    master_guidance: backend.getState().game.turn
+  };
   const api = createGameApi({
     baseUrl: 'http://backend.test',
     preferredMode: 'api',
