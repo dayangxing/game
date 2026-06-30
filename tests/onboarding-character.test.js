@@ -106,4 +106,14 @@ test('formal character is applied without inheriting tutorial protagonist stats'
   assert.notEqual(formalGame.player.location, game.player.location);
   assert.equal(formalGame.player.lifespan, character.initialLifespan);
   assert.deepEqual(formalGame.inventory.materials, character.startingResources.materials);
+  assert.equal(formalGame.npcs.length, 2);
+  assert.ok(formalGame.npcs.every((npc) => !JSON.stringify(npc).includes('陆青玄')));
+  assert.ok(formalGame.foreshadows.every((entry) => !entry.includes('陆青玄')));
+  assert.ok(formalGame.worldEvents.every((entry) => !JSON.stringify(entry).includes('陆青玄')));
+  assert.ok(formalGame.timeline.every((entry) => !JSON.stringify(entry).includes('陆青玄')));
+  assert.ok(formalGame.suggestions.every((entry) => !entry.includes('陆青玄')));
+  assert.ok(formalGame.log.every((entry) => !JSON.stringify(entry).includes('陆青玄')));
+  assert.equal(formalGame.log[0].title, '命簿初开');
+  assert.match(formalGame.log[0].body, /顾清河/);
+  assert.match(formalGame.log[0].body, /青云山门/);
 });

@@ -44,13 +44,19 @@ export function assertPlayableCharacter(character) {
 
 export function applyCharacterToGame(game, character, seed) {
   return {
-    ...game,
-    id: `game_${seed.toString(36)}`,
     seed,
+    turn: 0,
+    mode: game.mode,
+    calendar: game.calendar,
+    id: `game_${seed.toString(36)}`,
     characterSeed: seed,
     character,
-    mode: game.mode,
     player: createFormalPlayer(character),
+    npcs: createFormalNpcs(character),
+    worldEvents: createFormalWorldEvents(character),
+    foreshadows: createFormalForeshadows(character),
+    timeline: createFormalTimeline(game.calendar, character),
+    suggestions: createFormalSuggestions(),
     inventory: {
       materials: character.startingResources.materials,
       pills: character.startingResources.pills
@@ -65,14 +71,7 @@ export function applyCharacterToGame(game, character, seed) {
       vendettas: [],
       futureEventFlags: []
     },
-    log: [{
-      id: 'formal-opening',
-      title: '命簿初开',
-      command: '创建角色',
-      body: `${character.name}出身${character.origin}，以${character.spiritualRoot}踏入青云山门。`,
-      npcLine: '玄衡长老翻过命簿：“此后因果，自行承受。”',
-      worldEvent: '命簿初开'
-    }]
+    log: [createFormalOpeningLog(character)]
   };
 }
 
@@ -124,5 +123,66 @@ function createFormalPlayer(character) {
     cultivationProgress: 0,
     sectRelation: 0,
     location: '青云宗山门'
+  };
+}
+
+function createFormalNpcs(character) {
+  return [
+    {
+      name: '林师姐',
+      role: '内门弟子',
+      affinity: 0,
+      tone: '温和而谨慎',
+      memories: [`见到${character.name}初入山门，仍在试探此人的心性。`]
+    },
+    {
+      name: '玄衡长老',
+      role: '传功长老',
+      affinity: 0,
+      tone: '庄重严厉',
+      memories: [`为${character.name}登记命簿，暂记${character.spiritualRoot}入册。`]
+    }
+  ];
+}
+
+function createFormalWorldEvents(character) {
+  return [
+    {
+      title: '命簿初开',
+      detail: `${character.name}于青云山门登记命簿，正式踏上修行路。`,
+      turn: 0
+    }
+  ];
+}
+
+function createFormalForeshadows(character) {
+  return [
+    `${character.spiritualRoot}或将引来不同寻常的修行际遇。`,
+    `${character.name}的出身${character.origin}背后，也许还藏着未明因果。`
+  ];
+}
+
+function createFormalTimeline(calendar, character) {
+  return [
+    {
+      type: 'season',
+      title: `玄历${calendar.year}年 ${calendar.season}`,
+      detail: `青云山门为${character.name}开启命簿，新一段修行因果自此起笔。`
+    }
+  ];
+}
+
+function createFormalSuggestions() {
+  return ['闭关修炼一日', '拜见玄衡长老请教功法', '找林师姐熟悉青云山门'];
+}
+
+function createFormalOpeningLog(character) {
+  return {
+    id: 'formal-opening',
+    title: '命簿初开',
+    command: '创建角色',
+    body: `${character.name}出身${character.origin}，以${character.spiritualRoot}踏入青云山门。`,
+    npcLine: '玄衡长老翻过命簿：“此后因果，自行承受。”',
+    worldEvent: '命簿初开'
   };
 }
