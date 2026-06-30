@@ -80,7 +80,7 @@ test('frontend app wires onboarding and character creation actions', () => {
   assert.match(source, /api\.createFormalGame/);
 });
 
-test('reroll only updates local preview and start action performs the formal game creation', () => {
+test('reroll only updates local seed preview and start action performs the formal game creation', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
   const [, rerollHandler] = source.match(/nodes\.rerollCharacterBtn\.addEventListener\('click', async \(\) => \{([\s\S]*?)\n\}\);/) ?? [];
   const [, startHandler] = source.match(/nodes\.startFormalGameBtn\.addEventListener\('click', async \(\) => \{([\s\S]*?)\n\}\);/) ?? [];
@@ -90,11 +90,13 @@ test('reroll only updates local preview and start action performs the formal gam
   assert.ok(startHandler, 'start handler should exist');
   assert.ok(renderFirstRunStage, 'renderFirstRunStage helper should exist');
 
-  assert.match(source, /function buildPendingCharacterPreview\(\) \{/);
+  assert.doesNotMatch(source, /function buildPendingCharacterPreview\(\) \{/);
+  assert.match(source, /function renderPendingCharacterStatus\(\) \{/);
+  assert.doesNotMatch(source, /formatCharacterAttributeRows/);
   assert.doesNotMatch(rerollHandler, /api\.createFormalGame/);
-  assert.match(rerollHandler, /pendingFormalGame = null;/);
-  assert.match(rerollHandler, /renderCharacterRoll\(buildPendingCharacterPreview\(\)\);/);
-  assert.match(renderFirstRunStage, /renderCharacterRoll\(pendingFormalGame\?\.character \?\? buildPendingCharacterPreview\(\)\);/);
+  assert.match(rerollHandler, /renderPendingCharacterStatus\(\);/);
+  assert.match(renderFirstRunStage, /renderPendingCharacterStatus\(\);/);
+  assert.doesNotMatch(renderFirstRunStage, /renderCharacterRoll\(/);
   assert.match(startHandler, /game = await api\.createFormalGame\(\{/);
 });
 

@@ -105,23 +105,48 @@ function updateItem(game, path, delta) {
 }
 
 function preflightEffects(game, effects) {
-  const itemBalances = new Map();
+  const balances = new Map();
 
   for (const effect of effects) {
-    if (effect.type !== 'item' || effect.delta >= 0) continue;
-    const [bucket, id] = effect.path.split('.');
-    const key = `${bucket}.${id}`;
-    const current = itemBalances.has(key)
-      ? itemBalances.get(key)
-      : game.inventory?.[bucket]?.[id] ?? 0;
-    const next = current + effect.delta;
+    if (effect.type === 'item') {
+      const key = effect.path;
+      const current = balances.has(key)
+        ? balances.get(key)
+        : getItemValue(game, effect.path);
+      const next = current + effect.delta;
 
-    if (next < 0) {
-      throw new Error(`CHOICE_REQUIREMENT_FAILED:${bucket}.${id}`);
+      if (next < 0) {
+        throw new Error(`CHOICE_REQUIREMENT_FAILED:${effect.path}`);
+      }
+
+      balances.set(key, next);
+      continue;
     }
 
-    itemBalances.set(key, next);
+    if (effect.type === 'stat') {
+      const key = effect.path;
+      const current = balances.has(key)
+        ? balances.get(key)
+        : getStatValue(game, effect.path);
+      const next = current + effect.delta;
+
+      if (next < 0) {
+        throw new Error(`CHOICE_REQUIREMENT_FAILED:${effect.path}`);
+      }
+
+      balances.set(key, next);
+    }
   }
+}
+
+function getItemValue(game, path) {
+  const [bucket, id] = path.split('.');
+  return game.inventory?.[bucket]?.[id] ?? 0;
+}
+
+function getStatValue(game, path) {
+  const [scope, key] = path.split('.');
+  return game[scope]?.[key] ?? 0;
 }
 
 function isTargetNpc(npc, npcId) {

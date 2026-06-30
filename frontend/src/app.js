@@ -1,6 +1,5 @@
 import { createGameApi } from './api/gameApi.js';
 import { getLayoutMode } from './ui/layoutModes.js';
-import { formatCharacterAttributeRows } from './ui/characterCreation.js';
 import {
   getGuideStep,
   guideSteps,
@@ -26,7 +25,6 @@ const initialMode = localStorage.getItem(MODE_KEY) || 'api';
 let startupNotice = '';
 let actionRefreshSequence = 0;
 let pendingApiImmediateActions = false;
-let pendingFormalGame = null;
 let pendingCharacterSeed = Number(localStorage.getItem('wendao-fusheng-character-seed') ?? Date.now());
 const api = createGameApi({
   seed: 42,
@@ -187,8 +185,7 @@ nodes.rerollCharacterBtn.addEventListener('click', async () => {
   try {
     pendingCharacterSeed += 1;
     localStorage.setItem('wendao-fusheng-character-seed', String(pendingCharacterSeed));
-    pendingFormalGame = null;
-    renderCharacterRoll(buildPendingCharacterPreview());
+    renderPendingCharacterStatus();
   } catch (error) {
     handleApiError(error);
   }
@@ -200,7 +197,6 @@ nodes.startFormalGameBtn.addEventListener('click', async () => {
       name: nodes.characterNameInput.value,
       rerollSeed: pendingCharacterSeed
     });
-    pendingFormalGame = null;
     dailyActions = await loadDailyActionsForGame(game, getView(activeViewId));
     actionRefreshSequence += 1;
     pendingApiImmediateActions = false;
@@ -268,7 +264,7 @@ function renderFirstRunStage() {
   }
 
   if (needsCharacter) {
-    renderCharacterRoll(pendingFormalGame?.character ?? buildPendingCharacterPreview());
+    renderPendingCharacterStatus();
   }
 }
 
@@ -288,41 +284,15 @@ function hasFormalCharacterData(character) {
     && typeof character.spiritualRoot === 'string';
 }
 
-function renderCharacterRoll(character = game.character) {
-  nodes.characterRoll.innerHTML = formatCharacterAttributeRows(character).map((row) => `
-    <div class="attribute-row">
-      <span>${row.label}</span>
-      <strong>${row.value}</strong>
-    </div>
-  `).join('');
-}
+function renderPendingCharacterStatus() {
+  const pendingName = String(nodes.characterNameInput?.value ?? '').trim() || '未定名';
+  const seedLabel = Number.isFinite(pendingCharacterSeed) ? String(pendingCharacterSeed) : '待定';
 
-function buildPendingCharacterPreview() {
-  const seed = Number.isFinite(pendingCharacterSeed) ? pendingCharacterSeed : (game.characterSeed ?? game.seed ?? 1);
-  const traitPool = ['早慧', '命火绵长', '经脉坚韧', '福缘深厚', '丹道亲和', '剑心微明'];
-  const firstIndex = positiveModulo(seed, traitPool.length);
-  const secondIndex = (firstIndex + 2) % traitPool.length;
-  const fallbackCharacter = game.character ?? {};
-
-  return {
-    name: String(nodes.characterNameInput?.value ?? '').trim() || fallbackCharacter.name || game.player.name,
-    origin: fallbackCharacter.origin ?? game.player.origin,
-    spiritualRoot: fallbackCharacter.spiritualRoot ?? game.player.spiritualRoot,
-    traits: [traitPool[firstIndex], traitPool[secondIndex]],
-    comprehension: clampStat(52 + positiveModulo(seed, 17)),
-    physique: clampStat(47 + positiveModulo(seed, 19)),
-    luck: clampStat(45 + positiveModulo(seed, 23)),
-    karmaAffinity: positiveModulo(seed, 21) - 10,
-    initialLifespan: 80 + positiveModulo(seed, 31),
-    startingResources: {
-      spiritStones: 60 + positiveModulo(seed, 41),
-      materials: {
-        凝露草: 1 + positiveModulo(seed, 3),
-        雷纹草: positiveModulo(seed, 2)
-      },
-      pills: {}
-    }
-  };
+  nodes.characterRoll.innerHTML = [
+    `<div class="attribute-row"><span>角色名</span><strong>${pendingName}</strong></div>`,
+    `<div class="attribute-row"><span>命簿签号</span><strong>${seedLabel}</strong></div>`,
+    '<p>点击“开始修行”后，后端命簿才会正式生成灵根、命格与初始资源。</p>'
+  ].join('');
 }
 
 function renderTabs() {
@@ -601,12 +571,4 @@ function kindForCommand(command) {
     return 'cultivate';
   }
   return 'explore';
-}
-
-function clampStat(value) {
-  return Math.max(20, Math.min(95, value));
-}
-
-function positiveModulo(value, modulus) {
-  return ((value % modulus) + modulus) % modulus;
 }

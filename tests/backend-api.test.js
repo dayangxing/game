@@ -232,6 +232,20 @@ test('POST /api/v1/daily-actions hides unaffordable crafting choices for formal 
   assert.equal(payload.data.actions.some((action) => action.eventId === 'alchemy_make_qi_pill'), false);
 });
 
+test('POST /api/v1/daily-actions hides spirit-stone offers the player cannot afford', async () => {
+  const app = createBackendApp({ seed: 31, now: fixedNow });
+  app.getState().game.onboarding = completedOnboardingState();
+  app.getState().game.player.spiritStones = 10;
+
+  const payload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+    viewId: 'bag',
+    gameVersion: 0
+  })));
+
+  assert.equal(payload.ok, true);
+  assert.equal(payload.data.actions.some((action) => action.eventId === 'black_market_offer'), false);
+});
+
 test('POST /api/v1/turns resolves selected event effects deterministically', async () => {
   const app = createBackendApp({ seed: 31, now: fixedNow });
   app.getState().game.onboarding = completedOnboardingState();

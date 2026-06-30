@@ -76,6 +76,25 @@ test('item costs fail closed before creating free crafting results', () => {
   assert.deepEqual(game.inventory, { materials: { 凝露草: 0, 雷纹草: 1 }, pills: {} });
 });
 
+test('stat costs fail closed before granting paid rewards', () => {
+  const game = {
+    ...formalGame(),
+    player: {
+      ...formalGame().player,
+      spiritStones: 10
+    }
+  };
+  const effects = [
+    { type: 'stat', path: 'player.spiritStones', delta: -25 },
+    { type: 'item', path: 'materials.雷纹草', delta: 2 },
+    { type: 'evil', delta: 2 }
+  ];
+
+  assert.throws(() => applyEffects(game, effects), /CHOICE_REQUIREMENT_FAILED:player\.spiritStones/);
+  assert.equal(game.player.spiritStones, 10);
+  assert.equal(game.inventory.materials.雷纹草, 1);
+});
+
 test('formal selector returns at least three deterministic event actions for every primary view', () => {
   const game = formalGame();
   const now = new Date('2026-06-30T08:00:00.000Z');
@@ -99,6 +118,24 @@ test('bag selector filters out crafting choices that cannot pay their material c
   });
 
   assert.equal(actions.some((action) => action.eventId === 'alchemy_make_qi_pill'), false);
+});
+
+test('bag selector filters out market offers that cannot pay their spirit stone cost', () => {
+  const base = formalGame();
+  const game = {
+    ...base,
+    player: {
+      ...base.player,
+      spiritStones: 10
+    }
+  };
+  const actions = selectEventActions({
+    game,
+    viewId: 'bag',
+    now: new Date('2026-06-30T08:00:00.000Z')
+  });
+
+  assert.equal(actions.some((action) => action.eventId === 'black_market_offer'), false);
 });
 
 test('relation effects target the intended npc only', () => {
