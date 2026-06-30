@@ -75,7 +75,7 @@ export function createGameApi(options = {}) {
         title: '天机建议',
         icon: '机',
         command,
-        meta: 'AI 预留'
+        meta: '命途回响'
       }, view, index + cards.length, 'suggestion', llmRequest));
 
       return [...cards, ...suggested];
@@ -84,7 +84,7 @@ export function createGameApi(options = {}) {
     async submitDailyAction(game, action) {
       if (shouldUseBackend(game, canUseBackend)) {
         if (action.source === 'immediate') {
-          throw new BackendApiError('后端行动刷新中，请稍候再试。', {
+          throw new BackendApiError('行动尚在刷新，请稍候再试。', {
             code: 'ACTION_REFRESH_PENDING'
           });
         }
@@ -135,7 +135,7 @@ async function resolveBackendAction({ baseUrl, fetchImpl, game, action }) {
 
   const viewId = action.llmRequest?.context?.view?.id;
   if (!viewId) {
-    throw new BackendApiError('临时行动缺少界面信息，无法兑换为后端行动。', {
+    throw new BackendApiError('行动缺少场景信息，请切换页签重试。', {
       code: 'ACTION_VIEW_MISSING'
     });
   }
@@ -153,7 +153,7 @@ async function resolveBackendAction({ baseUrl, fetchImpl, game, action }) {
   const backendAction = data.actions.find((candidate) => candidate.command === action.command);
 
   if (!backendAction) {
-    throw new BackendApiError('后端未返回匹配的每日行动，请刷新后重试。', {
+    throw new BackendApiError('未找到匹配的今日行动，请刷新后重试。', {
       code: 'ACTION_NOT_MATCHED'
     });
   }
@@ -174,7 +174,7 @@ async function requestJson({ baseUrl, fetchImpl, path, method = 'GET', body }) {
   const payload = await response.json();
 
   if (!response.ok || payload.ok === false) {
-    const message = payload.error?.message ?? '后端 API 请求失败。';
+    const message = payload.error?.message ?? '云端暂不可用，请稍后重试。';
     throw new BackendApiError(message, {
       status: response.status,
       code: payload.error?.code,

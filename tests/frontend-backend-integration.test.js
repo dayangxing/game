@@ -75,7 +75,7 @@ test('frontend api client rejects provisional immediate actions while backend re
   await assert.rejects(() => api.submitDailyAction(game, immediateAction), (error) => {
     assert.equal(error.name, 'BackendApiError');
     assert.equal(error.details.code, 'ACTION_REFRESH_PENDING');
-    assert.match(error.message, /后端行动刷新中/);
+    assert.match(error.message, /行动尚在刷新/);
     return true;
   });
 });

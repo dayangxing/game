@@ -30,7 +30,7 @@ test('api mode locks provisional immediate actions until backend actions refresh
   assert.match(source, /let pendingApiImmediateActions = false;/);
   assert.ok(submitHelper, 'submitDailyAction helper should exist');
   assert.match(submitHelper, /if \(shouldBlockImmediateApiAction\(action\)\) \{/);
-  assert.match(submitHelper, /showToast\('后端行动刷新中，请稍候再试'\);/);
+  assert.match(submitHelper, /showToast\('行动尚在刷新，请稍候再试'\);/);
   assert.match(source, /function shouldBlockImmediateApiAction\(action\) \{/);
   assert.match(source, /return game\.mode === 'api' && pendingApiImmediateActions && action\.source === 'immediate';/);
   assert.ok(refreshHelper, 'refreshDailyActionsForView helper should exist');
@@ -81,7 +81,7 @@ test('startup api failure notice prevents the guide from covering the error toas
   assert.match(source, /if \(!startupNotice && shouldAutoOpenGuide\(localStorage\)\) openGuide\(\);/);
 });
 
-test('first run stage hides the main stage during onboarding and character creation', () => {
+test('first run stage keeps onboarding and character creation inside the main stage', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
   const helper = extractFunction(source, 'renderFirstRunStage');
 
@@ -90,7 +90,8 @@ test('first run stage hides the main stage during onboarding and character creat
   assert.match(helper, /const needsCharacter = shouldShowCharacterCreation\(game\);/);
   assert.match(helper, /nodes\.onboardingPanel\.hidden = !needsOnboarding;/);
   assert.match(helper, /nodes\.characterPanel\.hidden = !needsCharacter;/);
-  assert.match(helper, /document\.querySelector\('\.main-stage'\)\.hidden = needsOnboarding \|\| needsCharacter;/);
+  assert.match(helper, /nodes\.dashboardContent\.hidden = needsOnboarding \|\| needsCharacter;/);
+  assert.doesNotMatch(helper, /document\.querySelector\('\.main-stage'\)\.hidden/);
   assert.match(helper, /renderPendingCharacterStatus\(\);/);
   assert.doesNotMatch(helper, /renderCharacterRoll\(/);
 });

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>问道浮生 - 前端原型</title>
+    <title>问道浮生</title>
     <script>
       if (location.protocol === 'file:') {
         location.replace('http://127.0.0.1:5173/frontend/');
@@ -40,8 +40,8 @@
 
         <div class="top-actions">
           <div class="mode-toggle">
-            <button class="mode-option active" id="mockMode" type="button">Mock</button>
-            <button class="mode-option" id="apiMode" type="button">API</button>
+            <button class="mode-option active" id="mockMode" type="button">本地</button>
+            <button class="mode-option" id="apiMode" type="button">云端</button>
           </div>
           <button id="guideBtn" type="button">指引</button>
           <button id="saveBtn" type="button">存档</button>
@@ -91,58 +91,62 @@
           </section>
         </aside>
 
-        <section class="onboarding-panel" id="onboardingPanel" hidden>
-          <div class="panel-kicker">新手任务</div>
-          <h2 id="onboardingTitle">山门初醒</h2>
-          <p id="onboardingBody">青云宗外门晨钟响起。</p>
-          <button id="onboardingActionBtn" type="button">继续</button>
-        </section>
-
-        <section class="character-panel" id="characterPanel" hidden>
-          <div class="panel-kicker">创建角色</div>
-          <h2>命簿初开</h2>
-          <input id="characterNameInput" type="text" maxlength="12" placeholder="输入角色名" />
-          <div class="character-roll" id="characterRoll"></div>
-          <div class="character-actions">
-            <button id="rerollCharacterBtn" type="button">重掷</button>
-            <button id="startFormalGameBtn" type="button">开始修行</button>
-          </div>
-        </section>
-
         <section class="main-stage">
-          <section class="hero-scroll">
+          <section class="onboarding-panel" id="onboardingPanel" hidden>
+            <div class="panel-kicker">新手任务</div>
+            <h2 id="onboardingTitle">山门初醒</h2>
+            <p id="onboardingBody">青云宗外门晨钟响起。</p>
+            <button id="onboardingActionBtn" type="button">继续</button>
+          </section>
+
+          <section class="character-panel" id="characterPanel" hidden>
             <div>
-              <p id="gameDate">玄历三年 春 第1月</p>
-              <h2 id="viewTitle">山门听雨，天机自生</h2>
-              <span id="viewDescription">每日行动由前端 API 适配层提供，后续可改为 AI 动态生成。</span>
+              <div class="panel-kicker">创建角色</div>
+              <h2>命簿初开</h2>
             </div>
-            <div class="status-pill" id="worldMode">Mock 推演</div>
+            <input id="characterNameInput" type="text" maxlength="12" placeholder="输入角色名" />
+            <div class="character-roll" id="characterRoll"></div>
+            <div class="character-actions">
+              <button id="rerollCharacterBtn" type="button">重掷</button>
+              <button id="startFormalGameBtn" type="button">开始修行</button>
+            </div>
           </section>
 
-          <div class="api-banner" id="apiBanner" hidden>
-            API 模式已连接后端服务。每日行动、回合结算、剧情续写和导出都由服务端权威状态返回。
+          <div class="dashboard-content" id="dashboardContent">
+            <section class="hero-scroll">
+              <div>
+                <p id="gameDate">玄历三年 春 第1月</p>
+                <h2 id="viewTitle">山门听雨，天机自生</h2>
+                <span id="viewDescription">整理今日修行、道友牵绊与天机札记，决定下一步命途。</span>
+              </div>
+              <div class="status-pill" id="worldMode">本地存档</div>
+            </section>
+
+            <div class="api-banner" id="apiBanner" hidden>
+              云箓已启，今日行止皆入命簿。
+            </div>
+
+            <section class="paper-card action-section">
+              <div class="section-title">
+                <h3 id="actionTitle">今日修行</h3>
+                <span id="actionMeta">每日行动</span>
+              </div>
+              <div class="action-grid" id="actionGrid"></div>
+            </section>
+
+            <section class="paper-card story-section">
+              <div class="section-title">
+                <h3>天机札记</h3>
+                <span>最近五回合</span>
+              </div>
+              <div class="log-list" id="logList"></div>
+            </section>
+
+            <section class="paper-card action-note">
+              <strong>修行札记</strong>
+              <p>雾隐山风自北而来，内门名额、寿元暗痕与天门残契一并压在案头。</p>
+            </section>
           </div>
-
-          <section class="paper-card action-section">
-            <div class="section-title">
-              <h3 id="actionTitle">今日修行</h3>
-              <span id="actionMeta">每日行动</span>
-            </div>
-            <div class="action-grid" id="actionGrid"></div>
-          </section>
-
-          <section class="paper-card story-section">
-            <div class="section-title">
-              <h3>天机札记</h3>
-              <span>最近五回合</span>
-            </div>
-            <div class="log-list" id="logList"></div>
-          </section>
-
-          <section class="paper-card action-note">
-            <strong>每日行动接口</strong>
-            <p>当前选项来自本地 mock API。后续接入后端后，可由 AI 根据角色状态、世界事件和 NPC 记忆生成行动与剧情。</p>
-          </section>
         </section>
 
         <aside class="sidebar right">
@@ -172,8 +176,8 @@
 
           <section class="paper-card">
             <div class="section-title">
-              <h3>前端操作</h3>
-              <span>本地</span>
+              <h3>轮回</h3>
+              <span>命途</span>
             </div>
             <div class="utility-actions">
               <button id="resetBtn" type="button">重开一世</button>

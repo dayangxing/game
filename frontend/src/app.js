@@ -81,6 +81,7 @@ const nodes = {
   apiMode: document.querySelector('#apiMode'),
   apiBanner: document.querySelector('#apiBanner'),
   worldMode: document.querySelector('#worldMode'),
+  dashboardContent: document.querySelector('#dashboardContent'),
   onboardingPanel: document.querySelector('#onboardingPanel'),
   onboardingTitle: document.querySelector('#onboardingTitle'),
   onboardingBody: document.querySelector('#onboardingBody'),
@@ -129,7 +130,7 @@ nodes.guideSkipBtn.addEventListener('click', () => completeGuide());
 
 nodes.saveBtn.addEventListener('click', () => {
   saveGame();
-  showToast(game.mode === 'api' ? '后端存档由服务端维护' : '前端存档已保存');
+  showToast(game.mode === 'api' ? '云端存档已落册' : '本地存档已落册');
 });
 
 nodes.exportBtn.addEventListener('click', async () => {
@@ -151,7 +152,7 @@ nodes.resetBtn.addEventListener('click', async () => {
     dailyActions = nextActions;
     saveGame();
     render();
-    showToast(game.mode === 'api' ? '已刷新后端存档' : '新的一世已经开启');
+    showToast(game.mode === 'api' ? '云端命途已重开' : '新的一世已经开启');
   } catch (error) {
     handleApiError(error);
   }
@@ -159,7 +160,7 @@ nodes.resetBtn.addEventListener('click', async () => {
 
 nodes.sampleBtn.addEventListener('click', async () => {
   if (!dailyActions.length && game.mode === 'api') {
-    showToast('后端行动未加载，请切换页签重试');
+    showToast('行动尚未入册，请切换页签重试');
     return;
   }
   const fallbackCommand = RANDOM_COMMANDS[(game.turn + game.seed) % RANDOM_COMMANDS.length];
@@ -209,7 +210,7 @@ nodes.startFormalGameBtn.addEventListener('click', async () => {
 
 async function submitDailyAction(action) {
   if (shouldBlockImmediateApiAction(action)) {
-    showToast('后端行动刷新中，请稍候再试');
+    showToast('行动尚在刷新，请稍候再试');
     return;
   }
   try {
@@ -233,7 +234,7 @@ async function setMode(mode) {
     dailyActions = nextActions;
     saveGame();
     render();
-    showToast(mode === 'api' ? '已连接后端 API' : '已切换本地 Mock');
+    showToast(mode === 'api' ? '已转为云端存档' : '已转为本地存档');
   } catch (error) {
     handleApiError(error);
   }
@@ -256,7 +257,7 @@ function renderFirstRunStage() {
 
   nodes.onboardingPanel.hidden = !needsOnboarding;
   nodes.characterPanel.hidden = !needsCharacter;
-  document.querySelector('.main-stage').hidden = needsOnboarding || needsCharacter;
+  nodes.dashboardContent.hidden = needsOnboarding || needsCharacter;
 
   if (needsOnboarding && onboardingStep) {
     nodes.onboardingTitle.textContent = onboardingStep.title;
@@ -286,12 +287,12 @@ function hasFormalCharacterData(character) {
 
 function renderPendingCharacterStatus() {
   const pendingName = String(nodes.characterNameInput?.value ?? '').trim() || '未定名';
-  const seedLabel = Number.isFinite(pendingCharacterSeed) ? String(pendingCharacterSeed) : '待定';
 
   nodes.characterRoll.innerHTML = [
     `<div class="attribute-row"><span>角色名</span><strong>${pendingName}</strong></div>`,
-    `<div class="attribute-row"><span>命簿签号</span><strong>${seedLabel}</strong></div>`,
-    '<p>点击“开始修行”后，后端命簿才会正式生成灵根、命格与初始资源。</p>'
+    '<div class="attribute-row"><span>灵根</span><strong>入世后揭晓</strong></div>',
+    '<div class="attribute-row"><span>命格</span><strong>入世后揭晓</strong></div>',
+    '<p>踏入山门后，灵根、命格、寿元与随身资源会一并写入命簿。</p>'
   ].join('');
 }
 
@@ -370,7 +371,6 @@ function renderStory() {
       <span>${card.title}</span>
       <strong>${card.command}</strong>
       <em>${card.meta}</em>
-      ${card.eventMeta}
     </button>
   `).join('');
 
@@ -400,7 +400,7 @@ function renderMode() {
   nodes.mockMode.classList.toggle('active', !isApi);
   nodes.apiMode.classList.toggle('active', isApi);
   nodes.apiBanner.hidden = !isApi;
-  nodes.worldMode.textContent = isApi ? '后端 API' : 'Mock 推演';
+  nodes.worldMode.textContent = isApi ? '云端存档' : '本地存档';
 }
 
 function openGuide() {
@@ -430,7 +430,7 @@ async function loadGame() {
     try {
       return await api.createGame('api');
     } catch (error) {
-      startupNotice = `后端连接失败，已切换本地 Mock：${apiErrorMessage(error)}`;
+      startupNotice = `云端暂不可用，已转为本地存档：${apiErrorMessage(error)}`;
     }
   }
 
@@ -539,10 +539,45 @@ function renderSectState() {
 function buildActionCards(actions) {
   return actions.map((action) => ({
     ...action,
+    icon: displayActionIcon(action),
+    meta: formatActionMeta(action),
     kind: kindForCommand(action.command),
-    disabled: shouldBlockImmediateApiAction(action),
-    eventMeta: action.eventId ? `<div class="event-meta">${action.eventId} / ${action.choiceId}</div>` : ''
+    disabled: shouldBlockImmediateApiAction(action)
   })).slice(0, 6);
+}
+
+function formatActionMeta(action) {
+  const titleMeta = firstReadableMetaPart(action.meta);
+  const riskMeta = riskLabel(action.risk);
+  return [titleMeta, riskMeta].filter(Boolean).join(' · ') || '今日抉择';
+}
+
+function firstReadableMetaPart(meta) {
+  return String(meta ?? '')
+    .split('/')
+    .map((part) => part.trim())
+    .find((part) => part && !['low', 'medium', 'high'].includes(part.toLowerCase())) ?? '';
+}
+
+function riskLabel(risk) {
+  return {
+    low: '平稳',
+    medium: '谨慎',
+    high: '凶险'
+  }[String(risk ?? '').toLowerCase()] ?? '';
+}
+
+function displayActionIcon(action) {
+  const icon = String(action.icon ?? '').trim();
+  const categoryIcon = {
+    c: '修',
+    e: '丹',
+    h: '契',
+    k: '缘',
+    r: '境',
+    s: '宗'
+  }[icon.toLowerCase()];
+  return action.source === 'event' && categoryIcon ? categoryIcon : icon || '行';
 }
 
 function shouldBlockImmediateApiAction(action) {
@@ -554,7 +589,7 @@ function handleApiError(error) {
 }
 
 function apiErrorMessage(error) {
-  return error?.message ?? '后端 API 暂不可用，请稍后重试。';
+  return error?.message ?? '云端暂不可用，请稍后重试。';
 }
 
 function kindForCommand(command) {

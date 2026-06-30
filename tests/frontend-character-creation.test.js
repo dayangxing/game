@@ -66,9 +66,19 @@ test('frontend page exposes onboarding and character creation shells', () => {
 
   assert.match(html, /id="onboardingPanel"/);
   assert.match(html, /id="characterPanel"/);
+  assert.ok(html.indexOf('id="onboardingPanel"') > html.indexOf('class="main-stage"'));
+  assert.ok(html.indexOf('id="characterPanel"') > html.indexOf('class="main-stage"'));
+  assert.match(html, /id="dashboardContent"/);
   assert.match(html, /id="characterNameInput"/);
   assert.match(html, /id="rerollCharacterBtn"/);
   assert.match(html, /id="startFormalGameBtn"/);
+});
+
+test('first-run panels keep the hidden attribute authoritative in css', () => {
+  const css = fs.readFileSync('frontend/src/styles.css', 'utf8');
+
+  assert.match(css, /\.onboarding-panel\[hidden\],\s*\.character-panel\[hidden\]\s*\{/);
+  assert.match(css, /\.onboarding-panel\[hidden\],\s*\.character-panel\[hidden\]\s*\{[\s\S]*?display:\s*none;/);
 });
 
 test('frontend app wires onboarding and character creation actions', () => {
