@@ -1,0 +1,76 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+import { EVENT_CATALOG, TRUTH_FLAGS } from '../backend/src/domain/events/eventCatalog.js';
+import { isEventEligible } from '../backend/src/domain/events/triggerMatcher.js';
+import { applyEffects, resolveChoice } from '../backend/src/domain/events/effectResolver.js';
+import { createGame } from '../src/engine.js';
+
+function formalGame() {
+  return {
+    ...createGame(31),
+    onboarding: { completed: true, stepId: 'formal_life', completedStepIds: [], unlockedCharacterCreation: true },
+    inventory: { materials: { 凝露草: 2, 雷纹草: 1 }, pills: {} },
+    karma: { karma: 0, evil: 0, fate: 0, debts: [], vendettas: [], futureEventFlags: [] },
+    flags: {},
+    cooldowns: {},
+    characterSeed: 31,
+    character: { name: '顾清河', traits: [], origin: '山野孤子', spiritualRoot: '雷木双灵根' }
+  };
+}
+
+test('event catalog seeds enough content and all truth flags', () => {
+  assert.ok(EVENT_CATALOG.length >= 18);
+  for (const flag of TRUTH_FLAGS) {
+    assert.ok(EVENT_CATALOG.some((event) => JSON.stringify(event).includes(flag)), `${flag} is seeded`);
+  }
+});
+
+test('trigger matcher respects view and flag requirements', () => {
+  const game = formalGame();
+  const mistEvent = EVENT_CATALOG.find((event) => event.id === 'mist_bronze_bell');
+
+  assert.equal(isEventEligible(mistEvent, game, 'realm'), true);
+  assert.equal(isEventEligible(mistEvent, game, 'bag'), false);
+  assert.equal(isEventEligible({ ...mistEvent, trigger: { ...mistEvent.trigger, requiresFlags: ['missing_flag'] } }, game, 'realm'), false);
+});
+
+test('effect resolver applies stat, item, relation, flag and future event effects', () => {
+  const game = formalGame();
+  const event = EVENT_CATALOG.find((candidate) => candidate.id === 'market_injured_cultivator');
+  const choice = event.choices.find((candidate) => candidate.id === 'save');
+  const result = resolveChoice({
+    game,
+    event,
+    choice,
+    now: new Date('2026-06-29T08:00:00.000Z')
+  });
+
+  assert.equal(result.game.turn, 1);
+  assert.equal(result.game.flags.saved_injured_cultivator, true);
+  assert.equal(result.game.karma.futureEventFlags.includes('old_friend_returns'), true);
+  assert.ok(result.game.karma.karma > game.karma.karma);
+  assert.ok(result.entry.body.includes('赠丹'));
+  assert.equal(result.ruleResult.success, true);
+});
+
+test('unsupported effects fail closed before mutating game state', () => {
+  const game = formalGame();
+
+  assert.throws(() => applyEffects(game, [{ type: 'unknown', id: 'bad' }]), /RULE_EFFECT_INVALID/);
+  assert.equal(game.turn, 0);
+});
+
+test('relation effects target the intended npc only', () => {
+  const game = formalGame();
+  const next = applyEffects(game, [
+    { type: 'relation', npcId: 'lin_shijie', delta: 4 },
+    { type: 'relation', npcId: 'xuanheng', delta: 5 }
+  ]);
+
+  const lin = next.npcs.find((npc) => npc.name === '林师姐');
+  const elder = next.npcs.find((npc) => npc.name === '玄衡长老');
+
+  assert.equal(lin.affinity, game.npcs.find((npc) => npc.name === '林师姐').affinity + 4);
+  assert.equal(elder.affinity, game.npcs.find((npc) => npc.name === '玄衡长老').affinity + 5);
+});
