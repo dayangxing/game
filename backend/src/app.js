@@ -2,7 +2,7 @@ import { advanceTurn, createGame, exportNovel } from '../../src/engine.js';
 import { createStoryGraph } from './agents/storyGraph.js';
 import { createDailyActions, hasView } from './domain/actions.js';
 import { applyCharacterToGame, rollCharacter } from './domain/characterCreation.js';
-import { canCreateFormalCharacter, createOnboardingState } from './domain/onboarding.js';
+import { canCreateFormalCharacter, createOnboardingState, createTutorialAction, resolveTutorialAction } from './domain/onboarding.js';
 import { buildTurnResult } from './domain/turnResult.js';
 import { createBailianClient } from './llm/bailianClient.js';
 import { getModelSelection } from './llm/modelSelection.js';
@@ -88,6 +88,21 @@ export function createBackendApp(options = {}) {
 function handleDailyActions({ body, requestId, state, now }) {
   const viewId = body.viewId ?? 'home';
 
+  if (!state.game.onboarding.completed) {
+    const action = createTutorialAction({
+      game: state.game,
+      now: now(),
+      sequenceStart: state.actionSequence
+    });
+    state.actionSequence += 1;
+    state.pendingActions.set(action.id, {
+      ...action,
+      turn: state.game.turn,
+      consumed: false
+    });
+    return jsonResponse(200, requestId, { actions: [action] });
+  }
+
   if (!hasView(viewId)) {
     return errorResponse(400, requestId, 'UNKNOWN_VIEW', '未知界面，无法生成每日行动。');
   }
@@ -167,6 +182,22 @@ async function handleTurn({ body, requestId, state, now }) {
 
   if (body.clientTurn !== state.game.turn || action.turn !== state.game.turn) {
     return errorResponse(409, requestId, 'TURN_MISMATCH', '客户端回合已过期，请刷新游戏状态。');
+  }
+
+  if (action.source === 'tutorial') {
+    const before = state.game;
+    const after = normalizeGame(resolveTutorialAction({ game: before, action, now: now() }));
+    action.consumed = true;
+    state.game = after;
+    const narration = {
+      status: 'fallback',
+      title: after.log.at(-1).title,
+      body: after.log.at(-1).body,
+      npcLine: after.log.at(-1).npcLine,
+      foreshadow: after.foreshadows.at(-1) ?? ''
+    };
+    const turnResult = buildTurnResult({ before, after: state.game, actionId: action.id, narration });
+    return jsonResponse(200, requestId, { game: state.game, turnResult });
   }
 
   const before = state.game;

@@ -90,6 +90,7 @@ test('POST /api/v1/game/new invalidates stale pending actions and saved turn sna
       }
     }
   });
+  app.getState().game.onboarding = completedOnboardingState();
   const actionsPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
     viewId: 'cultivation',
     gameVersion: 0
@@ -124,8 +125,35 @@ test('POST /api/v1/game/new invalidates stale pending actions and saved turn sna
   assert.equal(staleNarrationPayload.error.code, 'TURN_SNAPSHOT_NOT_FOUND');
 });
 
+test('tutorial actions complete onboarding through daily-actions and turns', async () => {
+  const app = createBackendApp({ seed: 31, now: fixedNow });
+
+  for (const expectedStep of ['awakening', 'breathing', 'sect_contact', 'alchemy_trial', 'mist_bell', 'karma_choice', 'heaven_contract', 'formal_life']) {
+    const actionsPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+      viewId: 'home',
+      gameVersion: app.getState().game.version
+    })));
+    const [action] = actionsPayload.data.actions;
+
+    assert.equal(action.source, 'tutorial');
+    assert.equal(action.onboardingStepId, expectedStep);
+
+    const turnPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/turns', {
+      actionId: action.id,
+      clientTurn: app.getState().game.turn
+    })));
+
+    assert.equal(turnPayload.ok, true);
+    assert.equal(turnPayload.data.game.onboarding.completedStepIds.includes(expectedStep), true);
+  }
+
+  assert.equal(app.getState().game.onboarding.completed, true);
+  assert.equal(app.getState().game.onboarding.unlockedCharacterCreation, true);
+});
+
 test('POST /api/v1/daily-actions returns validated fallback actions for the requested view', async () => {
   const app = createBackendApp({ seed: 31, now: fixedNow });
+  app.getState().game.onboarding = completedOnboardingState();
   const response = await app.handle(makeRequest('POST', '/api/v1/daily-actions', {
     viewId: 'cultivation',
     gameVersion: 0
@@ -157,6 +185,7 @@ test('POST /api/v1/turns advances one authoritative turn and ignores client stat
       }
     }
   });
+  app.getState().game.onboarding = completedOnboardingState();
   const actionsPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
     viewId: 'cultivation',
     gameVersion: 0
@@ -192,6 +221,7 @@ test('POST /api/v1/turns saves rule progress when narration llm is unavailable',
       }
     }
   });
+  app.getState().game.onboarding = completedOnboardingState();
   const actionsPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
     viewId: 'cultivation',
     gameVersion: 0
@@ -234,6 +264,7 @@ test('POST /api/v1/turns/:turn/narration retries narration from saved progress',
       }
     }
   });
+  app.getState().game.onboarding = completedOnboardingState();
   const actionsPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
     viewId: 'cultivation',
     gameVersion: 0

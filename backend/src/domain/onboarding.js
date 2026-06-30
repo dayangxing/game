@@ -97,3 +97,58 @@ export function completeOnboardingStep(onboarding, stepId) {
     unlockedCharacterCreation: completed
   };
 }
+
+export function createTutorialAction({ game, now, sequenceStart = 0 }) {
+  const step = getCurrentOnboardingStep(game.onboarding);
+  return {
+    id: `act_${game.turn}_tutorial_${sequenceStart}`,
+    title: step.actionTitle,
+    icon: '引',
+    command: step.command,
+    meta: step.title,
+    source: 'tutorial',
+    risk: 'low',
+    onboardingStepId: step.id,
+    storyHook: [
+      `新手任务：${step.title}`,
+      step.body,
+      '生成要求：只解释本步骤对应系统，不提前揭露全部真相。'
+    ].join('\n'),
+    expiresAt: new Date(now.getTime() + 30 * 60 * 1000).toISOString()
+  };
+}
+
+export function resolveTutorialAction({ game, action }) {
+  const step = ONBOARDING_STEPS.find((candidate) => candidate.id === action.onboardingStepId);
+  const onboarding = completeOnboardingStep(game.onboarding, action.onboardingStepId);
+  const turn = game.turn + 1;
+  return {
+    ...game,
+    turn,
+    version: turn,
+    onboarding,
+    log: [
+      ...game.log,
+      {
+        id: `turn-${turn}`,
+        title: step.title,
+        command: action.command,
+        body: step.body,
+        npcLine: step.id === 'formal_life'
+          ? '玄衡长老合上命簿：“接下来，不再是陆青玄的路，而是你的路。”'
+          : '林师姐低声提醒：“先记住这一条，后面的因果会慢慢追上来。”',
+        worldEvent: step.title
+      }
+    ],
+    timeline: [
+      ...game.timeline,
+      { type: 'tutorial', title: step.title, detail: step.body }
+    ],
+    flags: {
+      ...game.flags,
+      [`tutorial_${step.id}`]: true,
+      ...(step.id === 'mist_bell' ? { bronze_bell: true } : {}),
+      ...(step.id === 'heaven_contract' ? { ascension_contract: true } : {})
+    }
+  };
+}
