@@ -135,7 +135,11 @@ function handleNewFormalGame({ body, requestId, state }) {
   try {
     const seed = Number.isInteger(body.rerollSeed) ? body.rerollSeed : state.game.seed + state.requestSequence + 101;
     const character = rollCharacter({ seed, name });
-    state.game = normalizeGame(applyCharacterToGame(createGame(seed), character, seed));
+    const nextGame = normalizeGame(applyCharacterToGame(createGame(seed), character, seed));
+    nextGame.onboarding = createCompletedFormalOnboardingState();
+    state.pendingActions.clear();
+    state.turnSnapshots.clear();
+    state.game = nextGame;
     state.game.mode = 'api';
     return jsonResponse(200, requestId, {
       game: state.game,
@@ -280,6 +284,15 @@ function normalizeGame(game) {
     },
     flags: game.flags ?? {},
     cooldowns: game.cooldowns ?? {}
+  };
+}
+
+function createCompletedFormalOnboardingState() {
+  return {
+    completed: true,
+    stepId: 'formal_life',
+    completedStepIds: ['awakening', 'breathing', 'sect_contact', 'alchemy_trial', 'mist_bell', 'karma_choice', 'heaven_contract', 'formal_life'],
+    unlockedCharacterCreation: true
   };
 }
 

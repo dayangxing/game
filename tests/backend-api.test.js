@@ -55,12 +55,7 @@ test('POST /api/v1/game/new is locked until onboarding is complete', async () =>
 
 test('POST /api/v1/game/new creates a seeded formal character after onboarding', async () => {
   const app = createBackendApp({ seed: 31, now: fixedNow });
-  app.getState().game.onboarding = {
-    completed: true,
-    stepId: 'formal_life',
-    completedStepIds: ['awakening', 'breathing', 'sect_contact', 'alchemy_trial', 'mist_bell', 'karma_choice', 'heaven_contract', 'formal_life'],
-    unlockedCharacterCreation: true
-  };
+  app.getState().game.onboarding = completedOnboardingState();
 
   const payload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/game/new', {
     name: '顾清河',
@@ -73,6 +68,60 @@ test('POST /api/v1/game/new creates a seeded formal character after onboarding',
   assert.notEqual(payload.data.game.player.name, '陆青玄');
   assert.equal(payload.data.game.characterSeed, 52);
   assert.equal(payload.data.game.mode, 'api');
+  assert.equal(payload.data.game.onboarding.completed, true);
+  assert.equal(payload.data.game.onboarding.stepId, 'formal_life');
+  assert.equal(payload.data.game.onboarding.unlockedCharacterCreation, true);
+  assert.deepEqual(payload.data.game.onboarding.completedStepIds, completedOnboardingState().completedStepIds);
+});
+
+test('POST /api/v1/game/new invalidates stale pending actions and saved turn snapshots', async () => {
+  const app = createBackendApp({
+    seed: 31,
+    now: fixedNow,
+    llm: {
+      async generateNarration({ afterGame, action }) {
+        return {
+          status: 'generated',
+          title: '旧存档叙事',
+          body: `教程存档在第${afterGame.turn}回合执行了${action.title}。`,
+          npcLine: '林师姐道：“这段记录应随旧命簿封存。”',
+          foreshadow: '旧命簿已结。'
+        };
+      }
+    }
+  });
+  const actionsPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+    viewId: 'cultivation',
+    gameVersion: 0
+  })));
+  const [usedAction, staleAction] = actionsPayload.data.actions;
+
+  await jsonResponse(app.handle(makeRequest('POST', '/api/v1/turns', {
+    actionId: usedAction.id,
+    clientTurn: 0
+  })));
+
+  app.getState().game.onboarding = completedOnboardingState();
+  const newGamePayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/game/new', {
+    name: '顾清河',
+    rerollSeed: 52
+  })));
+  const staleActionResponse = await app.handle(makeRequest('POST', '/api/v1/turns', {
+    actionId: staleAction.id,
+    clientTurn: 0
+  }));
+  const staleActionPayload = await staleActionResponse.json();
+  const staleNarrationResponse = await app.handle(makeRequest('POST', '/api/v1/turns/1/narration'));
+  const staleNarrationPayload = await staleNarrationResponse.json();
+
+  assert.equal(newGamePayload.ok, true);
+  assert.equal(newGamePayload.data.game.onboarding.completed, true);
+  assert.equal(app.getState().pendingActions.size, 0);
+  assert.equal(app.getState().turnSnapshots.size, 0);
+  assert.equal(staleActionResponse.status, 404);
+  assert.equal(staleActionPayload.error.code, 'ACTION_NOT_FOUND');
+  assert.equal(staleNarrationResponse.status, 404);
+  assert.equal(staleNarrationPayload.error.code, 'TURN_SNAPSHOT_NOT_FOUND');
 });
 
 test('POST /api/v1/daily-actions returns validated fallback actions for the requested view', async () => {
@@ -265,6 +314,15 @@ test('POST /api/v1/export-story exports the server-side save as text', async () 
 
 function fixedNow() {
   return new Date('2026-06-29T08:00:00.000Z');
+}
+
+function completedOnboardingState() {
+  return {
+    completed: true,
+    stepId: 'formal_life',
+    completedStepIds: ['awakening', 'breathing', 'sect_contact', 'alchemy_trial', 'mist_bell', 'karma_choice', 'heaven_contract', 'formal_life'],
+    unlockedCharacterCreation: true
+  };
 }
 
 function makeRequest(method, path, body) {
