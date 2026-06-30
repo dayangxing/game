@@ -22,6 +22,7 @@ test('frontend api client plays one turn through the backend contract', async ()
       }
     }
   });
+  backend.getState().game.onboarding = completedOnboardingState();
   const api = createGameApi({
     baseUrl: 'http://backend.test',
     preferredMode: 'api',
@@ -58,6 +59,7 @@ test('frontend api client resolves immediate actions through backend actions bef
       }
     }
   });
+  backend.getState().game.onboarding = completedOnboardingState();
   const api = createGameApi({
     baseUrl: 'http://backend.test',
     preferredMode: 'api',
@@ -73,3 +75,12 @@ test('frontend api client resolves immediate actions through backend actions bef
   assert.equal(next.mode, 'api');
   assert.match(next.log.at(-1).body, /后端行动act_0_skills_0/);
 });
+
+function completedOnboardingState() {
+  return {
+    completed: true,
+    stepId: 'formal_life',
+    completedStepIds: ['awakening', 'breathing', 'sect_contact', 'alchemy_trial', 'mist_bell', 'karma_choice', 'heaven_contract', 'formal_life'],
+    unlockedCharacterCreation: true
+  };
+}
