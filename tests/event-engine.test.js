@@ -74,3 +74,18 @@ test('relation effects target the intended npc only', () => {
   assert.equal(lin.affinity, game.npcs.find((npc) => npc.name === '林师姐').affinity + 4);
   assert.equal(elder.affinity, game.npcs.find((npc) => npc.name === '玄衡长老').affinity + 5);
 });
+
+test('sect events update authoritative sect relation instead of dead state', () => {
+  const game = formalGame();
+  const event = EVENT_CATALOG.find((candidate) => candidate.id === 'sect_trial_notice');
+  const choice = event.choices.find((candidate) => candidate.id === 'join');
+  const result = resolveChoice({
+    game,
+    event,
+    choice,
+    now: new Date('2026-06-30T08:00:00.000Z')
+  });
+
+  assert.equal(result.game.player.sectRelation, game.player.sectRelation + 15);
+  assert.equal('sect' in result.game, false);
+});

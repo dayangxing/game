@@ -57,7 +57,13 @@ function applyEffect(game, effect) {
     };
   }
   if (effect.type === 'sect') {
-    return { ...game, sect: { ...game.sect, [effect.path]: (game.sect?.[effect.path] ?? 0) + effect.delta } };
+    return {
+      ...game,
+      player: {
+        ...game.player,
+        sectRelation: clamp((game.player?.sectRelation ?? 0) + effect.delta, 0, 100)
+      }
+    };
   }
   if (effect.type === 'karma') return { ...game, karma: { ...game.karma, karma: (game.karma?.karma ?? 0) + effect.delta } };
   if (effect.type === 'evil') return { ...game, karma: { ...game.karma, evil: (game.karma?.evil ?? 0) + effect.delta } };
@@ -91,4 +97,8 @@ function isTargetNpc(npc, npcId) {
     xuanheng: '玄衡长老'
   };
   return npc.name === aliases[npcId];
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
 }
