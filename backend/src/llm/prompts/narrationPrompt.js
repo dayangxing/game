@@ -45,7 +45,9 @@ const NARRATION_SYSTEM_PROMPT = [
 const REPAIR_SYSTEM_PROMPT = [
   '你是《问道浮生》的剧情 JSON 修复 agent。',
   '你刚才的 JSON 输出没有通过后端校验。请只修复 JSON，不要解释。',
-  '必须保留已结算事实，不得新增奖励、境界、道具、NPC关系或世界事件。',
+  '只能润色已结算结果并修复 JSON 结构，不得改变已结算事实。',
+  EVENT_RULE_BOUNDARY,
+  '必须保留已结算事实，不得新增奖励、道具、境界、关系、进度、flag、futureEvent、世界事件或成功失败判定。',
   '返回值必须是合法 JSON object，不能包含 Markdown、代码块或额外文字。'
 ].join('\n');
 

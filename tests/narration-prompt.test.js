@@ -55,6 +55,10 @@ test('repair prompt asks the model to only repair invalid json output', () => {
 
   assert.match(system, /只修复 JSON/);
   assert.match(system, /不要解释/);
+  assert.match(system, /只能润色已结算结果/);
+  assert.match(system, /flag/);
+  assert.match(system, /futureEvent/);
+  assert.match(system, /成功失败/);
   assert.deepEqual(user.validationErrors, ['body too short', 'missing npcLine']);
   assert.equal(user.rawNarration.title, '短');
   assert.equal(user.afterGame.turn, 1);
