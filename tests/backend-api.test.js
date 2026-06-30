@@ -151,6 +151,19 @@ test('tutorial actions complete onboarding through daily-actions and turns', asy
   assert.equal(app.getState().game.onboarding.unlockedCharacterCreation, true);
 });
 
+test('POST /api/v1/daily-actions rejects stale game version during tutorial onboarding', async () => {
+  const app = createBackendApp({ seed: 31, now: fixedNow });
+  const response = await app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+    viewId: 'home',
+    gameVersion: 999
+  }));
+  const payload = await response.json();
+
+  assert.equal(response.status, 409);
+  assert.equal(payload.ok, false);
+  assert.equal(payload.error.code, 'GAME_VERSION_MISMATCH');
+});
+
 test('POST /api/v1/daily-actions returns validated fallback actions for the requested view', async () => {
   const app = createBackendApp({ seed: 31, now: fixedNow });
   app.getState().game.onboarding = completedOnboardingState();

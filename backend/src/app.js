@@ -88,6 +88,14 @@ export function createBackendApp(options = {}) {
 function handleDailyActions({ body, requestId, state, now }) {
   const viewId = body.viewId ?? 'home';
 
+  if (!hasView(viewId)) {
+    return errorResponse(400, requestId, 'UNKNOWN_VIEW', '未知界面，无法生成每日行动。');
+  }
+
+  if (body.gameVersion !== undefined && body.gameVersion !== state.game.version) {
+    return errorResponse(409, requestId, 'GAME_VERSION_MISMATCH', '客户端存档版本过旧，请刷新游戏状态。');
+  }
+
   if (!state.game.onboarding.completed) {
     const action = createTutorialAction({
       game: state.game,
@@ -101,14 +109,6 @@ function handleDailyActions({ body, requestId, state, now }) {
       consumed: false
     });
     return jsonResponse(200, requestId, { actions: [action] });
-  }
-
-  if (!hasView(viewId)) {
-    return errorResponse(400, requestId, 'UNKNOWN_VIEW', '未知界面，无法生成每日行动。');
-  }
-
-  if (body.gameVersion !== undefined && body.gameVersion !== state.game.version) {
-    return errorResponse(409, requestId, 'GAME_VERSION_MISMATCH', '客户端存档版本过旧，请刷新游戏状态。');
   }
 
   const actions = createDailyActions({
