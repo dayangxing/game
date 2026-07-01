@@ -439,9 +439,9 @@ function renderPlayer() {
 
 function renderStatusOverview() {
   const healthNow = game.player.health ?? game.player.maxHealth ?? 0;
-  const healthMax = game.player.maxHealth ?? healthNow || 1;
+  const healthMax = game.player.maxHealth ?? (healthNow || 1);
   const lifespanNow = game.player.lifespan ?? game.player.maxLifespan ?? 0;
-  const lifespanMax = game.player.maxLifespan ?? lifespanNow || 1;
+  const lifespanMax = game.player.maxLifespan ?? (lifespanNow || 1);
   const cards = [
     {
       label: '气血',

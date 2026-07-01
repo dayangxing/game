@@ -182,6 +182,21 @@ Result:
 
 - The durable summary cache lives in frontend storage, so older summaries only reappear on the same client that previously observed and saved them
 
+## Fix Report 3 2026-07-01
+
+### Review Finding
+
+`frontend/src/app.js` failed `node --check` because `??` was mixed with `||` in the health and lifespan max fallbacks without parentheses.
+
+### Fix
+
+- Wrapped the `|| 1` fallbacks in parentheses so the parser can disambiguate the expressions
+- Kept the change limited to the two affected lines in `renderStatusOverview()`
+
+### Concerns
+
+- None beyond the existing frontend storage caveats noted above
+
 ## Fix Report 2 2026-07-01
 
 ### Review Finding
