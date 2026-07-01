@@ -93,6 +93,39 @@ test('bailian client assembles streamed json deltas before parsing', async () =>
   });
 });
 
+test('bailian client exposes streamed chat content deltas as they arrive', async () => {
+  const chunks = [
+    'data: {"choices":[{"delta":{"content":"{\\"title\\":\\"流式\\""}}]}\n\n',
+    'data: {"choices":[{"delta":{"content":",\\"body\\":\\"逐段"}}]}\n\n',
+    'data: {"choices":[{"delta":{"content":"返回\\"}"}}]}\n\n',
+    'data: [DONE]\n\n'
+  ];
+  const client = createBailianClient({
+    env: {
+      BAILIAN_API_KEY: 'unit-test-token'
+    },
+    async fetchImpl() {
+      return {
+        ok: true,
+        body: streamFromStrings(chunks)
+      };
+    }
+  });
+
+  const deltas = [];
+  for await (const delta of client.streamChatContent({
+    messages: [{ role: 'user', content: '{"task":"narrative_polish"}' }]
+  })) {
+    deltas.push(delta);
+  }
+
+  assert.deepEqual(deltas, [
+    '{"title":"流式"',
+    ',"body":"逐段',
+    '返回"}'
+  ]);
+});
+
 test('bailian client fails closed when no api key is configured', async () => {
   const client = createBailianClient({
     env: {},

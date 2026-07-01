@@ -534,6 +534,51 @@ test('POST /api/v1/turns advances one authoritative turn and ignores client stat
   assert.match(turnPayload.data.game.log.at(-1).body, /来自模型/);
 });
 
+test('POST /api/v1/turns/stream yields narration deltas before final turn result', async () => {
+  const streamedChunks = [
+    '{"title":"流式闭关","body":"',
+    '顾清河闭目内观，雷木灵根在经脉间一寸寸亮起。洞府外的雨声压低，像有人隔着山门翻动旧契，提醒他寿元并非无穷。可这一次他没有急着求快，而是将灵气分作三股，先护命火，再拓窍穴，最后把青云宗的入门心法重新走了一遍。',
+    '","npcLine":"林师姐道：\\"别只看破境，也要看命火是否稳。\\"","foreshadow":"雾隐秘境的旧契再次浮现。","continuityNotes":[],"safetyFlags":[]}'
+  ];
+  const app = createBackendApp({
+    seed: 31,
+    now: fixedNow,
+    llm: {
+      async *streamNarration() {
+        for (const chunk of streamedChunks) {
+          yield chunk;
+        }
+      },
+      async generateNarration() {
+        assert.fail('stream endpoint should forward streamed narration instead of collecting through generateNarration');
+      }
+    }
+  });
+  app.getState().game.onboarding = completedOnboardingState();
+  const actionsPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+    viewId: 'cultivation',
+    gameVersion: 0
+  })));
+  const action = actionsPayload.data.actions.find((candidate) => candidate.command.includes('闭关'));
+
+  const response = await app.handle(makeRequest('POST', '/api/v1/turns/stream', {
+    actionId: action.id,
+    clientTurn: 0
+  }));
+  const body = await response.text();
+  const donePayload = parseSseEvent(body, 'done');
+
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type'), /text\/event-stream/);
+  assert.ok(body.indexOf('event: narration_delta') > -1);
+  assert.ok(body.indexOf('event: narration_delta') < body.indexOf('event: done'));
+  assert.equal(donePayload.ok, true);
+  assert.equal(donePayload.data.game.turn, 1);
+  assert.equal(donePayload.data.turnResult.narration.status, 'generated');
+  assert.equal(donePayload.data.turnResult.narration.title, '流式闭关');
+  assert.match(donePayload.data.game.log.at(-1).body, /雷木灵根/);
+});
+
 test('POST /api/v1/turns saves rule progress when narration llm is unavailable', async () => {
   const app = createBackendApp({
     seed: 31,
@@ -690,6 +735,21 @@ function makeRequest(method, path, body) {
 async function jsonResponse(responsePromise) {
   const response = await responsePromise;
   return response.json();
+}
+
+function parseSseEvent(body, eventName) {
+  const block = body
+    .split(/\r?\n\r?\n/)
+    .find((part) => part.split(/\r?\n/).some((line) => line === `event: ${eventName}`));
+
+  assert.ok(block, `expected SSE event ${eventName}`);
+  const data = block
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => line.slice(5).trimStart())
+    .join('\n');
+
+  return JSON.parse(data);
 }
 
 function assertPublicActionShape(action) {

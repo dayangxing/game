@@ -131,7 +131,11 @@ test('daily action submission enriches history with player-facing summaries befo
   assert.ok(helper, 'submitDailyAction should exist');
   assert.match(source, /function enrichGameHistory\(/);
   assert.match(helper, /const previousGame = game;/);
+  assert.match(helper, /beginStreamingNarration\(action\);/);
+  assert.match(helper, /api\.submitDailyActionStream\(/);
+  assert.match(helper, /onNarrationPreview:\s*updateStreamingNarration/);
   assert.match(helper, /game = enrichGameHistory\(game,\s*previousGame\);/);
+  assert.match(helper, /markHistoryRefreshed\(game\);/);
   assert.match(helper, /saveGame\(\);/);
 });
 

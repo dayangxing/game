@@ -130,7 +130,7 @@ function validateNarration(narration) {
   return errors;
 }
 
-function normalizeGeneratedNarration(narration, afterGame) {
+export function normalizeGeneratedNarration(narration, afterGame) {
   return {
     status: 'generated',
     title: requiredText(narration?.title, `第${afterGame.turn}回合`),
@@ -142,7 +142,7 @@ function normalizeGeneratedNarration(narration, afterGame) {
   };
 }
 
-function buildUnavailableNarration({ afterGame, error }) {
+export function buildUnavailableNarration({ afterGame, error }) {
   return {
     status: 'llm_unavailable',
     title: '模型暂不可用',

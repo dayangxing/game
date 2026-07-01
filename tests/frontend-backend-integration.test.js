@@ -43,6 +43,51 @@ test('frontend api client plays one turn through the backend contract', async ()
   assert.match(story, /问道浮生/);
 });
 
+test('frontend api client receives streamed narration before the final game result', async () => {
+  const streamedChunks = [
+    '{"title":"前端流式续写","body":"',
+    '前端先接到第一段洞府雨声，看到历史行为里临时浮出一张正在续写的命簿。随后第二段文字抵达，角色的寿元消耗、修为变化和青云宗声望仍然由后端规则结算，模型只负责把这一回合写成顺滑的叙事。',
+    '","npcLine":"林师姐道：\\"流式到了，就不用干等整段了。\\"","foreshadow":"雾隐秘境的钟声压在流光之后。","continuityNotes":[],"safetyFlags":[]}'
+  ];
+  const backend = createBackendApp({
+    seed: 41,
+    now: () => new Date('2026-06-29T08:00:00.000Z'),
+    llm: {
+      async *streamNarration() {
+        for (const chunk of streamedChunks) {
+          yield chunk;
+        }
+      }
+    }
+  });
+  backend.getState().game.onboarding = completedOnboardingState();
+  const api = createGameApi({
+    baseUrl: 'http://backend.test',
+    preferredMode: 'api',
+    fetchImpl: (input, init) => backend.handle(new Request(input, init))
+  });
+
+  const game = await api.createGame();
+  const actions = await api.getDailyActions(game, getView('cultivation'));
+  const deltas = [];
+  const previews = [];
+  const next = await api.submitDailyActionStream(game, actions[0], {
+    onNarrationDelta(delta, raw) {
+      deltas.push({ delta, raw });
+    },
+    onNarrationPreview(preview) {
+      previews.push(preview);
+    }
+  });
+
+  assert.equal(next.turn, 1);
+  assert.equal(next.mode, 'api');
+  assert.ok(deltas.length >= 2);
+  assert.ok(deltas[0].raw.includes('前端流式续写'));
+  assert.ok(previews.some((preview) => preview.includes('历史行为里临时浮出')));
+  assert.match(next.log.at(-1).title, /前端流式续写/);
+});
+
 test('frontend api client rejects provisional immediate actions while backend refresh is pending', async () => {
   const backend = createBackendApp({
     seed: 43,

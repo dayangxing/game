@@ -1,5 +1,5 @@
 import { advanceTurn, createGame, exportNovel } from '../../src/engine.js';
-import { createStoryGraph } from './agents/storyGraph.js';
+import { buildUnavailableNarration, createStoryGraph, normalizeGeneratedNarration } from './agents/storyGraph.js';
 import { createDailyActions, hasView } from './domain/actions.js';
 import { applyCharacterToGame, rollCharacter } from './domain/characterCreation.js';
 import { resolveChoice } from './domain/events/effectResolver.js';
@@ -65,6 +65,11 @@ export function createBackendApp(options = {}) {
         if (route === 'POST /api/v1/turns') {
           const body = await readJson(request);
           return handleTurn({ body, requestId, state, now });
+        }
+
+        if (route === 'POST /api/v1/turns/stream') {
+          const body = await readJson(request);
+          return handleTurnStream({ body, requestId, state, now });
         }
 
         const retryNarrationTurn = matchRetryNarrationRoute(request.method, url.pathname);
@@ -221,6 +226,63 @@ function handleNewFormalGame({ body, requestId, state }) {
 }
 
 async function handleTurn({ body, requestId, state, now }) {
+  const resolved = resolveTurnRules({ body, requestId, state, now });
+  if (resolved instanceof Response) return resolved;
+
+  if (resolved.narration) {
+    const data = finalizeTurn({ resolved, state, now });
+    return jsonResponse(200, requestId, data);
+  }
+
+  const narration = await resolveTurnNarration({
+    before: resolved.before,
+    after: state.game,
+    action: resolved.action,
+    ruleEntry: resolved.ruleEntry,
+    state
+  }).catch((error) => resolved.fallbackNarration ?? buildUnavailableNarration({
+    afterGame: state.game,
+    error
+  }));
+
+  const data = finalizeTurn({ resolved: { ...resolved, narration }, state, now });
+  return jsonResponse(200, requestId, data);
+}
+
+function handleTurnStream({ body, requestId, state, now }) {
+  const resolved = resolveTurnRules({ body, requestId, state, now });
+  if (resolved instanceof Response) return resolved;
+
+  return sseResponse(async (emit) => {
+    emit('rule', {
+      turn: state.game.turn,
+      actionTitle: resolved.action.title,
+      command: resolved.action.command
+    });
+
+    let narration = resolved.narration;
+    if (!narration) {
+      narration = await resolveTurnNarrationStream({
+        resolved,
+        state,
+        emit
+      }).catch((error) => resolved.fallbackNarration ?? buildUnavailableNarration({
+        afterGame: state.game,
+        error
+      }));
+    }
+
+    const data = finalizeTurn({ resolved: { ...resolved, narration }, state, now });
+    emit('done', {
+      ok: true,
+      data,
+      error: null,
+      requestId
+    });
+  });
+}
+
+function resolveTurnRules({ body, requestId, state, now }) {
   const action = state.pendingActions.get(body.actionId);
 
   if (!action) {
@@ -248,8 +310,11 @@ async function handleTurn({ body, requestId, state, now }) {
       npcLine: after.log.at(-1).npcLine,
       foreshadow: after.foreshadows.at(-1) ?? ''
     };
-    const turnResult = buildTurnResult({ before, after: state.game, actionId: action.id, narration });
-    return jsonResponse(200, requestId, { game: state.game, turnResult });
+    return {
+      before,
+      action,
+      narration
+    };
   }
 
   const before = state.game;
@@ -265,31 +330,13 @@ async function handleTurn({ body, requestId, state, now }) {
       ruleEntry: resolution.entry
     });
 
-    const narration = await resolveTurnNarration({
+    return {
       before,
-      after: state.game,
       action,
-      state
-    }).catch(() => eventNarrationFallback(resolution));
-    state.game = applyNarrationToGame(state.game, state.game.turn, narration);
-    const baseTurnResult = buildTurnResult({ before, after: state.game, actionId: action.id, narration });
-    const turnResult = {
-      ...baseTurnResult,
-      ruleResult: {
-        ...baseTurnResult.ruleResult,
-        ...resolution.ruleResult
-      }
+      ruleEntry: resolution.entry,
+      ruleResult: resolution.ruleResult,
+      fallbackNarration: eventNarrationFallback(resolution)
     };
-    state.auditLog.push({
-      type: 'turn',
-      actionId: action.id,
-      command: action.command,
-      ruleResult: turnResult.ruleResult,
-      llm: turnResult.narration.status,
-      at: now().toISOString()
-    });
-
-    return jsonResponse(200, requestId, { game: state.game, turnResult });
   }
 
   if (action.source === 'event') {
@@ -309,31 +356,13 @@ async function handleTurn({ body, requestId, state, now }) {
       ruleEntry: resolution.entry
     });
 
-    const narration = await resolveTurnNarration({
+    return {
       before,
-      after: state.game,
       action,
-      state
-    }).catch(() => eventNarrationFallback(resolution));
-    state.game = applyNarrationToGame(state.game, state.game.turn, narration);
-    const baseTurnResult = buildTurnResult({ before, after: state.game, actionId: action.id, narration });
-    const turnResult = {
-      ...baseTurnResult,
-      ruleResult: {
-        ...baseTurnResult.ruleResult,
-        ...resolution.ruleResult
-      }
+      ruleEntry: resolution.entry,
+      ruleResult: resolution.ruleResult,
+      fallbackNarration: eventNarrationFallback(resolution)
     };
-    state.auditLog.push({
-      type: 'turn',
-      actionId: action.id,
-      command: action.command,
-      ruleResult: turnResult.ruleResult,
-      llm: turnResult.narration.status,
-      at: now().toISOString()
-    });
-
-    return jsonResponse(200, requestId, { game: state.game, turnResult });
   }
 
   const after = normalizeGame(advanceTurn(before, action.command));
@@ -346,22 +375,74 @@ async function handleTurn({ body, requestId, state, now }) {
     action: { ...action },
     ruleEntry: after.log.at(-1)
   });
-  const narration = await resolveTurnNarration({ before, after, action, state });
-  state.game = applyNarrationToGame(state.game, after.turn, narration);
-  const turnResult = buildTurnResult({ before, after: state.game, actionId: action.id, narration });
+
+  return {
+    before,
+    action,
+    ruleEntry: after.log.at(-1)
+  };
+}
+
+function finalizeTurn({ resolved, state, now }) {
+  state.game = applyNarrationToGame(state.game, state.game.turn, resolved.narration);
+  const baseTurnResult = buildTurnResult({
+    before: resolved.before,
+    after: state.game,
+    actionId: resolved.action.id,
+    narration: resolved.narration
+  });
+  const turnResult = resolved.ruleResult ? {
+    ...baseTurnResult,
+    ruleResult: {
+      ...baseTurnResult.ruleResult,
+      ...resolved.ruleResult
+    }
+  } : baseTurnResult;
+
   state.auditLog.push({
     type: 'turn',
-    actionId: action.id,
-    command: action.command,
+    actionId: resolved.action.id,
+    command: resolved.action.command,
     ruleResult: turnResult.ruleResult,
     llm: turnResult.narration.status,
     at: now().toISOString()
   });
 
-  return jsonResponse(200, requestId, {
+  return {
     game: state.game,
     turnResult
-  });
+  };
+}
+
+async function resolveTurnNarrationStream({ resolved, state, emit }) {
+  if (!state.llm.streamNarration) {
+    return resolveTurnNarration({
+      before: resolved.before,
+      after: state.game,
+      action: resolved.action,
+      ruleEntry: resolved.ruleEntry,
+      state
+    });
+  }
+
+  let rawNarration = '';
+  for await (const chunk of state.llm.streamNarration({
+    beforeGame: resolved.before,
+    afterGame: state.game,
+    action: resolved.action,
+    ruleEntry: resolved.ruleEntry ?? state.game.log.at(-1)
+  })) {
+    const text = String(chunk ?? '');
+    if (!text) continue;
+    rawNarration += text;
+    emit('narration_delta', { text });
+  }
+
+  if (!rawNarration.trim()) {
+    throw new Error('streamed narration was empty');
+  }
+
+  return normalizeGeneratedNarration(JSON.parse(rawNarration), state.game);
 }
 
 async function handleRetryNarration({ turn, requestId, state, now }) {
@@ -386,12 +467,12 @@ async function handleRetryNarration({ turn, requestId, state, now }) {
   });
 }
 
-async function resolveTurnNarration({ before, after, action, state }) {
+async function resolveTurnNarration({ before, after, action, ruleEntry, state }) {
   const result = await state.storyGraph.invoke({
     beforeGame: before,
     afterGame: after,
     action,
-    ruleEntry: after.log.at(-1)
+    ruleEntry: ruleEntry ?? after.log.at(-1)
   });
   return result.narration;
 }
@@ -512,6 +593,47 @@ function jsonResponse(status, requestId, data) {
     error: null,
     requestId
   }), responseInit(status));
+}
+
+function sseResponse(write) {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const emit = (event, data) => {
+        controller.enqueue(encoder.encode(`event: ${event}\n`));
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+      };
+
+      try {
+        await write(emit);
+      } catch (error) {
+        emit('error', {
+          ok: false,
+          data: null,
+          error: {
+            code: 'STREAM_ERROR',
+            message: '流式剧情生成中断，请稍后重试。',
+            detail: error.message
+          }
+        });
+      } finally {
+        controller.close();
+      }
+    }
+  });
+
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+      'x-accel-buffering': 'no',
+      'access-control-allow-origin': '*',
+      'access-control-allow-methods': 'GET,POST,OPTIONS',
+      'access-control-allow-headers': 'content-type,authorization'
+    }
+  });
 }
 
 function errorResponse(status, requestId, code, message) {

@@ -12,7 +12,7 @@
   --gold: #b58b3f;
   --cinnabar: #b5473f;
   --shadow: 0 24px 60px rgba(32, 34, 28, 0.18);
-  --hero-scroll-width: 82%;
+  --hero-scroll-width: 100%;
   --main-card-columns: repeat(2, minmax(0, 1fr));
   --status-card-min-height: 104px;
   --action-card-min-height: 122px;
@@ -442,9 +442,9 @@ button {
 .hero-scroll {
   position: relative;
   width: min(100%, var(--hero-scroll-width));
-  min-height: 172px;
+  min-height: 80px;
   overflow: hidden;
-  padding: 24px;
+  padding: 18px;
   background:
     linear-gradient(90deg, rgba(255, 252, 240, 0.86), rgba(255, 252, 240, 0.42)),
     var(--paper);
@@ -456,7 +456,7 @@ button {
   right: -8%;
   bottom: -22px;
   width: 72%;
-  height: 150px;
+  height: 100px;
   opacity: 0.24;
   background: var(--ink);
   clip-path: polygon(0 100%, 14% 54%, 25% 70%, 39% 28%, 52% 63%, 66% 38%, 82% 68%, 100% 40%, 100% 100%);
@@ -951,6 +951,53 @@ button {
   border: 1px solid rgba(61, 68, 56, 0.14);
   border-radius: 8px;
   background: rgba(255, 252, 240, 0.48);
+}
+
+.log-card.is-new {
+  animation: history-card-refresh 780ms ease-out;
+}
+
+.log-card.streaming {
+  border-color: rgba(47, 143, 112, 0.28);
+  background: rgba(236, 248, 239, 0.56);
+}
+
+.log-card.streaming p::after {
+  content: "";
+  display: inline-block;
+  width: 0.65em;
+  height: 1em;
+  margin-left: 3px;
+  border-right: 2px solid rgba(47, 143, 112, 0.66);
+  vertical-align: -0.15em;
+  animation: stream-caret 820ms steps(2, end) infinite;
+}
+
+@keyframes history-card-refresh {
+  0% {
+    transform: translateY(6px);
+    border-color: rgba(47, 143, 112, 0.42);
+    box-shadow: 0 0 0 rgba(47, 143, 112, 0);
+  }
+  45% {
+    transform: translateY(0);
+    box-shadow: 0 10px 26px rgba(47, 143, 112, 0.16);
+  }
+  100% {
+    border-color: rgba(61, 68, 56, 0.14);
+    box-shadow: none;
+  }
+}
+
+@keyframes stream-caret {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  46%,
+  100% {
+    opacity: 0;
+  }
 }
 
 .log-card header {

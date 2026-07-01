@@ -49,15 +49,29 @@ async function toWebRequest(incoming) {
   });
 }
 
-async function sendWebResponse(outgoing, response) {
+export async function sendWebResponse(outgoing, response) {
   outgoing.writeHead(response.status, Object.fromEntries(response.headers.entries()));
   if (!response.body) {
     outgoing.end();
     return;
   }
 
-  const body = Buffer.from(await response.arrayBuffer());
-  outgoing.end(body);
+  const reader = response.body.getReader?.();
+  if (!reader) {
+    outgoing.end(Buffer.from(await response.arrayBuffer()));
+    return;
+  }
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (value) outgoing.write(Buffer.from(value));
+    }
+    outgoing.end();
+  } catch (error) {
+    outgoing.destroy(error);
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

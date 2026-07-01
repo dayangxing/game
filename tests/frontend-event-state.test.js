@@ -37,14 +37,28 @@ test('history cards and action cards stay player-facing without backend identifi
 
   assert.match(source, /function formatHistoryEffectSummary/);
   assert.match(source, /function buildRecentHistory/);
+  assert.match(source, /function beginStreamingNarration/);
+  assert.match(source, /function updateStreamingNarration/);
   assert.match(source, /历史行为/);
   assert.match(source, /effects-summary/);
+  assert.match(source, /log-card streaming is-new/);
   assert.match(source, /function formatActionMeta\(action\)/);
   assert.match(source, /function displayActionIcon\(action\)/);
   assert.match(source, /meta:\s*formatActionMeta\(action\)/);
   assert.match(source, /icon:\s*displayActionIcon\(action\)/);
   assert.doesNotMatch(source, /<div class="event-meta">\$\{action\.eventId\} \/ \$\{action\.choiceId\}<\/div>/);
   assert.doesNotMatch(source, /ruleResult|statChanges|choiceId|eventId|derivedBonuses/);
+});
+
+test('status overview renders sect reputation as a normal metric card', () => {
+  const source = fs.readFileSync('frontend/src/app.js', 'utf8');
+
+  assert.match(source, /const sectRelation = game\.player\.sectRelation \?\? 0;/);
+  assert.match(source, /label:\s*'宗门声望'/);
+  assert.match(source, /value:\s*`\$\{sectRelation\}\/100`/);
+  assert.match(source, /tone:\s*'sect'/);
+  assert.match(source, /note:\s*`\s*所在 \$\{game\.player\.location\}`/);
+  assert.doesNotMatch(source, /label:\s*'所在'[\s\S]*note:\s*`宗门声望/);
 });
 
 test('frontend styles include dense center-stage status, collection, and history layouts', () => {
@@ -58,13 +72,16 @@ test('frontend styles include dense center-stage status, collection, and history
   assert.match(css, /\.collection-grid\s*\{/);
   assert.match(css, /\.effects-summary\s*\{/);
   assert.match(css, /\.action-card\s*\{/);
+  assert.match(css, /\.log-card\.is-new\s*\{/);
+  assert.match(css, /@keyframes history-card-refresh/);
+  assert.match(css, /\.log-card\.streaming\s*\{/);
 });
 
 test('status cards keep a stable wide card ratio instead of stretching tall', () => {
   const css = fs.readFileSync('frontend/src/styles.css', 'utf8');
 
   assert.match(css, /--main-card-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
-  assert.match(css, /--hero-scroll-width:\s*82%/);
+  assert.match(css, /--hero-scroll-width:\s*100%/);
   assert.match(css, /--status-card-min-height:\s*104px/);
   assert.match(css, /--action-card-min-height:\s*122px/);
   assert.match(css, /\.stage-status\s*\{[\s\S]*grid-column:\s*1\s*\/\s*-1/);

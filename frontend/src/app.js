@@ -34,6 +34,8 @@ const initialMode = localStorage.getItem(MODE_KEY) || 'api';
 let startupNotice = '';
 let actionRefreshSequence = 0;
 let pendingApiImmediateActions = false;
+let streamingNarration = null;
+let highlightedHistoryEntryId = null;
 let pendingCharacterSeed = Number(localStorage.getItem('wendao-fusheng-character-seed') ?? Date.now());
 let pendingAttributes = createDefaultAllocation();
 const api = createGameApi({
@@ -261,16 +263,23 @@ async function submitDailyAction(action) {
     showToast('行动尚在刷新，请稍候再试');
     return;
   }
+  beginStreamingNarration(action);
   try {
     const previousGame = game;
-    game = hydrateHistorySummaries(await api.submitDailyAction(game, action));
+    game = hydrateHistorySummaries(await api.submitDailyActionStream(game, action, {
+      onNarrationPreview: updateStreamingNarration
+    }));
     game = enrichGameHistory(game, previousGame);
+    markHistoryRefreshed(game);
     persistHistorySummaryCache(game);
     saveGame();
+    clearStreamingNarration();
     showImmediateActionsForView(activeViewId);
     refreshDailyActionsForView(activeViewId).catch(handleApiError);
     nodes.logList.scrollTo({ top: 0, behavior: 'smooth' });
   } catch (error) {
+    clearStreamingNarration();
+    renderStory();
     handleApiError(error);
   }
 }
@@ -442,6 +451,7 @@ function renderStatusOverview() {
   const healthMax = game.player.maxHealth ?? (healthNow || 1);
   const lifespanNow = game.player.lifespan ?? game.player.maxLifespan ?? 0;
   const lifespanMax = game.player.maxLifespan ?? (lifespanNow || 1);
+  const sectRelation = game.player.sectRelation ?? 0;
   const cards = [
     {
       label: '气血',
@@ -465,11 +475,11 @@ function renderStatusOverview() {
       note: `当前破境进度 ${game.player.cultivationProgress ?? 0}%`
     },
     {
-      label: '所在',
-      value: game.player.location,
-      percent: Math.min(100, game.player.sectRelation ?? 0),
-      tone: 'location',
-      note: `宗门声望 ${game.player.sectRelation ?? 0}`
+      label: '宗门声望',
+      value: `${sectRelation}/100`,
+      percent: Math.min(100, sectRelation),
+      tone: 'sect',
+      note: `所在 ${game.player.location}`
     }
   ];
 
@@ -523,7 +533,7 @@ function renderStory() {
   `).join('');
 
   nodes.logList.innerHTML = buildRecentHistory().map((entry) => `
-    <article class="log-card">
+    <article class="${historyCardClass(entry)}">
       <header><strong>${entry.title}</strong><span>${entry.command}</span></header>
       <p>${entry.body}</p>
       ${entry.effectsSummary ? `<div class="effects-summary">${formatHistoryEffectSummary(entry)}</div>` : ''}
@@ -534,7 +544,42 @@ function renderStory() {
 }
 
 function buildRecentHistory() {
-  return game.log.slice(-5).reverse();
+  const entries = game.log.slice(-5).reverse();
+  return streamingNarration ? [streamingNarration, ...entries] : entries;
+}
+
+function historyCardClass(entry) {
+  if (entry.streaming) return 'log-card streaming is-new';
+  return entry.id === highlightedHistoryEntryId ? 'log-card is-new' : 'log-card';
+}
+
+function beginStreamingNarration(action) {
+  streamingNarration = {
+    id: 'streaming-narration',
+    streaming: true,
+    title: '剧情续写中',
+    command: action.title ?? action.command ?? '今日行动',
+    body: '云笺已启，正在接续本回合见闻。'
+  };
+  renderStory();
+}
+
+function updateStreamingNarration(preview) {
+  const body = String(preview ?? '').trim();
+  if (!streamingNarration || !body) return;
+  streamingNarration = {
+    ...streamingNarration,
+    body
+  };
+  renderStory();
+}
+
+function clearStreamingNarration() {
+  streamingNarration = null;
+}
+
+function markHistoryRefreshed(targetGame) {
+  highlightedHistoryEntryId = targetGame.log.at(-1)?.id ?? null;
 }
 
 function formatHistoryEffectSummary(entry) {

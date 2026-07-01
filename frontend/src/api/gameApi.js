@@ -88,6 +88,10 @@ export function createGameApi(options = {}) {
     },
 
     async submitDailyAction(game, action) {
+      return this.submitDailyActionStream(game, action);
+    },
+
+    async submitDailyActionStream(game, action, handlers = {}) {
       if (shouldUseBackend(game, canUseBackend)) {
         if (action.source === 'immediate') {
           throw new BackendApiError('行动尚在刷新，请稍候再试。', {
@@ -95,15 +99,16 @@ export function createGameApi(options = {}) {
           });
         }
         const backendAction = await resolveBackendAction({ baseUrl, fetchImpl, game, action });
-        const data = await requestJson({
+        const data = await requestEventStream({
           baseUrl,
           fetchImpl,
-          path: '/api/v1/turns',
+          path: '/api/v1/turns/stream',
           method: 'POST',
           body: {
             actionId: backendAction.id,
             clientTurn: game.turn
-          }
+          },
+          handlers
         });
         return withMode(data.game, 'api');
       }
@@ -189,6 +194,169 @@ async function requestJson({ baseUrl, fetchImpl, path, method = 'GET', body }) {
   }
 
   return payload.data;
+}
+
+async function requestEventStream({ baseUrl, fetchImpl, path, method = 'GET', body, handlers = {} }) {
+  const response = await fetchImpl(`${baseUrl}${path}`, {
+    method,
+    headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    await throwResponseError(response);
+  }
+
+  const reader = response.body?.getReader?.();
+  if (!reader) {
+    throw new BackendApiError('云端暂不可用，请稍后重试。', {
+      status: response.status,
+      code: 'STREAM_UNSUPPORTED'
+    });
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let rawNarration = '';
+  let donePayload = null;
+
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+
+    const parts = buffer.split(/\r?\n\r?\n/);
+    buffer = parts.pop() ?? '';
+
+    for (const part of parts) {
+      const event = parseSseBlock(part);
+      if (!event) continue;
+
+      if (event.name === 'narration_delta') {
+        const delta = String(event.data?.text ?? '');
+        rawNarration += delta;
+        handlers.onNarrationDelta?.(delta, rawNarration);
+        const preview = extractJsonStringField(rawNarration, 'body');
+        if (preview) handlers.onNarrationPreview?.(preview, rawNarration);
+      }
+
+      if (event.name === 'done') {
+        donePayload = event.data;
+      }
+
+      if (event.name === 'error') {
+        throw new BackendApiError(event.data?.error?.message ?? '流式剧情生成中断，请稍后重试。', {
+          status: response.status,
+          code: event.data?.error?.code
+        });
+      }
+    }
+
+    if (done) break;
+  }
+
+  if (buffer.trim()) {
+    const event = parseSseBlock(buffer);
+    if (event?.name === 'done') donePayload = event.data;
+  }
+
+  if (!donePayload) {
+    throw new BackendApiError('云端没有返回完整回合结果，请稍后重试。', {
+      status: response.status,
+      code: 'STREAM_DONE_MISSING'
+    });
+  }
+
+  if (donePayload.ok === false) {
+    throw new BackendApiError(donePayload.error?.message ?? '云端暂不可用，请稍后重试。', {
+      status: response.status,
+      code: donePayload.error?.code,
+      requestId: donePayload.requestId
+    });
+  }
+
+  return donePayload.data;
+}
+
+async function throwResponseError(response) {
+  try {
+    const payload = await response.json();
+    const message = payload.error?.message ?? '云端暂不可用，请稍后重试。';
+    throw new BackendApiError(message, {
+      status: response.status,
+      code: payload.error?.code,
+      requestId: payload.requestId
+    });
+  } catch (error) {
+    if (error instanceof BackendApiError) throw error;
+    throw new BackendApiError('云端暂不可用，请稍后重试。', {
+      status: response.status
+    });
+  }
+}
+
+function parseSseBlock(block) {
+  const lines = block.split(/\r?\n/);
+  const name = lines
+    .find((line) => line.startsWith('event:'))
+    ?.slice(6)
+    .trim();
+  const data = lines
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => line.slice(5).trimStart())
+    .join('\n');
+
+  if (!name || !data) return null;
+  return {
+    name,
+    data: JSON.parse(data)
+  };
+}
+
+function extractJsonStringField(raw, field) {
+  const marker = `"${field}"`;
+  const keyIndex = raw.indexOf(marker);
+  if (keyIndex === -1) return '';
+
+  const colonIndex = raw.indexOf(':', keyIndex + marker.length);
+  if (colonIndex === -1) return '';
+
+  const startIndex = raw.indexOf('"', colonIndex + 1);
+  if (startIndex === -1) return '';
+
+  let value = '';
+  let escaping = false;
+  for (let index = startIndex + 1; index < raw.length; index += 1) {
+    const character = raw[index];
+
+    if (escaping) {
+      value += decodeJsonEscape(character);
+      escaping = false;
+      continue;
+    }
+
+    if (character === '\\') {
+      escaping = true;
+      continue;
+    }
+
+    if (character === '"') return value;
+    value += character;
+  }
+
+  return value;
+}
+
+function decodeJsonEscape(character) {
+  return {
+    '"': '"',
+    '\\': '\\',
+    '/': '/',
+    b: '\b',
+    f: '\f',
+    n: '\n',
+    r: '\r',
+    t: '\t'
+  }[character] ?? character;
 }
 
 export class BackendApiError extends Error {
