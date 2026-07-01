@@ -182,7 +182,11 @@ function nextRealm(realm = '') {
 }
 
 function breakthroughRoll(game) {
-  return Math.abs(Math.floor(game.characterSeed ?? game.seed ?? 1)) % 100;
+  const baseSeed = numericSeed(game.characterSeed ?? game.seed ?? 1);
+  const turnSalt = numericSeed(game.turn ?? 0) * 37;
+  const previousAttemptSalt = numericSeed(game.cooldowns?.breakthrough_attempt ?? 0) * 17;
+
+  return Math.abs(baseSeed + turnSalt + previousAttemptSalt) % 100;
 }
 
 function applyBreakthroughFailure(player, failureCost) {
@@ -199,4 +203,9 @@ function applyBreakthroughFailure(player, failureCost) {
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function numericSeed(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.floor(number) : 1;
 }

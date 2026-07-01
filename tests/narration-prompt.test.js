@@ -64,15 +64,15 @@ test('narration prompt includes compact deterministic state for attributes, vita
   ]);
   assert.equal('id' in user.afterGame.treasures[0], false);
   assert.equal('id' in user.afterGame.techniques[0], false);
-  assert.deepEqual(user.action.breakthroughPreview, {
+  assert.deepEqual(user.action.breakthrough, {
     targetRealm: '炼气八层',
-    chance: 72,
-    failureCost: { health: 18, lifespan: 1, progressLoss: 40 }
+    successChance: 72,
+    failureConsequence: { healthLoss: 18, lifespanLoss: 1, progressLoss: 40 }
   });
-  assert.deepEqual(user.ruleEntry.breakthroughResult, {
-    success: false,
+  assert.deepEqual(user.ruleEntry.breakthrough, {
+    succeeded: false,
     targetRealm: '炼气八层',
-    chance: 72
+    successChance: 72
   });
   assert.equal(user.ruleDelta.health, -13);
   assert.equal(user.ruleDelta.lifespan, -2);
@@ -82,6 +82,7 @@ test('narration prompt forbids changing event rule effects', () => {
   const messages = buildNarrationMessages(makePromptInput());
   const system = messages.find((message) => message.role === 'system').content;
   const user = JSON.parse(messages.find((message) => message.role === 'user').content);
+  const payload = JSON.stringify(user);
 
   assert.match(system, /不得新增奖励/);
   assert.match(system, /不得改写.*treasure|treasure.*不得改写|不得增删.*法宝|行囊/);
@@ -91,12 +92,14 @@ test('narration prompt forbids changing event rule effects', () => {
   assert.match(system, /maxLifespan|寿元上限/);
   assert.match(system, /突破.*成功失败|成功失败.*突破/);
   assert.match(system, /不得新增.*flag/);
-  assert.match(system, /eventId/);
-  assert.match(system, /choiceId/);
+  assert.doesNotMatch(system, /eventId|choiceId|breakthroughPreview|breakthroughResult/);
   assert.match(system, /只能润色已结算结果/);
 
-  assert.equal(user.action.eventId, 'mist_bronze_bell');
-  assert.equal(user.action.choiceId, 'approach');
+  assert.deepEqual(user.action.settledContext, {
+    isResolved: true,
+    kind: '突破尝试'
+  });
+  assert.doesNotMatch(payload, /eventId|choiceId|act_0_cultivation_0|mist_bronze_bell|approach|medium|breakthroughPreview|breakthroughResult/);
 });
 
 test('repair prompt asks the model to only repair invalid json output', () => {
@@ -118,8 +121,8 @@ test('repair prompt asks the model to only repair invalid json output', () => {
   assert.match(system, /maxLifespan|寿元上限/);
   assert.match(system, /treasures|法宝|行囊/);
   assert.match(system, /techniques|功法/);
-  assert.match(system, /breakthroughPreview|破境预览|突破预览/);
-  assert.match(system, /breakthroughResult|突破.*成功失败|成功失败.*突破/);
+  assert.match(system, /破境预览|突破预览/);
+  assert.match(system, /突破结果|突破.*成功失败|成功失败.*突破/);
   assert.match(system, /成功失败/);
   assert.deepEqual(user.validationErrors, ['body too short', 'missing npcLine']);
   assert.equal(user.rawNarration.title, '短');

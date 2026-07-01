@@ -1,5 +1,5 @@
 const EVENT_RULE_BOUNDARY = [
-  '如果输入包含 eventId 和 choiceId，你必须把它们视为已经结算的事件选择。',
+  '如果输入提示本回合来自已结算事件或已结算选择，你必须把它视为规则结果已经落定。',
   '只能润色已结算结果，不得新增奖励、道具、境界、关系、flag、futureEvent 或成功失败判定。',
   '如果想暗示伏笔，只能使用输入里已有的 foreshadow、flags 或 ruleEntry 内容。'
 ].join('\n');
@@ -20,7 +20,7 @@ const NARRATION_SYSTEM_PROMPT = [
   '2. 不得声称玩家突破、死亡、拜师、获得法宝，除非 afterGame 或 ruleEntry 明确发生。',
   '3. 不得改写 attributes、health、maxHealth、lifespan、maxLifespan、qi、mood、cultivationProgress、spiritStones、sectRelation 等数值或衍生状态。',
   '4. 不得增删或偷换 treasures、techniques、derivedBonuses，也不得把未获得的法宝、功法、行囊物件写成既成事实。',
-  '5. 不得改写 breakthroughPreview、breakthroughResult、突破成功失败、目标境界或相关代价。',
+  '5. 不得改写突破预览、突破结果、突破成功失败、目标境界或相关代价。',
   '6. 不得替玩家做下一个回合的选择。',
   '7. 不得引入现实政治、色情、血腥虐待、现代科技、出戏吐槽或系统提示。',
   '8. 不得使用“作为AI”“根据你的输入”“规则引擎显示”等破坏沉浸感的说法。',
@@ -50,7 +50,7 @@ const REPAIR_SYSTEM_PROMPT = [
   '只能润色已结算结果并修复 JSON 结构，不得改变已结算事实。',
   EVENT_RULE_BOUNDARY,
   '必须保留已结算事实，不得新增奖励、道具、境界、关系、进度、flag、futureEvent、世界事件或成功失败判定。',
-  '不得改写 attributes、health、maxHealth、lifespan、maxLifespan、treasures、techniques、breakthroughPreview、breakthroughResult 或突破成功失败。',
+  '不得改写 attributes、health、maxHealth、lifespan、maxLifespan、treasures、techniques、突破预览、突破结果或突破成功失败。',
   '返回值必须是合法 JSON object，不能包含 Markdown、代码块或额外文字。'
 ].join('\n');
 
@@ -76,8 +76,8 @@ export function buildNarrationMessages({ beforeGame, afterGame, action, ruleEntr
           '必须把 ruleDelta 体现为感受或场景变化，但不要直接报数值。',
           'npcLine 只能使用现有 NPC，不得创造新核心 NPC。',
           'foreshadow 必须与已有 foreshadows 或 worldEvents 有关联。',
-          '如果 action 带有 eventId 或 choiceId，它们只用于标识本次已结算事件，不允许借此改写规则效果。',
-          '如果 action 或 ruleEntry 带有 breakthroughPreview、breakthroughResult，只能承认其已结算信息，不得重算概率、骰点或成败。',
+          '如果行动上下文提示本回合来自已结算事件，只能承认其结果，不允许借此改写规则效果。',
+          '如果行动或规则上下文包含突破信息，只能承认其已结算信息，不得重算概率、骰点或成败。',
           '输出字段必须完整：title、body、npcLine、foreshadow、continuityNotes、safetyFlags。'
         ]
       })
@@ -113,16 +113,16 @@ export function buildRepairNarrationMessages({ validationErrors, rawNarration, a
 
 function pickActionContext(action) {
   const context = {
-    id: action?.id,
-    eventId: action?.eventId ?? null,
-    choiceId: action?.choiceId ?? null,
     title: action?.title,
     command: action?.command,
-    risk: action?.risk
+    settledContext: {
+      isResolved: Boolean(action?.eventId || action?.choiceId || action?.source === 'event' || action?.source === 'breakthrough'),
+      kind: describeResolvedActionKind(action)
+    }
   };
 
   if (action?.breakthroughPreview) {
-    context.breakthroughPreview = pickBreakthroughPreview(action.breakthroughPreview);
+    context.breakthrough = pickBreakthroughPreview(action.breakthroughPreview);
   }
 
   return context;
@@ -130,7 +130,6 @@ function pickActionContext(action) {
 
 function pickRuleEntryContext(ruleEntry) {
   const context = {
-    id: ruleEntry?.id,
     title: ruleEntry?.title,
     command: ruleEntry?.command,
     body: ruleEntry?.body,
@@ -139,10 +138,16 @@ function pickRuleEntryContext(ruleEntry) {
   };
 
   if (ruleEntry?.breakthroughResult) {
-    context.breakthroughResult = pickBreakthroughResult(ruleEntry.breakthroughResult);
+    context.breakthrough = pickBreakthroughResult(ruleEntry.breakthroughResult);
   }
 
   return context;
+}
+
+function describeResolvedActionKind(action) {
+  if (action?.source === 'breakthrough' || action?.breakthroughPreview) return '突破尝试';
+  if (action?.eventId || action?.choiceId || action?.source === 'event') return '事件选择';
+  return '日常行动';
 }
 
 function pickNarrationContext(game) {
@@ -252,15 +257,19 @@ function pickAttributes(attributes) {
 function pickBreakthroughPreview(preview) {
   return {
     targetRealm: preview.targetRealm,
-    chance: preview.chance,
-    failureCost: preview.failureCost
+    successChance: preview.chance,
+    failureConsequence: {
+      healthLoss: preview.failureCost?.health,
+      lifespanLoss: preview.failureCost?.lifespan,
+      progressLoss: preview.failureCost?.progressLoss
+    }
   };
 }
 
 function pickBreakthroughResult(result) {
   return {
-    success: result.success,
+    succeeded: result.success,
     targetRealm: result.targetRealm,
-    chance: result.chance
+    successChance: result.chance
   };
 }

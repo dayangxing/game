@@ -109,6 +109,22 @@ test('deterministic breakthrough seeds can produce both success and failure', ()
   assert.equal(failure.game.player.realm, '炼气一层');
 });
 
+test('later breakthrough attempts vary the deterministic roll for the same character', () => {
+  const base = createFormalGame({ seed: 52 });
+  const first = resolveBreakthrough(base, new Date('2026-07-01T08:00:00.000Z'));
+  const laterAttempt = {
+    ...base,
+    turn: 7,
+    cooldowns: {
+      ...base.cooldowns,
+      breakthrough_attempt: first.game.turn
+    }
+  };
+  const second = resolveBreakthrough(laterAttempt, new Date('2026-07-08T08:00:00.000Z'));
+
+  assert.notEqual(second.ruleResult.roll, first.ruleResult.roll);
+});
+
 test('failed breakthroughs cost health and lifespan and roll cultivation progress back', () => {
   const base = createFormalGame({ seed: 98 });
   const result = resolveBreakthrough(base, new Date('2026-07-01T08:00:00.000Z'));
