@@ -63,8 +63,16 @@ test('frontend styles include dense center-stage status, collection, and history
 test('status cards keep a stable wide card ratio instead of stretching tall', () => {
   const css = fs.readFileSync('frontend/src/styles.css', 'utf8');
 
-  assert.match(css, /\.status-overview\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(220px,\s*1fr\)\)/);
-  assert.match(css, /\.status-card\s*\{[\s\S]*min-height:\s*104px/);
+  assert.match(css, /--main-card-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
+  assert.match(css, /--hero-scroll-width:\s*82%/);
+  assert.match(css, /--status-card-min-height:\s*104px/);
+  assert.match(css, /--action-card-min-height:\s*122px/);
+  assert.match(css, /\.stage-status\s*\{[\s\S]*grid-column:\s*1\s*\/\s*-1/);
+  assert.match(css, /\.hero-scroll\s*\{[\s\S]*width:\s*min\(100%,\s*var\(--hero-scroll-width\)\)/);
+  assert.match(css, /\.status-overview\s*\{[\s\S]*grid-template-columns:\s*var\(--main-card-columns\)/);
+  assert.match(css, /\.action-grid\s*\{[\s\S]*grid-template-columns:\s*var\(--main-card-columns\)/);
+  assert.match(css, /\.status-card\s*\{[\s\S]*min-height:\s*var\(--status-card-min-height\)/);
+  assert.match(css, /\.action-card\s*\{[\s\S]*min-height:\s*var\(--action-card-min-height\)/);
   assert.match(css, /\.status-card\s*\{[\s\S]*grid-template-rows:\s*auto\s+8px\s+1fr/);
   assert.match(css, /\.status-card-head\s+strong\s*\{[\s\S]*overflow-wrap:\s*anywhere/);
 });

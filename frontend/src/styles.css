@@ -12,6 +12,10 @@
   --gold: #b58b3f;
   --cinnabar: #b5473f;
   --shadow: 0 24px 60px rgba(32, 34, 28, 0.18);
+  --hero-scroll-width: 82%;
+  --main-card-columns: repeat(2, minmax(0, 1fr));
+  --status-card-min-height: 104px;
+  --action-card-min-height: 122px;
 }
 
 * {
@@ -437,6 +441,7 @@ button {
 
 .hero-scroll {
   position: relative;
+  width: min(100%, var(--hero-scroll-width));
   min-height: 172px;
   overflow: hidden;
   padding: 24px;
@@ -486,7 +491,7 @@ button {
 
 .dashboard-content {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: var(--main-card-columns);
   gap: 16px;
 }
 
@@ -696,7 +701,7 @@ button {
 
 .action-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: var(--main-card-columns);
   gap: 12px;
 }
 
@@ -705,7 +710,7 @@ button {
   grid-template-columns: 48px minmax(0, 1fr);
   grid-template-rows: auto 1fr auto;
   gap: 8px 12px;
-  min-height: 122px;
+  min-height: var(--action-card-min-height);
   padding: 14px;
   border: 1px solid rgba(61, 68, 56, 0.16);
   border-radius: 8px;
@@ -795,6 +800,10 @@ button {
   gap: 10px;
 }
 
+.stage-status {
+  grid-column: 1 / -1;
+}
+
 .action-note strong {
   color: var(--gold);
 }
@@ -807,7 +816,7 @@ button {
 
 .status-overview {
   display: grid;
-  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  grid-template-columns: var(--main-card-columns);
   gap: 10px;
 }
 
@@ -824,7 +833,7 @@ button {
   display: grid;
   grid-template-rows: auto 8px 1fr;
   gap: 8px;
-  min-height: 104px;
+  min-height: var(--status-card-min-height);
   padding: 12px;
   align-content: start;
 }
