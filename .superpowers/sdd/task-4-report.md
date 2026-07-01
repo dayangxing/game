@@ -75,3 +75,67 @@ Result:
 ## Concerns
 
 - No blocking concerns after verification.
+
+## Fix Report
+
+### Findings addressed
+
+1. Breakthrough-only cultivation action lists now compose `尝试突破` with fallback daily actions when ordinary cultivation event choices are exhausted, while keeping breakthrough first when it is available.
+2. Daily-action JSON responses now expose only player-facing action fields. Internal routing/debug fields stay in `pendingActions` for tutorial, fallback, event, and breakthrough handling.
+
+### RED evidence
+
+Command:
+
+```bash
+/Users/ruilifeng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test tests/backend-api.test.js
+```
+
+Result:
+
+- `19` tests passed
+- `7` tests failed
+- Failures proved two regressions:
+  - `POST /api/v1/daily-actions returns breakthrough plus fallback actions when cultivation events are exhausted` returned only `1` action instead of `4`.
+  - Public daily-action payload tests failed because responses still included internal fields outside the allowed player-facing shape.
+
+### GREEN evidence
+
+Targeted command:
+
+```bash
+/Users/ruilifeng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test tests/backend-api.test.js
+```
+
+Result:
+
+- `26` tests passed
+- `0` tests failed
+
+Task-slice command:
+
+```bash
+/Users/ruilifeng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test tests/breakthrough.test.js tests/backend-api.test.js tests/frontend-backend-integration.test.js
+```
+
+Result:
+
+- `34` tests passed
+- `0` tests failed
+
+Full suite command:
+
+```bash
+/Users/ruilifeng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test tests/*.test.js
+```
+
+Result:
+
+- `134` tests passed
+- `0` tests failed
+
+### Files changed
+
+- `backend/src/app.js`
+- `backend/src/domain/events/eventResult.js`
+- `tests/backend-api.test.js`

@@ -1,6 +1,13 @@
 export function stripInternalActionFields(action) {
-  const { event, choice, ...publicAction } = action;
-  return publicAction;
+  return {
+    id: action.id,
+    title: action.title,
+    icon: action.icon,
+    command: action.command,
+    meta: action.meta,
+    storyHook: action.storyHook,
+    expiresAt: action.expiresAt
+  };
 }
 
 export function eventNarrationFallback(resolution) {

@@ -206,9 +206,11 @@ test('prologue actions complete onboarding through daily-actions and turns', asy
       gameVersion: app.getState().game.version
     })));
     const [action] = actionsPayload.data.actions;
+    const onboardingStep = ONBOARDING_STEPS.find((step) => step.id === expectedStep);
 
-    assert.equal(action.source, 'tutorial');
-    assert.equal(action.onboardingStepId, expectedStep);
+    assert.equal(action.title, onboardingStep.actionTitle);
+    assert.equal(action.command, onboardingStep.command);
+    assertPublicActionShape(action);
 
     const turnPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/turns', {
       actionId: action.id,
@@ -256,7 +258,7 @@ test('POST /api/v1/daily-actions falls back when no eligible event actions remai
   assert.equal(payload.ok, true);
   assert.equal(payload.data.actions.length, 4);
   assert.ok(payload.data.actions.every((action) => action.id.startsWith('act_')));
-  assert.ok(payload.data.actions.every((action) => action.source === 'fallback'));
+  assert.ok(payload.data.actions.every((action) => hasOnlyPublicActionFields(action)));
   assert.ok(payload.data.actions.some((action) => action.command.includes('闭关')));
   assert.ok(payload.data.actions.every((action) => action.expiresAt === '2026-06-29T08:30:00.000Z'));
 });
@@ -272,8 +274,8 @@ test('POST /api/v1/daily-actions returns event choices for formal games', async 
 
   assert.equal(payload.ok, true);
   assert.ok(payload.data.actions.length >= 3);
-  assert.ok(payload.data.actions.every((action) => action.source === 'event'));
-  assert.ok(payload.data.actions.some((action) => action.eventId === 'mist_bronze_bell'));
+  assert.ok(payload.data.actions.every((action) => hasOnlyPublicActionFields(action)));
+  assert.ok(payload.data.actions.some((action) => action.title === '靠近铜铃'));
 });
 
 test('POST /api/v1/daily-actions returns at least three eligible skills event actions', async () => {
@@ -287,8 +289,8 @@ test('POST /api/v1/daily-actions returns at least three eligible skills event ac
 
   assert.equal(payload.ok, true);
   assert.ok(payload.data.actions.length >= 3);
-  assert.ok(payload.data.actions.every((action) => action.source === 'event'));
-  assert.ok(payload.data.actions.some((action) => action.eventId === 'master_guidance'));
+  assert.ok(payload.data.actions.every((action) => hasOnlyPublicActionFields(action)));
+  assert.ok(payload.data.actions.some((action) => action.title === '请教瓶颈'));
 });
 
 test('POST /api/v1/daily-actions inserts a breakthrough action before normal cultivation events', async () => {
@@ -307,10 +309,10 @@ test('POST /api/v1/daily-actions inserts a breakthrough action before normal cul
   })));
 
   assert.equal(payload.ok, true);
-  assert.equal(payload.data.actions[0].source, 'breakthrough');
   assert.equal(payload.data.actions[0].title, '尝试突破');
   assert.match(payload.data.actions[0].meta, /成功率 82%/);
   assert.doesNotMatch(payload.data.actions[0].meta, /breakthrough|attempt|choice/i);
+  assertPublicActionShape(payload.data.actions[0]);
 });
 
 test('POST /api/v1/daily-actions hides unaffordable crafting choices for formal bag view', async () => {
@@ -324,7 +326,7 @@ test('POST /api/v1/daily-actions hides unaffordable crafting choices for formal 
   })));
 
   assert.equal(payload.ok, true);
-  assert.equal(payload.data.actions.some((action) => action.eventId === 'alchemy_make_qi_pill'), false);
+  assert.equal(payload.data.actions.some((action) => action.title === '炼制聚气丹'), false);
 });
 
 test('POST /api/v1/daily-actions hides spirit-stone offers the player cannot afford', async () => {
@@ -338,7 +340,80 @@ test('POST /api/v1/daily-actions hides spirit-stone offers the player cannot aff
   })));
 
   assert.equal(payload.ok, true);
-  assert.equal(payload.data.actions.some((action) => action.eventId === 'black_market_offer'), false);
+  assert.equal(payload.data.actions.some((action) => action.title === '交换雷纹草'), false);
+});
+
+test('POST /api/v1/daily-actions returns breakthrough plus fallback actions when cultivation events are exhausted', async () => {
+  const app = createBackendApp({ seed: 31, now: fixedNow });
+  app.getState().game.onboarding = completedOnboardingState();
+
+  await jsonResponse(app.handle(makeRequest('POST', '/api/v1/game/new', {
+    name: '顾清河',
+    rerollSeed: 52
+  })));
+  app.getState().game.player.cultivationProgress = 100;
+  app.getState().game.cooldowns = Object.fromEntries(
+    EVENT_CATALOG
+      .filter((event) => event.trigger?.viewIds?.includes('cultivation'))
+      .map((event) => [event.id, app.getState().game.turn])
+  );
+
+  const payload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+    viewId: 'cultivation',
+    gameVersion: 0
+  })));
+
+  assert.equal(payload.ok, true);
+  assert.equal(payload.data.actions.length, 4);
+  assert.equal(payload.data.actions[0].title, '尝试突破');
+  assert.match(payload.data.actions[0].meta, /成功率 82%/);
+  assert.ok(payload.data.actions.slice(1).some((action) => action.command.includes('闭关修炼三月')));
+  assert.ok(payload.data.actions.every((action) => hasOnlyPublicActionFields(action)));
+});
+
+test('POST /api/v1/daily-actions keeps routing fields server-side while returning only public action fields', async () => {
+  const app = createBackendApp({ seed: 31, now: fixedNow });
+  app.getState().game.onboarding = completedOnboardingState();
+
+  await jsonResponse(app.handle(makeRequest('POST', '/api/v1/game/new', {
+    name: '顾清河',
+    rerollSeed: 52
+  })));
+  app.getState().game.player.cultivationProgress = 100;
+
+  const payload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+    viewId: 'cultivation',
+    gameVersion: 0
+  })));
+  const [publicBreakthrough, publicEvent] = payload.data.actions;
+  const pendingBreakthrough = app.getState().pendingActions.get(publicBreakthrough.id);
+  const pendingEvent = app.getState().pendingActions.get(publicEvent.id);
+
+  assertPublicActionShape(publicBreakthrough);
+  assert.equal('source' in publicBreakthrough, false);
+  assert.equal('risk' in publicBreakthrough, false);
+  assert.equal('eventId' in publicBreakthrough, false);
+  assert.equal('choiceId' in publicBreakthrough, false);
+  assert.equal('breakthroughPreview' in publicBreakthrough, false);
+
+  assertPublicActionShape(publicEvent);
+  assert.equal('source' in publicEvent, false);
+  assert.equal('risk' in publicEvent, false);
+  assert.equal('eventId' in publicEvent, false);
+  assert.equal('choiceId' in publicEvent, false);
+  assert.equal('event' in publicEvent, false);
+  assert.equal('choice' in publicEvent, false);
+
+  assert.equal(pendingBreakthrough.source, 'breakthrough');
+  assert.equal(pendingBreakthrough.breakthroughPreview.targetRealm, '炼气二层');
+  assert.equal(pendingBreakthrough.eventId, 'breakthrough_attempt');
+  assert.equal(pendingBreakthrough.choiceId, 'attempt');
+
+  assert.equal(pendingEvent.source, 'event');
+  assert.equal(typeof pendingEvent.event?.id, 'string');
+  assert.equal(typeof pendingEvent.choice?.id, 'string');
+  assert.equal(pendingEvent.choice.label, publicEvent.title);
+  assert.match(publicEvent.meta, new RegExp(pendingEvent.event.title));
 });
 
 test('POST /api/v1/turns resolves selected event effects deterministically', async () => {
@@ -348,7 +423,7 @@ test('POST /api/v1/turns resolves selected event effects deterministically', asy
     viewId: 'realm',
     gameVersion: 0
   })));
-  const action = actionsPayload.data.actions.find((candidate) => candidate.eventId === 'mist_bronze_bell');
+  const action = actionsPayload.data.actions.find((candidate) => candidate.title === '靠近铜铃');
 
   const turnPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/turns', {
     actionId: action.id,
@@ -384,7 +459,7 @@ test('POST /api/v1/turns routes breakthrough actions through the special resolve
     clientTurn: 0
   })));
 
-  assert.equal(action.source, 'breakthrough');
+  assert.equal(action.title, '尝试突破');
   assert.equal(turnPayload.ok, true);
   assert.equal(turnPayload.data.game.turn, 1);
   assert.equal(turnPayload.data.game.player.realm, '炼气二层');
@@ -592,4 +667,20 @@ function makeRequest(method, path, body) {
 async function jsonResponse(responsePromise) {
   const response = await responsePromise;
   return response.json();
+}
+
+function assertPublicActionShape(action) {
+  assert.equal(hasOnlyPublicActionFields(action), true);
+}
+
+function hasOnlyPublicActionFields(action) {
+  return JSON.stringify(Object.keys(action).sort()) === JSON.stringify([
+    'command',
+    'expiresAt',
+    'icon',
+    'id',
+    'meta',
+    'storyHook',
+    'title'
+  ]);
 }

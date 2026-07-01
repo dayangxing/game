@@ -118,7 +118,7 @@ function handleDailyActions({ body, requestId, state, now }) {
       turn: state.game.turn,
       consumed: false
     });
-    return jsonResponse(200, requestId, { actions: [action] });
+    return jsonResponse(200, requestId, { actions: [stripInternalActionFields(action)] });
   }
 
   const eventActions = selectEventActions({
@@ -127,11 +127,18 @@ function handleDailyActions({ body, requestId, state, now }) {
     now: now(),
     sequenceStart: state.actionSequence
   });
+  const actions = composeDailyActions({
+    game: state.game,
+    viewId,
+    now,
+    sequenceStart: state.actionSequence,
+    eventActions
+  });
 
-  if (eventActions.length > 0) {
-    state.actionSequence += eventActions.length;
+  if (actions.length > 0) {
+    state.actionSequence += actions.length;
 
-    for (const action of eventActions) {
+    for (const action of actions) {
       state.pendingActions.set(action.id, {
         ...action,
         turn: state.game.turn,
@@ -142,39 +149,41 @@ function handleDailyActions({ body, requestId, state, now }) {
     state.auditLog.push({
       type: 'daily-actions',
       viewId,
-      actionIds: eventActions.map((action) => action.id),
+      actionIds: actions.map((action) => action.id),
       at: now().toISOString()
     });
 
     return jsonResponse(200, requestId, {
-      actions: eventActions.map(stripInternalActionFields)
+      actions: actions.map(stripInternalActionFields)
+    });
+  }
+}
+
+function composeDailyActions({ game, viewId, now, sequenceStart, eventActions }) {
+  if (eventActions.length === 0) {
+    return createDailyActions({
+      game,
+      viewId,
+      now: now(),
+      sequenceStart
     });
   }
 
-  const actions = createDailyActions({
-    game: state.game,
-    viewId,
-    now: now(),
-    sequenceStart: state.actionSequence
-  });
-  state.actionSequence += actions.length;
-
-  for (const action of actions) {
-    state.pendingActions.set(action.id, {
-      ...action,
-      turn: state.game.turn,
-      consumed: false
+  if (hasOnlyBreakthroughAction(eventActions)) {
+    const fallbackActions = createDailyActions({
+      game,
+      viewId,
+      now: now(),
+      sequenceStart
     });
+    return [eventActions[0], ...fallbackActions].slice(0, 4);
   }
 
-  state.auditLog.push({
-    type: 'daily-actions',
-    viewId,
-    actionIds: actions.map((action) => action.id),
-    at: now().toISOString()
-  });
+  return eventActions;
+}
 
-  return jsonResponse(200, requestId, { actions });
+function hasOnlyBreakthroughAction(actions) {
+  return actions.length === 1 && actions[0].source === 'breakthrough';
 }
 
 function handleNewFormalGame({ body, requestId, state }) {
