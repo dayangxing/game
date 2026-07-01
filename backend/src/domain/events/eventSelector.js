@@ -4,11 +4,7 @@ import { isEventEligible } from './triggerMatcher.js';
 
 const FEATURED_EVENT_PRIORITY_BOOSTS = {
   realm: {
-    mist_bronze_bell: 100,
     mist_lantern_path: 95
-  },
-  skills: {
-    master_guidance: 80
   }
 };
 
@@ -54,15 +50,7 @@ function compareEvents(left, right, viewId, game) {
 }
 
 function scoreEvent(event, viewId, game) {
-  return event.priority
-    + (FEATURED_EVENT_PRIORITY_BOOSTS[viewId]?.[event.id] ?? 0)
-    + getUnlockedFutureEventBoost(event, game);
-}
-
-function getUnlockedFutureEventBoost(event, game) {
-  const requiredFutureEvent = event.trigger?.requiresFutureEvent;
-  if (!requiredFutureEvent) return 0;
-  return game.karma?.futureEventFlags?.includes(requiredFutureEvent) ? 90 : 0;
+  return event.priority + (FEATURED_EVENT_PRIORITY_BOOSTS[viewId]?.[event.id] ?? 0);
 }
 
 function isEventOnCooldown(event, game) {

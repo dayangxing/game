@@ -182,6 +182,24 @@ test('realm selector surfaces the unlocked mist step reward event', () => {
   assert.equal(actions.some((action) => action.eventId === 'mist_lantern_path'), true);
 });
 
+test('home selector does not globally boost unrelated unlocked future events', () => {
+  const base = formalGame();
+  const game = {
+    ...base,
+    karma: {
+      ...base.karma,
+      futureEventFlags: ['old_friend_returns']
+    }
+  };
+  const actions = selectEventActions({
+    game,
+    viewId: 'home',
+    now: new Date('2026-07-01T08:00:00.000Z')
+  });
+
+  assert.equal(actions.some((action) => action.eventId === 'old_friend_returns'), false);
+});
+
 test('relation effects target the intended npc only', () => {
   const game = formalGame();
   const next = applyEffects(game, [

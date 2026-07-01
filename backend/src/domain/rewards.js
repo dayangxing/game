@@ -45,14 +45,17 @@ export function grantTreasure(game, id) {
   }
 
   const treasures = normalizeRewards(game.treasures, TREASURE_CATALOG);
+  const techniques = normalizeRewards(game.techniques, TECHNIQUE_CATALOG);
+  const previousDerivedBonuses = calculateDerivedBonuses({ treasures, techniques });
   if (treasures.some((entry) => entry.id === id)) {
-    return syncRewardState({ ...game, treasures });
+    return syncRewardState({ ...game, treasures, techniques }, previousDerivedBonuses);
   }
 
   return syncRewardState({
     ...game,
-    treasures: [...treasures, treasure]
-  });
+    treasures: [...treasures, treasure],
+    techniques
+  }, previousDerivedBonuses);
 }
 
 export function grantTechnique(game, id) {
@@ -61,15 +64,18 @@ export function grantTechnique(game, id) {
     throw new Error(`RULE_EFFECT_INVALID:technique:${id}`);
   }
 
+  const treasures = normalizeRewards(game.treasures, TREASURE_CATALOG);
   const techniques = normalizeRewards(game.techniques, TECHNIQUE_CATALOG);
+  const previousDerivedBonuses = calculateDerivedBonuses({ treasures, techniques });
   if (techniques.some((entry) => entry.id === id)) {
-    return syncRewardState({ ...game, techniques });
+    return syncRewardState({ ...game, treasures, techniques }, previousDerivedBonuses);
   }
 
   return syncRewardState({
     ...game,
+    treasures,
     techniques: [...techniques, technique]
-  });
+  }, previousDerivedBonuses);
 }
 
 export function calculateDerivedBonuses(game) {
@@ -101,7 +107,7 @@ function normalizeRewards(entries, catalog) {
   });
 }
 
-function syncRewardState(game) {
+function syncRewardState(game, previousDerivedBonuses = game.derivedBonuses ?? {}) {
   const treasures = normalizeRewards(game.treasures, TREASURE_CATALOG);
   const techniques = normalizeRewards(game.techniques, TECHNIQUE_CATALOG);
   const derivedBonuses = calculateDerivedBonuses({ ...game, treasures, techniques });
@@ -116,7 +122,7 @@ function syncRewardState(game) {
   if (attributeState || game.player.maxHealth !== undefined) {
     const baseMaxHealth = attributeState
       ? deriveMaxHealth(attributeState)
-      : game.player.maxHealth;
+      : game.player.maxHealth - (previousDerivedBonuses.maxHealth ?? 0);
     const maxHealth = baseMaxHealth + (derivedBonuses.maxHealth ?? 0);
     player.maxHealth = maxHealth;
     player.health = clamp(game.player.health ?? 0, 0, maxHealth);
@@ -125,7 +131,7 @@ function syncRewardState(game) {
   if (attributeState || game.player.maxLifespan !== undefined) {
     const baseMaxLifespan = attributeState
       ? deriveMaxLifespan(game.character?.initialLifespan ?? game.player.maxLifespan, attributeState)
-      : game.player.maxLifespan;
+      : game.player.maxLifespan - (previousDerivedBonuses.maxLifespan ?? 0);
     const maxLifespan = baseMaxLifespan + (derivedBonuses.maxLifespan ?? 0);
     player.maxLifespan = maxLifespan;
     player.lifespan = clamp(game.player.lifespan ?? 0, 0, maxLifespan);

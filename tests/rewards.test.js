@@ -83,3 +83,29 @@ test('attribute recalculations preserve reward-derived max health bonuses', () =
   assert.equal(next.derivedBonuses.maxHealth, 6);
   assert.equal(next.player.maxHealth, deriveMaxHealth(next.character.attributes) + 6);
 });
+
+test('legacy max-stat saves add reward bonuses only once when attributes are absent', () => {
+  const base = {
+    ...createGame(91),
+    onboarding: { completed: true },
+    player: {
+      ...createGame(91).player,
+      maxHealth: 100,
+      health: 100,
+      maxLifespan: 80,
+      lifespan: 80
+    },
+    character: {
+      ...createGame(91).character,
+      initialLifespan: 80
+    }
+  };
+
+  const afterTechnique = grantTechnique(base, 'qingmu_jue');
+  const afterTreasure = grantTreasure(afterTechnique, 'tiger_bone_guard');
+
+  assert.equal(afterTechnique.player.maxHealth, 106);
+  assert.equal(afterTreasure.derivedBonuses.maxHealth, 14);
+  assert.equal(afterTreasure.player.maxHealth, 114);
+  assert.equal(afterTreasure.player.maxLifespan, 80);
+});

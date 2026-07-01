@@ -134,3 +134,71 @@ Observed result:
 ## Concerns
 
 - None at handoff. Full targeted and full-suite verification are green.
+
+## Fix Report
+
+### Findings Addressed
+
+1. Critical: legacy/mock saves with `player.maxHealth` and `player.maxLifespan` but no `character.attributes` were reusing already-synced max stats as the base for later reward grants, so `qingmu_jue` plus `tiger_bone_guard` overcounted `maxHealth`.
+2. Important: selector prioritization was broader than Task 3 required. The global unlocked-future-event boost and unrelated `master_guidance` skills boost were removed, while keeping the explicit realm boost needed to surface `mist_lantern_path`.
+
+### RED Evidence
+
+Command:
+
+```bash
+/Users/ruilifeng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test tests/rewards.test.js tests/event-engine.test.js
+```
+
+Observed failures before the fix:
+
+- `home selector does not globally boost unrelated unlocked future events`
+- `true !== false`
+- `legacy max-stat saves add reward bonuses only once when attributes are absent`
+- `120 !== 114`
+
+### GREEN Evidence
+
+Targeted command after the fix:
+
+```bash
+/Users/ruilifeng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test tests/rewards.test.js tests/event-engine.test.js
+```
+
+Observed result:
+
+- `pass 22`
+- `fail 0`
+
+Full-suite command after the fix:
+
+```bash
+/Users/ruilifeng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test
+```
+
+Observed result:
+
+- `pass 124`
+- `fail 0`
+
+### Exact Commands Run
+
+```bash
+/Users/ruilifeng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test tests/rewards.test.js tests/event-engine.test.js
+/Users/ruilifeng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test tests/rewards.test.js tests/event-engine.test.js
+/Users/ruilifeng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test
+```
+
+### Files Changed
+
+- `backend/src/domain/rewards.js`
+  - preserved formal-character syncing
+  - computed legacy-save base max stats from pre-grant reward bonuses so repeated grants do not stack on already-bonus-inflated caps
+- `backend/src/domain/events/eventSelector.js`
+  - kept only the explicit realm boost for `mist_lantern_path`
+  - removed the global `requiresFutureEvent` boost
+  - removed the unrelated `master_guidance` boost
+- `tests/rewards.test.js`
+  - added the legacy-save regression for `qingmu_jue` plus `tiger_bone_guard`
+- `tests/event-engine.test.js`
+  - added selector coverage proving unrelated unlocked future events are not globally promoted
