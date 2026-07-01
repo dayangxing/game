@@ -7,6 +7,10 @@ export const TRUTH_FLAGS = [
   'heaven_gate_key'
 ];
 
+export const BREAKTHROUGH_EVENT = event('breakthrough_attempt', '破境契机', 'cultivation', ['cultivation'], [
+  choice('attempt', '尝试突破', '尝试突破', 'high', [], '你调息凝神，朝瓶颈发起冲击。')
+]);
+
 export const EVENT_CATALOG = [
   event('cultivation_breathing', '晨起吐纳', 'cultivation', ['cultivation', 'home'], [
     choice('steady', '稳住周天', '闭关修炼一日，稳固丹田灵气', 'low', [

@@ -291,6 +291,28 @@ test('POST /api/v1/daily-actions returns at least three eligible skills event ac
   assert.ok(payload.data.actions.some((action) => action.eventId === 'master_guidance'));
 });
 
+test('POST /api/v1/daily-actions inserts a breakthrough action before normal cultivation events', async () => {
+  const app = createBackendApp({ seed: 31, now: fixedNow });
+  app.getState().game.onboarding = completedOnboardingState();
+
+  await jsonResponse(app.handle(makeRequest('POST', '/api/v1/game/new', {
+    name: '顾清河',
+    rerollSeed: 52
+  })));
+  app.getState().game.player.cultivationProgress = 100;
+
+  const payload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+    viewId: 'cultivation',
+    gameVersion: 0
+  })));
+
+  assert.equal(payload.ok, true);
+  assert.equal(payload.data.actions[0].source, 'breakthrough');
+  assert.equal(payload.data.actions[0].title, '尝试突破');
+  assert.match(payload.data.actions[0].meta, /成功率 82%/);
+  assert.doesNotMatch(payload.data.actions[0].meta, /breakthrough|attempt|choice/i);
+});
+
 test('POST /api/v1/daily-actions hides unaffordable crafting choices for formal bag view', async () => {
   const app = createBackendApp({ seed: 31, now: fixedNow });
   app.getState().game.onboarding = completedOnboardingState();
@@ -339,6 +361,37 @@ test('POST /api/v1/turns resolves selected event effects deterministically', asy
   assert.equal(turnPayload.data.turnResult.ruleResult.lifespanCost, 1);
   assert.equal(turnPayload.data.game.player.lifespan, 92);
   assert.equal(turnPayload.data.game.turn, 1);
+});
+
+test('POST /api/v1/turns routes breakthrough actions through the special resolver', async () => {
+  const app = createBackendApp({ seed: 31, now: fixedNow });
+  app.getState().game.onboarding = completedOnboardingState();
+
+  await jsonResponse(app.handle(makeRequest('POST', '/api/v1/game/new', {
+    name: '顾清河',
+    rerollSeed: 52
+  })));
+  app.getState().game.player.cultivationProgress = 100;
+
+  const actionsPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+    viewId: 'cultivation',
+    gameVersion: 0
+  })));
+  const [action] = actionsPayload.data.actions;
+
+  const turnPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/turns', {
+    actionId: action.id,
+    clientTurn: 0
+  })));
+
+  assert.equal(action.source, 'breakthrough');
+  assert.equal(turnPayload.ok, true);
+  assert.equal(turnPayload.data.game.turn, 1);
+  assert.equal(turnPayload.data.game.player.realm, '炼气二层');
+  assert.equal(turnPayload.data.game.player.cultivationProgress, 0);
+  assert.equal(turnPayload.data.turnResult.ruleResult.eventId, 'breakthrough_attempt');
+  assert.equal(turnPayload.data.turnResult.ruleResult.choiceId, 'attempt');
+  assert.equal(turnPayload.data.turnResult.ruleResult.success, true);
 });
 
 test('POST /api/v1/turns advances one authoritative turn and ignores client state', async () => {
