@@ -2,17 +2,25 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-test('frontend source renders event state panels through the existing hud resources node', () => {
+test('frontend source renders central status and collection panels without relying on raw backend fields', () => {
+  const html = fs.readFileSync('frontend/index.html', 'utf8');
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
 
-  assert.match(source, /function renderKarmaState/);
-  assert.match(source, /function renderInventoryState/);
-  assert.match(source, /function renderSectState/);
+  assert.match(html, /id="statusOverview"/);
+  assert.match(html, /id="attributeSummary"/);
+  assert.match(html, /id="viewFocusBody"/);
+  assert.match(source, /function renderStatusOverview/);
+  assert.match(source, /function renderAttributeSummary/);
+  assert.match(source, /function renderViewFocus/);
+  assert.match(source, /function renderCollectionCards/);
+  assert.match(source, /nodes\.statusOverview\.innerHTML/);
+  assert.match(source, /nodes\.attributeSummary\.innerHTML/);
+  assert.match(source, /nodes\.viewFocusBody\.innerHTML/);
   assert.match(source, /nodes\.hudResources\.innerHTML/);
-  assert.match(source, /<h3>寿元压力<\/h3>/);
-  assert.match(source, /<h3>因果<\/h3>/);
-  assert.match(source, /<h3>门派<\/h3>/);
-  assert.match(source, /<h3>丹药\/材料<\/h3>/);
+  assert.match(source, /气血/);
+  assert.match(source, /寿元/);
+  assert.match(source, /game\.treasures/);
+  assert.match(source, /game\.techniques/);
 });
 
 test('sect state falls back to the current player sect relation field', () => {
@@ -24,24 +32,32 @@ test('sect state falls back to the current player sect relation field', () => {
   assert.match(source, /<span>身份<\/span><strong>\$\{sect\.rank\}<\/strong>/);
 });
 
-test('action cards present event-backed choices without backend identifiers', () => {
+test('history cards and action cards stay player-facing without backend identifiers or schema labels', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
 
+  assert.match(source, /function formatHistoryEffectSummary/);
+  assert.match(source, /function buildRecentHistory/);
+  assert.match(source, /历史行为/);
+  assert.match(source, /effects-summary/);
   assert.match(source, /function formatActionMeta\(action\)/);
   assert.match(source, /function displayActionIcon\(action\)/);
   assert.match(source, /meta:\s*formatActionMeta\(action\)/);
   assert.match(source, /icon:\s*displayActionIcon\(action\)/);
   assert.doesNotMatch(source, /<div class="event-meta">\$\{action\.eventId\} \/ \$\{action\.choiceId\}<\/div>/);
+  assert.doesNotMatch(source, /ruleResult|statChanges|choiceId|eventId|derivedBonuses/);
 });
 
-test('frontend styles include compact event state rows and readable action card styling', () => {
+test('frontend styles include dense center-stage status, collection, and history layouts', () => {
   const css = fs.readFileSync('frontend/src/styles.css', 'utf8');
 
   assert.match(css, /\.state-row\s*\{/);
   assert.match(css, /justify-content:\s*space-between/);
   assert.match(css, /\.dashboard-content\s*\{/);
+  assert.match(css, /\.status-overview\s*\{/);
+  assert.match(css, /\.attribute-summary\s*\{/);
+  assert.match(css, /\.collection-grid\s*\{/);
+  assert.match(css, /\.effects-summary\s*\{/);
   assert.match(css, /\.action-card\s*\{/);
-  assert.match(css, /grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
 });
 
 test('visible frontend copy avoids api labels and debug parameters', () => {

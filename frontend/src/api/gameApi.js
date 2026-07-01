@@ -17,14 +17,14 @@ export function createGameApi(options = {}) {
       return withMode(createMockGame(seed), 'mock');
     },
 
-    async createFormalGame({ name, rerollSeed } = {}) {
+    async createFormalGame({ name, rerollSeed, attributes } = {}) {
       if (canUseBackend) {
         const data = await requestJson({
           baseUrl,
           fetchImpl,
           path: '/api/v1/game/new',
           method: 'POST',
-          body: { name, rerollSeed }
+          body: { name, rerollSeed, attributes }
         });
         return withMode(data.game, 'api');
       }
@@ -33,8 +33,11 @@ export function createGameApi(options = {}) {
       const mockGame = createMockGame(formalSeed);
       const character = createMockFormalCharacter(mockGame, {
         name,
-        rerollSeed: formalSeed
+        rerollSeed: formalSeed,
+        attributes
       });
+      const maxHealth = deriveMockMaxHealth(character.attributes);
+      const maxLifespan = deriveMockMaxLifespan(character.initialLifespan, character.attributes);
       return withMode({
         ...mockGame,
         player: {
@@ -42,7 +45,10 @@ export function createGameApi(options = {}) {
           name: character.name,
           origin: character.origin,
           spiritualRoot: character.spiritualRoot,
-          lifespan: character.initialLifespan,
+          maxHealth,
+          health: maxHealth,
+          maxLifespan,
+          lifespan: maxLifespan,
           spiritStones: character.startingResources.spiritStones
         },
         characterSeed: formalSeed,
@@ -235,15 +241,17 @@ function buildStoryHook(card, view) {
   ].join('\n');
 }
 
-function createMockFormalCharacter(game, { name, rerollSeed }) {
+function createMockFormalCharacter(game, { name, rerollSeed, attributes }) {
+  const allocation = normalizeMockAllocation(attributes, rerollSeed);
   return {
     name: String(name ?? '').trim() || game.player.name,
     origin: game.player.origin,
     spiritualRoot: game.player.spiritualRoot,
     traits: buildMockTraits(rerollSeed),
-    comprehension: clampStat(52 + (rerollSeed % 17)),
-    physique: clampStat(47 + (rerollSeed % 19)),
-    luck: clampStat(45 + (rerollSeed % 23)),
+    attributes: allocation,
+    comprehension: allocation.comprehension * 9,
+    physique: allocation.rootBone * 9,
+    luck: allocation.fortune * 9,
     karmaAffinity: (rerollSeed % 21) - 10,
     initialLifespan: 80 + (rerollSeed % 31),
     startingResources: {
@@ -264,6 +272,65 @@ function buildMockTraits(seed) {
   return [traitPool[firstIndex], traitPool[secondIndex]];
 }
 
-function clampStat(value) {
-  return Math.max(20, Math.min(90, value));
+function normalizeMockAllocation(attributes, seed) {
+  if (attributes === undefined) {
+    return randomizeMockAllocation(seed);
+  }
+
+  const keys = ['rootBone', 'comprehension', 'fortune', 'willpower', 'lifeSeed'];
+  const normalized = {};
+  let total = 0;
+
+  for (const key of keys) {
+    const value = attributes?.[key];
+    if (!Number.isInteger(value) || value < 1 || value > 10) {
+      throw new Error(`ATTRIBUTE_ALLOCATION_INVALID:${key}`);
+    }
+    normalized[key] = value;
+    total += value;
+  }
+
+  if (total !== 25) {
+    throw new Error('ATTRIBUTE_ALLOCATION_INVALID:total');
+  }
+
+  return normalized;
+}
+
+function randomizeMockAllocation(seed) {
+  const allocation = {
+    rootBone: 1,
+    comprehension: 1,
+    fortune: 1,
+    willpower: 1,
+    lifeSeed: 1
+  };
+  const keys = Object.keys(allocation);
+  const rng = createRng(seed);
+  let remaining = 20;
+
+  while (remaining > 0) {
+    const available = keys.filter((key) => allocation[key] < 10);
+    const key = available[Math.floor(rng() * available.length)];
+    allocation[key] += 1;
+    remaining -= 1;
+  }
+
+  return allocation;
+}
+
+function deriveMockMaxHealth(attributes) {
+  return 80 + attributes.rootBone * 8 + attributes.lifeSeed * 2;
+}
+
+function deriveMockMaxLifespan(initialLifespan, attributes) {
+  return initialLifespan + attributes.lifeSeed * 8;
+}
+
+function createRng(seed) {
+  let value = Math.abs(Math.floor(seed)) || 1;
+  return () => {
+    value = (value * 1664525 + 1013904223) % 4294967296;
+    return value / 4294967296;
+  };
 }

@@ -93,7 +93,8 @@ test('first run stage keeps onboarding and character creation inside the main st
   assert.match(helper, /nodes\.dashboardContent\.hidden = needsOnboarding \|\| needsCharacter;/);
   assert.doesNotMatch(helper, /document\.querySelector\('\.main-stage'\)\.hidden/);
   assert.match(helper, /renderPendingCharacterStatus\(\);/);
-  assert.doesNotMatch(helper, /renderCharacterRoll\(/);
+  assert.match(helper, /renderStatusOverview\(\);/);
+  assert.match(helper, /renderViewFocus\(\);/);
 });
 
 test('character creation gate uses explicit state instead of literal player name', () => {
@@ -109,6 +110,17 @@ test('character creation gate uses explicit state instead of literal player name
   assert.ok(predicate, 'hasFormalCharacterData should exist');
   assert.match(predicate, /if \(character\.traits\.includes\('新手序章'\)\) return false;/);
   assert.match(predicate, /typeof character\.startingResources\?\.spiritStones === 'number'/);
+});
+
+test('daily action submission enriches history with player-facing summaries before saving', () => {
+  const source = fs.readFileSync('frontend/src/app.js', 'utf8');
+  const helper = extractFunction(source, 'submitDailyAction');
+
+  assert.ok(helper, 'submitDailyAction should exist');
+  assert.match(source, /function enrichGameHistory\(/);
+  assert.match(helper, /const previousGame = game;/);
+  assert.match(helper, /game = enrichGameHistory\(game,\s*previousGame\);/);
+  assert.match(helper, /saveGame\(\);/);
 });
 
 function extractFunction(source, name) {

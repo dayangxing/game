@@ -103,11 +103,17 @@
             <div>
               <div class="panel-kicker">创建角色</div>
               <h2>命簿初开</h2>
+              <p>分配五维天赋，定下入门后的气血、寿元与修行走向。</p>
             </div>
             <input id="characterNameInput" type="text" maxlength="12" placeholder="输入角色名" />
+            <div class="allocation-summary">
+              <strong id="remainingAttributePoints">0</strong>
+              <span>剩余天赋点</span>
+            </div>
+            <div class="attribute-allocation" id="attributeAllocation"></div>
             <div class="character-roll" id="characterRoll"></div>
             <div class="character-actions">
-              <button id="rerollCharacterBtn" type="button">重掷</button>
+              <button id="rerollCharacterBtn" type="button">随机分配</button>
               <button id="startFormalGameBtn" type="button">开始修行</button>
             </div>
           </section>
@@ -126,6 +132,15 @@
               云箓已启，今日行止皆入命簿。
             </div>
 
+            <section class="paper-card stage-status">
+              <div class="section-title">
+                <h3>命途状态</h3>
+                <span>当前气象</span>
+              </div>
+              <div class="status-overview" id="statusOverview"></div>
+              <div class="attribute-summary" id="attributeSummary"></div>
+            </section>
+
             <section class="paper-card action-section">
               <div class="section-title">
                 <h3 id="actionTitle">今日修行</h3>
@@ -136,15 +151,18 @@
 
             <section class="paper-card story-section">
               <div class="section-title">
-                <h3>天机札记</h3>
+                <h3 id="historyTitle">历史行为</h3>
                 <span>最近五回合</span>
               </div>
               <div class="log-list" id="logList"></div>
             </section>
 
             <section class="paper-card action-note">
-              <strong>修行札记</strong>
-              <p>雾隐山风自北而来，内门名额、寿元暗痕与天门残契一并压在案头。</p>
+              <div class="section-title">
+                <h3 id="viewFocusTitle">当前见闻</h3>
+                <span id="viewFocusMeta">命簿摘录</span>
+              </div>
+              <div id="viewFocusBody"></div>
             </section>
           </div>
         </section>

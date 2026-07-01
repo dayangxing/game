@@ -4,7 +4,12 @@ import fs from 'node:fs';
 
 import { createBackendApp } from '../backend/src/app.js';
 import { createGameApi } from '../frontend/src/api/gameApi.js';
-import { formatCharacterAttributeRows } from '../frontend/src/ui/characterCreation.js';
+import {
+  createDefaultAllocation,
+  formatAttributeCards,
+  formatCharacterAttributeRows,
+  randomizeAllocation
+} from '../frontend/src/ui/characterCreation.js';
 
 test('frontend api can create a formal random character through backend', async () => {
   const backend = createBackendApp({ seed: 31, now: () => new Date('2026-06-29T08:00:00.000Z') });
@@ -26,6 +31,43 @@ test('frontend api can create a formal random character through backend', async 
   assert.equal(game.player.name, '顾清河');
   assert.notEqual(game.player.name, '陆青玄');
   assert.equal(game.characterSeed, 52);
+});
+
+test('frontend api forwards manual attribute allocation through backend formal creation', async () => {
+  const backend = createBackendApp({ seed: 31, now: () => new Date('2026-06-29T08:00:00.000Z') });
+  backend.getState().game.onboarding = {
+    completed: true,
+    stepId: 'formal_life',
+    completedStepIds: [],
+    unlockedCharacterCreation: true
+  };
+  const api = createGameApi({
+    baseUrl: 'http://backend.test',
+    preferredMode: 'api',
+    fetchImpl: (input, init) => backend.handle(new Request(input, init))
+  });
+
+  const game = await api.createFormalGame({
+    name: '顾清河',
+    rerollSeed: 52,
+    attributes: {
+      rootBone: 7,
+      comprehension: 6,
+      fortune: 4,
+      willpower: 4,
+      lifeSeed: 4
+    }
+  });
+
+  assert.deepEqual(game.character.attributes, {
+    rootBone: 7,
+    comprehension: 6,
+    fortune: 4,
+    willpower: 4,
+    lifeSeed: 4
+  });
+  assert.equal(game.player.maxHealth, 144);
+  assert.equal(game.player.maxLifespan, game.character.initialLifespan + 32);
 });
 
 test('mock formal game exposes a usable character object', async () => {
@@ -61,6 +103,30 @@ test('character rows expose readable random attributes', () => {
   assert.match(rows.at(-1).value, /灵石 88/);
 });
 
+test('attribute allocation helpers expose balanced defaults deterministic randomization and player-facing cards', () => {
+  const defaults = createDefaultAllocation();
+  const randomized = randomizeAllocation(52);
+  const cards = formatAttributeCards(randomized);
+
+  assert.deepEqual(defaults, {
+    rootBone: 5,
+    comprehension: 5,
+    fortune: 5,
+    willpower: 5,
+    lifeSeed: 5
+  });
+  assert.deepEqual(randomized, {
+    rootBone: 3,
+    comprehension: 6,
+    fortune: 6,
+    willpower: 5,
+    lifeSeed: 5
+  });
+  assert.equal(Object.values(randomized).reduce((total, value) => total + value, 0), 25);
+  assert.deepEqual(cards.map((card) => card.label), ['根骨', '悟性', '气运', '心志', '命元']);
+  assert.ok(cards.every((card) => typeof card.note === 'string' && card.note.length > 0));
+});
+
 test('frontend page exposes onboarding and character creation shells', () => {
   const html = fs.readFileSync('frontend/index.html', 'utf8');
 
@@ -70,8 +136,11 @@ test('frontend page exposes onboarding and character creation shells', () => {
   assert.ok(html.indexOf('id="characterPanel"') > html.indexOf('class="main-stage"'));
   assert.match(html, /id="dashboardContent"/);
   assert.match(html, /id="characterNameInput"/);
+  assert.match(html, /id="attributeAllocation"/);
+  assert.match(html, /id="remainingAttributePoints"/);
   assert.match(html, /id="rerollCharacterBtn"/);
   assert.match(html, /id="startFormalGameBtn"/);
+  assert.match(html, />随机分配</);
 });
 
 test('first-run panels keep the hidden attribute authoritative in css', () => {
@@ -87,27 +156,31 @@ test('frontend app wires onboarding and character creation actions', () => {
   assert.match(source, /nodes\.onboardingActionBtn\.addEventListener/);
   assert.match(source, /nodes\.rerollCharacterBtn\.addEventListener/);
   assert.match(source, /nodes\.startFormalGameBtn\.addEventListener/);
+  assert.match(source, /let pendingAttributes = createDefaultAllocation\(\);/);
+  assert.match(source, /randomizeAllocation/);
   assert.match(source, /api\.createFormalGame/);
 });
 
-test('reroll only updates local seed preview and start action performs the formal game creation', () => {
+test('random allocation updates the pending stats preview and start action submits attributes', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
   const [, rerollHandler] = source.match(/nodes\.rerollCharacterBtn\.addEventListener\('click', async \(\) => \{([\s\S]*?)\n\}\);/) ?? [];
   const [, startHandler] = source.match(/nodes\.startFormalGameBtn\.addEventListener\('click', async \(\) => \{([\s\S]*?)\n\}\);/) ?? [];
   const renderFirstRunStage = extractFunction(source, 'renderFirstRunStage');
+  const renderPendingCharacterStatus = extractFunction(source, 'renderPendingCharacterStatus');
 
   assert.ok(rerollHandler, 'reroll handler should exist');
   assert.ok(startHandler, 'start handler should exist');
   assert.ok(renderFirstRunStage, 'renderFirstRunStage helper should exist');
+  assert.ok(renderPendingCharacterStatus, 'renderPendingCharacterStatus helper should exist');
 
-  assert.doesNotMatch(source, /function buildPendingCharacterPreview\(\) \{/);
   assert.match(source, /function renderPendingCharacterStatus\(\) \{/);
-  assert.doesNotMatch(source, /formatCharacterAttributeRows/);
-  assert.doesNotMatch(rerollHandler, /api\.createFormalGame/);
+  assert.match(renderPendingCharacterStatus, /remainingAttributePoints/);
+  assert.match(renderPendingCharacterStatus, /formatAttributeCards/);
+  assert.match(rerollHandler, /pendingAttributes = randomizeAllocation\(pendingCharacterSeed\);/);
   assert.match(rerollHandler, /renderPendingCharacterStatus\(\);/);
   assert.match(renderFirstRunStage, /renderPendingCharacterStatus\(\);/);
-  assert.doesNotMatch(renderFirstRunStage, /renderCharacterRoll\(/);
   assert.match(startHandler, /game = await api\.createFormalGame\(\{/);
+  assert.match(startHandler, /attributes:\s*pendingAttributes/);
 });
 
 function extractFunction(source, name) {

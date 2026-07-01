@@ -486,11 +486,19 @@ button {
 
 .dashboard-content {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
 }
 
 .dashboard-content[hidden] {
   display: none;
+}
+
+.hero-scroll,
+.api-banner,
+.action-section,
+.story-section {
+  grid-column: 1 / -1;
 }
 
 .onboarding-panel,
@@ -568,6 +576,75 @@ button {
   border-radius: 8px;
   color: var(--ink);
   background: rgba(255, 252, 240, 0.76);
+}
+
+.allocation-summary {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: baseline;
+  gap: 10px;
+  color: var(--ink-soft);
+}
+
+.allocation-summary strong {
+  color: var(--gold);
+  font-size: 28px;
+}
+
+.attribute-allocation {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.allocation-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid rgba(61, 68, 56, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 252, 240, 0.52);
+}
+
+.allocation-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.allocation-copy strong {
+  color: var(--ink);
+}
+
+.allocation-copy p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.allocation-controls {
+  display: grid;
+  grid-template-columns: 34px 42px 34px;
+  gap: 6px;
+  align-items: center;
+}
+
+.allocation-controls button {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: rgba(255, 252, 240, 0.78);
+}
+
+.allocation-controls span {
+  text-align: center;
+  color: var(--gold);
+  font-weight: 700;
 }
 
 .character-roll {
@@ -712,9 +789,10 @@ button {
   min-height: 300px;
 }
 
+.stage-status,
 .action-note {
   display: grid;
-  gap: 6px;
+  gap: 10px;
 }
 
 .action-note strong {
@@ -725,6 +803,122 @@ button {
   margin: 0;
   color: var(--ink-soft);
   line-height: 1.65;
+}
+
+.status-overview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.status-card,
+.summary-card,
+.focus-card,
+.collection-card {
+  border: 1px solid rgba(61, 68, 56, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 252, 240, 0.46);
+}
+
+.status-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.status-card-head,
+.collection-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.status-card-head span,
+.summary-card span,
+.collection-card-head span,
+.focus-card strong,
+.empty-collection {
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.status-card-head strong,
+.summary-card strong,
+.collection-card-head strong {
+  color: var(--ink);
+}
+
+.status-card p,
+.summary-card p,
+.focus-card p,
+.collection-card p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.attribute-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.summary-card {
+  display: grid;
+  gap: 8px;
+  min-height: 118px;
+  padding: 12px;
+}
+
+.summary-card strong {
+  font-size: 24px;
+  color: var(--gold);
+}
+
+.collection-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.collection-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.collection-card em {
+  color: var(--gold);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.focus-card {
+  padding: 12px;
+}
+
+.focus-card + .focus-card,
+.action-note section + section {
+  margin-top: 2px;
+}
+
+.action-note section {
+  display: grid;
+  gap: 10px;
+}
+
+.action-note h4 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.empty-collection {
+  padding: 12px;
+  border: 1px dashed rgba(61, 68, 56, 0.2);
+  border-radius: 8px;
+  background: rgba(255, 252, 240, 0.3);
 }
 
 .log-list {
@@ -761,6 +955,23 @@ button {
   margin: 12px 0 0;
   color: #27312b;
   line-height: 1.82;
+}
+
+.effects-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.effects-summary span {
+  display: inline-flex;
+  padding: 4px 8px;
+  border: 1px solid rgba(47, 143, 112, 0.18);
+  border-radius: 8px;
+  color: #2e765f;
+  background: rgba(236, 248, 239, 0.72);
+  font-size: 12px;
 }
 
 blockquote {

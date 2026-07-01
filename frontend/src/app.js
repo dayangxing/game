@@ -7,6 +7,13 @@ import {
   shouldAutoOpenGuide
 } from './ui/onboardingGuide.js';
 import { createImmediateViewActions } from './ui/immediateViewActions.js';
+import {
+  createDefaultAllocation,
+  formatAttributeCards,
+  randomizeAllocation,
+  remainingAllocationPoints,
+  updateAllocation
+} from './ui/characterCreation.js';
 import { getView, viewList } from './ui/views.js';
 
 const STORAGE_KEY = 'wendao-fusheng-frontend-save-v1';
@@ -26,6 +33,7 @@ let startupNotice = '';
 let actionRefreshSequence = 0;
 let pendingApiImmediateActions = false;
 let pendingCharacterSeed = Number(localStorage.getItem('wendao-fusheng-character-seed') ?? Date.now());
+let pendingAttributes = createDefaultAllocation();
 const api = createGameApi({
   seed: 42,
   baseUrl: BACKEND_BASE_URL,
@@ -88,11 +96,23 @@ const nodes = {
   onboardingActionBtn: document.querySelector('#onboardingActionBtn'),
   characterPanel: document.querySelector('#characterPanel'),
   characterNameInput: document.querySelector('#characterNameInput'),
+  remainingAttributePoints: document.querySelector('#remainingAttributePoints'),
+  attributeAllocation: document.querySelector('#attributeAllocation'),
   characterRoll: document.querySelector('#characterRoll'),
   rerollCharacterBtn: document.querySelector('#rerollCharacterBtn'),
   startFormalGameBtn: document.querySelector('#startFormalGameBtn'),
+  statusOverview: document.querySelector('#statusOverview'),
+  attributeSummary: document.querySelector('#attributeSummary'),
+  historyTitle: document.querySelector('#historyTitle'),
+  viewFocusTitle: document.querySelector('#viewFocusTitle'),
+  viewFocusMeta: document.querySelector('#viewFocusMeta'),
+  viewFocusBody: document.querySelector('#viewFocusBody'),
   toast: document.querySelector('#toast')
 };
+
+if (game.character?.attributes) {
+  pendingAttributes = { ...game.character.attributes };
+}
 
 render();
 if (startupNotice) showToast(startupNotice);
@@ -112,6 +132,7 @@ nodes.topTabs.addEventListener('click', (event) => {
   activeViewId = button.dataset.view;
   localStorage.setItem('wendao-fusheng-active-view', activeViewId);
   showImmediateActionsForView(activeViewId);
+  render();
   refreshDailyActionsForView(activeViewId).catch(handleApiError);
 });
 
@@ -150,6 +171,7 @@ nodes.resetBtn.addEventListener('click', async () => {
     pendingApiImmediateActions = false;
     game = nextGame;
     dailyActions = nextActions;
+    resetPendingCharacterPreview();
     saveGame();
     render();
     showToast(game.mode === 'api' ? '云端命途已重开' : '新的一世已经开启');
@@ -173,6 +195,7 @@ nodes.sampleBtn.addEventListener('click', async () => {
 
 nodes.mockMode.addEventListener('click', () => setMode('mock'));
 nodes.apiMode.addEventListener('click', () => setMode('api'));
+
 nodes.onboardingActionBtn.addEventListener('click', async () => {
   try {
     const [action] = await api.getDailyActions(game, getView(activeViewId));
@@ -182,10 +205,24 @@ nodes.onboardingActionBtn.addEventListener('click', async () => {
   }
 });
 
+nodes.characterNameInput.addEventListener('input', () => {
+  renderPendingCharacterStatus();
+});
+
+nodes.attributeAllocation.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-key][data-delta]');
+  if (!button) return;
+  const key = button.dataset.key;
+  const delta = Number(button.dataset.delta);
+  pendingAttributes = updateAllocation(pendingAttributes, key, delta);
+  renderPendingCharacterStatus();
+});
+
 nodes.rerollCharacterBtn.addEventListener('click', async () => {
   try {
     pendingCharacterSeed += 1;
     localStorage.setItem('wendao-fusheng-character-seed', String(pendingCharacterSeed));
+    pendingAttributes = randomizeAllocation(pendingCharacterSeed);
     renderPendingCharacterStatus();
   } catch (error) {
     handleApiError(error);
@@ -194,9 +231,14 @@ nodes.rerollCharacterBtn.addEventListener('click', async () => {
 
 nodes.startFormalGameBtn.addEventListener('click', async () => {
   try {
+    if (remainingAllocationPoints(pendingAttributes) !== 0) {
+      showToast('请先分完全部天赋点。');
+      return;
+    }
     game = await api.createFormalGame({
       name: nodes.characterNameInput.value,
-      rerollSeed: pendingCharacterSeed
+      rerollSeed: pendingCharacterSeed,
+      attributes: pendingAttributes
     });
     dailyActions = await loadDailyActionsForGame(game, getView(activeViewId));
     actionRefreshSequence += 1;
@@ -214,7 +256,9 @@ async function submitDailyAction(action) {
     return;
   }
   try {
+    const previousGame = game;
     game = await api.submitDailyAction(game, action);
+    game = enrichGameHistory(game, previousGame);
     saveGame();
     showImmediateActionsForView(activeViewId);
     refreshDailyActionsForView(activeViewId).catch(handleApiError);
@@ -232,6 +276,9 @@ async function setMode(mode) {
     pendingApiImmediateActions = false;
     game = nextGame;
     dailyActions = nextActions;
+    if (game.character?.attributes) {
+      pendingAttributes = { ...game.character.attributes };
+    }
     saveGame();
     render();
     showToast(mode === 'api' ? '已转为云端存档' : '已转为本地存档');
@@ -267,6 +314,10 @@ function renderFirstRunStage() {
   if (needsCharacter) {
     renderPendingCharacterStatus();
   }
+
+  renderStatusOverview();
+  renderAttributeSummary();
+  renderViewFocus();
 }
 
 function shouldShowCharacterCreation(game) {
@@ -287,13 +338,39 @@ function hasFormalCharacterData(character) {
 
 function renderPendingCharacterStatus() {
   const pendingName = String(nodes.characterNameInput?.value ?? '').trim() || '未定名';
+  const cards = formatAttributeCards(pendingAttributes);
+  const remaining = remainingAllocationPoints(pendingAttributes);
+  const previewHealth = 80 + (pendingAttributes.rootBone * 8) + (pendingAttributes.lifeSeed * 2);
+  const previewLifespan = 80 + (pendingAttributes.lifeSeed * 8);
+
+  nodes.remainingAttributePoints.textContent = String(remaining);
+  nodes.attributeAllocation.innerHTML = cards.map((card) => {
+    const canLower = card.value > 1;
+    const canRaise = remaining > 0 && card.value < 10;
+    return `
+      <article class="allocation-card">
+        <div class="allocation-copy">
+          <strong>${card.label}</strong>
+          <p>${card.note}</p>
+        </div>
+        <div class="allocation-controls">
+          <button type="button" data-key="${card.key}" data-delta="-1"${canLower ? '' : ' disabled'}>-</button>
+          <span>${card.value}</span>
+          <button type="button" data-key="${card.key}" data-delta="1"${canRaise ? '' : ' disabled'}>+</button>
+        </div>
+      </article>
+    `;
+  }).join('');
 
   nodes.characterRoll.innerHTML = [
     `<div class="attribute-row"><span>角色名</span><strong>${pendingName}</strong></div>`,
-    '<div class="attribute-row"><span>灵根</span><strong>入世后揭晓</strong></div>',
-    '<div class="attribute-row"><span>命格</span><strong>入世后揭晓</strong></div>',
-    '<p>踏入山门后，灵根、命格、寿元与随身资源会一并写入命簿。</p>'
+    `<div class="attribute-row"><span>预计气血</span><strong>${previewHealth}</strong></div>`,
+    `<div class="attribute-row"><span>预计寿元</span><strong>${previewLifespan} 年</strong></div>`,
+    ...cards.map((card) => `<div class="attribute-row"><span>${card.label}</span><strong>${card.value}</strong></div>`),
+    '<p>入山门后会随机写定出身、灵根、命格与随身资源，天赋分配会直接影响气血、寿元与修行底色。</p>'
   ].join('');
+
+  nodes.startFormalGameBtn.disabled = remaining !== 0;
 }
 
 function renderTabs() {
@@ -301,7 +378,7 @@ function renderTabs() {
   nodes.viewTitle.textContent = view.title;
   nodes.viewDescription.textContent = view.description;
   nodes.actionTitle.textContent = view.label === '洞府' ? '今日修行' : view.title;
-  nodes.actionMeta.textContent = `${view.cards.length} 项`;
+  nodes.actionMeta.textContent = `${dailyActions.length} 项`;
 
   nodes.topTabs.innerHTML = viewList.map((item) => `
     <button class="${item.id === view.id ? 'active' : ''}" type="button" data-view="${item.id}">${item.label}</button>
@@ -316,25 +393,25 @@ function renderPlayer() {
   nodes.realm.textContent = player.realm;
   nodes.spiritualRoot.textContent = player.spiritualRoot;
   nodes.location.textContent = player.location;
-  nodes.sectRelationLabel.textContent = player.sectRelation;
-  nodes.sectRelationBar.style.width = `${player.sectRelation}%`;
+  nodes.sectRelationLabel.textContent = String(player.sectRelation ?? 0);
+  nodes.sectRelationBar.style.width = `${player.sectRelation ?? 0}%`;
 
   nodes.hudResources.innerHTML = [
-    '<h3>寿元压力</h3>',
-    `<div class="state-row"><span>寿元</span><strong>${game.player.lifespan}</strong></div>`,
+    '<h3>气血与寿元</h3>',
+    renderHealthState(),
     '<h3>因果</h3>',
     renderKarmaState(),
     '<h3>门派</h3>',
     renderSectState(),
-    '<h3>丹药/材料</h3>',
+    '<h3>丹药与材料</h3>',
     renderInventoryState()
   ].join('');
 
   const meters = [
-    ['灵气', player.qi, 'qi'],
-    ['心境', player.mood, 'mood'],
-    ['破境', player.cultivationProgress, 'progress'],
-    ['灵石', player.spiritStones, 'stones']
+    ['灵气', player.qi ?? 0, 'qi'],
+    ['心境', player.mood ?? 0, 'mood'],
+    ['破境', player.cultivationProgress ?? 0, 'progress'],
+    ['灵石', player.spiritStones ?? 0, 'stones']
   ];
 
   nodes.meters.innerHTML = meters.map(([label, value, kind]) => {
@@ -346,6 +423,68 @@ function renderPlayer() {
       </div>
     `;
   }).join('');
+
+  renderStatusOverview();
+  renderAttributeSummary();
+}
+
+function renderStatusOverview() {
+  const healthNow = game.player.health ?? game.player.maxHealth ?? 0;
+  const healthMax = game.player.maxHealth ?? healthNow || 1;
+  const lifespanNow = game.player.lifespan ?? game.player.maxLifespan ?? 0;
+  const lifespanMax = game.player.maxLifespan ?? lifespanNow || 1;
+  const cards = [
+    {
+      label: '气血',
+      value: `${healthNow}/${healthMax}`,
+      percent: Math.round((healthNow / Math.max(1, healthMax)) * 100),
+      tone: 'health',
+      note: healthNow <= Math.floor(healthMax * 0.4) ? '内息紊乱，宜先调养。' : '经脉尚稳，可继续推进。'
+    },
+    {
+      label: '寿元',
+      value: `${lifespanNow}/${lifespanMax}`,
+      percent: Math.round((lifespanNow / Math.max(1, lifespanMax)) * 100),
+      tone: 'lifespan',
+      note: lifespanNow <= Math.floor(lifespanMax * 0.45) ? '命火渐弱，行事务必克制。' : '命火尚盛，仍有余地布局。'
+    },
+    {
+      label: '境界',
+      value: game.player.realm,
+      percent: Math.min(100, game.player.cultivationProgress ?? 0),
+      tone: 'realm',
+      note: `当前破境进度 ${game.player.cultivationProgress ?? 0}%`
+    },
+    {
+      label: '所在',
+      value: game.player.location,
+      percent: Math.min(100, game.player.sectRelation ?? 0),
+      tone: 'location',
+      note: `宗门声望 ${game.player.sectRelation ?? 0}`
+    }
+  ];
+
+  nodes.statusOverview.innerHTML = cards.map((card) => `
+    <article class="status-card">
+      <div class="status-card-head">
+        <span>${card.label}</span>
+        <strong>${card.value}</strong>
+      </div>
+      <div class="bar ${card.tone}"><i style="width:${card.percent}%"></i></div>
+      <p>${card.note}</p>
+    </article>
+  `).join('');
+}
+
+function renderAttributeSummary() {
+  const attributes = game.character?.attributes ?? pendingAttributes;
+  nodes.attributeSummary.innerHTML = formatAttributeCards(attributes).map((card) => `
+    <article class="summary-card">
+      <span>${card.label}</span>
+      <strong>${card.value}</strong>
+      <p>${card.note}</p>
+    </article>
+  `).join('');
 }
 
 function renderNpcs() {
@@ -361,9 +500,9 @@ function renderNpcs() {
 }
 
 function renderStory() {
-  const activeView = getView(activeViewId);
   nodes.gameDate.textContent = formatDate(game.calendar);
   nodes.turnPill.textContent = `第 ${game.turn} 回合`;
+  nodes.historyTitle.textContent = '历史行为';
 
   nodes.actionGrid.innerHTML = buildActionCards(dailyActions).map((card) => `
     <button class="action-card ${card.kind}" type="button" data-action-id="${escapeAttribute(card.id)}" data-command="${escapeAttribute(card.command)}"${card.disabled ? ' disabled aria-disabled="true"' : ''}>
@@ -374,14 +513,112 @@ function renderStory() {
     </button>
   `).join('');
 
-  nodes.logList.innerHTML = game.log.slice(-5).reverse().map((entry) => `
+  nodes.logList.innerHTML = buildRecentHistory().map((entry) => `
     <article class="log-card">
       <header><strong>${entry.title}</strong><span>${entry.command}</span></header>
       <p>${entry.body}</p>
+      ${entry.effectsSummary ? `<div class="effects-summary">${formatHistoryEffectSummary(entry)}</div>` : ''}
       ${entry.npcLine ? `<blockquote>${entry.npcLine}</blockquote>` : ''}
       ${entry.worldEvent ? `<em>${entry.worldEvent}</em>` : ''}
     </article>
   `).join('');
+}
+
+function buildRecentHistory() {
+  return game.log.slice(-5).reverse();
+}
+
+function formatHistoryEffectSummary(entry) {
+  const lines = Array.isArray(entry.effectsSummary)
+    ? entry.effectsSummary
+    : (entry.effectsSummary ? [entry.effectsSummary] : []);
+  return lines.map((line) => `<span>${line}</span>`).join('');
+}
+
+function renderViewFocus() {
+  if (activeViewId === 'bag') {
+    nodes.viewFocusTitle.textContent = '行囊见闻';
+    nodes.viewFocusMeta.textContent = `${(game.treasures?.length ?? 0) + countInventoryStacks(game.inventory)} 项收藏`;
+    nodes.viewFocusBody.innerHTML = [
+      `<section><h4>奇珍法器</h4>${renderCollectionCards(game.treasures, '暂无奇珍入囊。')}</section>`,
+      `<section><h4>丹药与材料</h4>${renderCollectionCards(buildInventoryCollection(game.inventory), '行囊里仍空空如也。')}</section>`
+    ].join('');
+    return;
+  }
+
+  if (activeViewId === 'skills') {
+    nodes.viewFocusTitle.textContent = '功法心得';
+    nodes.viewFocusMeta.textContent = `${game.techniques?.length ?? 0} 门已入册`;
+    nodes.viewFocusBody.innerHTML = [
+      `<section><h4>已得功法</h4>${renderCollectionCards(game.techniques, '尚未习得新的功法。')}</section>`,
+      renderTrainingAdvice()
+    ].join('');
+    return;
+  }
+
+  if (activeViewId === 'cultivation') {
+    nodes.viewFocusTitle.textContent = '闭关要点';
+    nodes.viewFocusMeta.textContent = '修行重心';
+    nodes.viewFocusBody.innerHTML = [
+      `<article class="focus-card"><strong>当前瓶颈</strong><p>${summarizeCultivationFocus()}</p></article>`,
+      `<article class="focus-card"><strong>近期建议</strong><p>${buildSuggestionText()}</p></article>`
+    ].join('');
+    return;
+  }
+
+  if (activeViewId === 'realm') {
+    nodes.viewFocusTitle.textContent = '秘境线索';
+    nodes.viewFocusMeta.textContent = `${game.foreshadows?.length ?? 0} 条伏笔`;
+    nodes.viewFocusBody.innerHTML = [
+      `<article class="focus-card"><strong>最新异动</strong><p>${game.timeline.at(-1)?.detail ?? '山门今日平静无波。'}</p></article>`,
+      `<article class="focus-card"><strong>未明征兆</strong><p>${(game.foreshadows ?? []).slice(-2).join(' ') || '尚无新的征兆。'}</p></article>`
+    ].join('');
+    return;
+  }
+
+  nodes.viewFocusTitle.textContent = '当前见闻';
+  nodes.viewFocusMeta.textContent = '命簿摘录';
+  nodes.viewFocusBody.innerHTML = [
+    `<article class="focus-card"><strong>今日重心</strong><p>${buildSuggestionText()}</p></article>`,
+    `<article class="focus-card"><strong>最近风声</strong><p>${game.worldEvents?.at(-1)?.detail ?? '山门风平浪静，正宜养息。'}</p></article>`
+  ].join('');
+}
+
+function renderCollectionCards(items, emptyCopy) {
+  if (!items?.length) {
+    return `<div class="empty-collection">${emptyCopy}</div>`;
+  }
+
+  return `
+    <div class="collection-grid">
+      ${items.map((item) => `
+        <article class="collection-card">
+          <div class="collection-card-head">
+            <strong>${item.name}</strong>
+            <span>${item.badge ?? item.rarity ?? item.grade ?? item.type ?? '所得'}</span>
+          </div>
+          <p>${item.description}</p>
+          ${item.detail ? `<em>${item.detail}</em>` : ''}
+        </article>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderTrainingAdvice() {
+  const topTraits = (game.character?.traits ?? []).slice(0, 2).join('、') || '心法未定';
+  return `<article class="focus-card"><strong>修习节奏</strong><p>命格偏向 ${topTraits}，宜先稳固根基，再挑一门主修功法深入打磨。</p></article>`;
+}
+
+function summarizeCultivationFocus() {
+  const progress = game.player.cultivationProgress ?? 0;
+  if (progress >= 80) return '破境机缘已近，先稳住气血与寿元，再择机冲关。';
+  if (progress >= 40) return '修为正在积累，适合闭关与请教并行，逐步补齐短板。';
+  return '境界尚浅，先养好灵气与心境，少做消耗过大的冒险。';
+}
+
+function buildSuggestionText() {
+  return (game.suggestions ?? []).slice(0, 2).join('；') || '今日不妨先静坐调息，再看局势。';
 }
 
 function renderWorld() {
@@ -393,6 +630,7 @@ function renderWorld() {
   `).join('');
 
   nodes.foreshadows.innerHTML = game.foreshadows.map((item) => `<article>${item}</article>`).join('');
+  renderViewFocus();
 }
 
 function renderMode() {
@@ -505,7 +743,18 @@ function formatDate(calendar) {
 }
 
 function escapeAttribute(value) {
-  return value.replaceAll('"', '&quot;');
+  return String(value ?? '').replaceAll('"', '&quot;');
+}
+
+function renderHealthState() {
+  const healthNow = game.player.health ?? game.player.maxHealth ?? 0;
+  const healthMax = game.player.maxHealth ?? healthNow;
+  const lifespanNow = game.player.lifespan ?? game.player.maxLifespan ?? 0;
+  const lifespanMax = game.player.maxLifespan ?? lifespanNow;
+  return [
+    `<div class="state-row"><span>气血</span><strong>${healthNow}/${healthMax}</strong></div>`,
+    `<div class="state-row"><span>寿元</span><strong>${lifespanNow}/${lifespanMax}</strong></div>`
+  ].join('');
 }
 
 function renderKarmaState() {
@@ -513,7 +762,7 @@ function renderKarmaState() {
   return `
     <div class="state-row"><span>善缘</span><strong>${karma.karma ?? 0}</strong></div>
     <div class="state-row"><span>业力</span><strong>${karma.evil ?? 0}</strong></div>
-    <div class="state-row"><span>因果伏笔</span><strong>${karma.futureEventFlags?.length ?? 0}</strong></div>
+    <div class="state-row"><span>伏笔</span><strong>${karma.futureEventFlags?.length ?? 0}</strong></div>
   `;
 }
 
@@ -584,12 +833,118 @@ function shouldBlockImmediateApiAction(action) {
   return game.mode === 'api' && pendingApiImmediateActions && action.source === 'immediate';
 }
 
+function enrichGameHistory(currentGame, previousGame) {
+  if (!currentGame?.log?.length) return currentGame;
+
+  const latestEntry = currentGame.log.at(-1);
+  const effectsSummary = summarizeHistoryChanges(previousGame, currentGame);
+  if (!effectsSummary.length) return currentGame;
+
+  return {
+    ...currentGame,
+    log: [
+      ...currentGame.log.slice(0, -1),
+      {
+        ...latestEntry,
+        effectsSummary
+      }
+    ]
+  };
+}
+
+function summarizeHistoryChanges(previousGame, currentGame) {
+  const changes = [];
+  changes.push(...summarizePlayerChanges(previousGame?.player, currentGame?.player));
+  changes.push(...summarizeInventoryChanges(previousGame?.inventory, currentGame?.inventory));
+  changes.push(...summarizeCollectionChanges(previousGame?.treasures, currentGame?.treasures, '获珍'));
+  changes.push(...summarizeCollectionChanges(previousGame?.techniques, currentGame?.techniques, '习得'));
+
+  if ((previousGame?.player?.realm ?? '') !== (currentGame?.player?.realm ?? '')) {
+    changes.push(`境界稳入 ${currentGame.player.realm}`);
+  }
+  if ((previousGame?.player?.location ?? '') !== (currentGame?.player?.location ?? '')) {
+    changes.push(`行止转到 ${currentGame.player.location}`);
+  }
+
+  return changes.slice(0, 5);
+}
+
+function summarizePlayerChanges(previousPlayer = {}, currentPlayer = {}) {
+  return [
+    describeDelta('气血', currentPlayer.health, previousPlayer.health),
+    describeDelta('寿元', currentPlayer.lifespan, previousPlayer.lifespan),
+    describeDelta('灵气', currentPlayer.qi, previousPlayer.qi),
+    describeDelta('心境', currentPlayer.mood, previousPlayer.mood),
+    describeDelta('修为', currentPlayer.cultivationProgress, previousPlayer.cultivationProgress),
+    describeDelta('灵石', currentPlayer.spiritStones, previousPlayer.spiritStones),
+    describeDelta('宗门声望', currentPlayer.sectRelation, previousPlayer.sectRelation)
+  ].filter(Boolean);
+}
+
+function describeDelta(label, nextValue, previousValue) {
+  if (!Number.isFinite(nextValue) || !Number.isFinite(previousValue)) return '';
+  const delta = nextValue - previousValue;
+  if (!delta) return '';
+  const prefix = delta > 0 ? '+' : '';
+  return `${label} ${prefix}${delta}`;
+}
+
+function summarizeInventoryChanges(previousInventory = {}, currentInventory = {}) {
+  return [
+    ...summarizeNamedCounts(previousInventory.materials, currentInventory.materials, '得材'),
+    ...summarizeNamedCounts(previousInventory.pills, currentInventory.pills, '得丹')
+  ];
+}
+
+function summarizeNamedCounts(previousEntries = {}, currentEntries = {}, label) {
+  return Object.entries(currentEntries ?? {}).flatMap(([name, count]) => {
+    const before = previousEntries?.[name] ?? 0;
+    const delta = count - before;
+    return delta > 0 ? [`${label} ${name} x${delta}`] : [];
+  });
+}
+
+function summarizeCollectionChanges(previousEntries = [], currentEntries = [], verb) {
+  const owned = new Set((previousEntries ?? []).map((item) => item?.name ?? item));
+  return (currentEntries ?? [])
+    .filter((item) => !owned.has(item?.name ?? item))
+    .map((item) => `${verb} ${item.name}`);
+}
+
+function buildInventoryCollection(inventory) {
+  const pills = Object.entries(inventory?.pills ?? {}).map(([name, count]) => ({
+    name,
+    badge: `丹药 x${count}`,
+    description: `贴身所藏 ${name}，可在关键时刻调养经脉或稳住气机。`
+  }));
+  const materials = Object.entries(inventory?.materials ?? {}).map(([name, count]) => ({
+    name,
+    badge: `材料 x${count}`,
+    description: `${name} 已整理入囊，可用于炼丹、交易或入秘境前备物。`
+  }));
+  return [...pills, ...materials];
+}
+
+function countInventoryStacks(inventory) {
+  return Object.keys(inventory?.pills ?? {}).length + Object.keys(inventory?.materials ?? {}).length;
+}
+
+function resetPendingCharacterPreview() {
+  pendingCharacterSeed = Number(localStorage.getItem('wendao-fusheng-character-seed') ?? Date.now());
+  pendingAttributes = createDefaultAllocation();
+  nodes.characterNameInput.value = '';
+}
+
 function handleApiError(error) {
   showToast(apiErrorMessage(error));
 }
 
 function apiErrorMessage(error) {
-  return error?.message ?? '云端暂不可用，请稍后重试。';
+  const message = String(error?.message ?? '');
+  if (message.startsWith('ATTRIBUTE_ALLOCATION_INVALID')) {
+    return '天赋分配有误，请重新调整。';
+  }
+  return message || '云端暂不可用，请稍后重试。';
 }
 
 function kindForCommand(command) {
