@@ -26,7 +26,17 @@
 - `system`：定义剧情叙事 agent 的职责、绝对禁止事项、暗色水墨修仙文风和 JSON schema。
 - `user`：传入本回合 `action`、`beforeGame`、`afterGame`、`ruleEntry`、`ruleDelta`、`npcVoiceGuide` 和硬性约束。
 
+提示词上下文只暴露紧凑但足够叙事的确定性状态：
+
+- `character.attributes`：根骨、悟性、福缘、心志、命种五维。
+- `player.health/maxHealth` 与 `player.lifespan/maxLifespan`：体现气血损耗、寿元压力与上限。
+- `treasures`、`techniques`：仅传递紧凑的已拥有法宝/功法标识字段，方便模型承认既有收藏。
+- `action.breakthroughPreview`：若本次行动带有突破预览，传入目标境界、成功率与失败代价。
+- `ruleEntry.breakthroughResult`：若规则结算已经给出突破成败，传入已结算结果，禁止模型重算概率或改写成败。
+
 LangGraph 在 `generate_narration` 后执行 `validate_narration`。如果输出缺少字段、正文过短/过长，或缺少审计字段，会进入 `repair_narration` 节点。修复提示词只允许模型修补 JSON，不允许解释或改写已结算事实。
+
+这里的边界必须保持 deterministic-first：属性、气血、寿元、法宝、功法、突破概率与突破结果都先由后端规则结算，LLM 只能承认并润色这些事实，不能补发奖励、不能追加状态变化，也不能把失败写成成功。
 
 ## 环境变量
 
