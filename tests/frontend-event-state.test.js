@@ -60,6 +60,15 @@ test('frontend styles include dense center-stage status, collection, and history
   assert.match(css, /\.action-card\s*\{/);
 });
 
+test('status cards keep a stable wide card ratio instead of stretching tall', () => {
+  const css = fs.readFileSync('frontend/src/styles.css', 'utf8');
+
+  assert.match(css, /\.status-overview\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(220px,\s*1fr\)\)/);
+  assert.match(css, /\.status-card\s*\{[\s\S]*min-height:\s*104px/);
+  assert.match(css, /\.status-card\s*\{[\s\S]*grid-template-rows:\s*auto\s+8px\s+1fr/);
+  assert.match(css, /\.status-card-head\s+strong\s*\{[\s\S]*overflow-wrap:\s*anywhere/);
+});
+
 test('visible frontend copy avoids api labels and debug parameters', () => {
   const html = fs.readFileSync('frontend/index.html', 'utf8');
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');

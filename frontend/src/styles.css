@@ -807,7 +807,7 @@ button {
 
 .status-overview {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
   gap: 10px;
 }
 
@@ -822,8 +822,11 @@ button {
 
 .status-card {
   display: grid;
+  grid-template-rows: auto 8px 1fr;
   gap: 8px;
+  min-height: 104px;
   padding: 12px;
+  align-content: start;
 }
 
 .status-card-head,
@@ -847,6 +850,11 @@ button {
 .summary-card strong,
 .collection-card-head strong {
   color: var(--ink);
+}
+
+.status-card-head strong {
+  overflow-wrap: anywhere;
+  text-align: right;
 }
 
 .status-card p,

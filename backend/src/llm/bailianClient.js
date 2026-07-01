@@ -44,6 +44,9 @@ export function createBailianClient({ env = process.env, fetchImpl = globalThis.
           model,
           messages,
           temperature,
+          stream: true,
+          stream_options: { include_usage: true },
+          enable_thinking: false,
           response_format: { type: 'json_object' }
         })
       });
@@ -52,8 +55,7 @@ export function createBailianClient({ env = process.env, fetchImpl = globalThis.
         throw new Error(`Bailian chat request failed with HTTP ${response.status}`);
       }
 
-      const payload = await response.json();
-      const content = payload?.choices?.[0]?.message?.content;
+      const content = await readChatContent(response);
       if (!content) {
         throw new Error('Bailian chat response did not include message content');
       }
@@ -61,4 +63,58 @@ export function createBailianClient({ env = process.env, fetchImpl = globalThis.
       return JSON.parse(content);
     }
   };
+}
+
+async function readChatContent(response) {
+  if (!response.body?.getReader) {
+    const payload = await response.json();
+    return payload?.choices?.[0]?.message?.content;
+  }
+
+  return readStreamContent(response.body);
+}
+
+async function readStreamContent(body) {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let content = '';
+
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+
+    const parts = buffer.split(/\r?\n\r?\n/);
+    buffer = parts.pop() ?? '';
+
+    for (const part of parts) {
+      content += parseStreamEvent(part);
+    }
+
+    if (done) break;
+  }
+
+  if (buffer.trim()) {
+    content += parseStreamEvent(buffer);
+  }
+
+  return content;
+}
+
+function parseStreamEvent(eventBlock) {
+  let content = '';
+
+  for (const line of eventBlock.split(/\r?\n/)) {
+    if (!line.startsWith('data:')) continue;
+
+    const data = line.slice(5).trim();
+    if (!data || data === '[DONE]') continue;
+
+    const payload = JSON.parse(data);
+    for (const choice of payload.choices ?? []) {
+      content += choice.delta?.content ?? choice.message?.content ?? '';
+    }
+  }
+
+  return content;
 }

@@ -17,6 +17,8 @@
 
 后端使用 LangGraph 编排剧情生成。回合推进时先执行规则结算并保存新进度，再请求 LLM 生成剧情。若模型不可用，后端不会回滚规则结算，而是在 `turnResult.narration` 中返回 `status: "llm_unavailable"`、`retryable: true` 和已保存的 `savedTurn`。之后可调用 `POST /api/v1/turns/:turn/narration`，基于同一已保存结算重新续写剧情，不会重复推进规则。
 
+百炼请求默认使用流式响应，并在请求体中关闭 Qwen 思考模式。后端会从 SSE delta 中组装完整 JSON，再按原有 REST 合同返回给前端；这样不改变当前前后端接口，同时减少模型思考阶段造成的等待。
+
 测试环境通过 fake LLM 注入验证生成和不可用路径，不调用真实百炼 API。
 
 ## 提示词与修复流程
@@ -31,8 +33,8 @@
 - `character.attributes`：根骨、悟性、福缘、心志、命种五维。
 - `player.health/maxHealth` 与 `player.lifespan/maxLifespan`：体现气血损耗、寿元压力与上限。
 - `treasures`、`techniques`：仅传递紧凑的玩家可感知字段，如名称、品阶、描述与加成，方便模型承认既有收藏而不暴露内部标识。
-- `action.breakthroughPreview`：若本次行动带有突破预览，传入目标境界、成功率与失败代价。
-- `ruleEntry.breakthroughResult`：若规则结算已经给出突破成败，传入已结算结果，禁止模型重算概率或改写成败。
+- `action.breakthrough`：若本次行动带有突破预览，传入目标境界、成功率与失败代价的语义字段。
+- `ruleEntry.breakthrough`：若规则结算已经给出突破成败，传入已结算结果，禁止模型重算概率或改写成败。
 
 LangGraph 在 `generate_narration` 后执行 `validate_narration`。如果输出缺少字段、正文过短/过长，或缺少审计字段，会进入 `repair_narration` 节点。修复提示词只允许模型修补 JSON，不允许解释或改写已结算事实。
 
