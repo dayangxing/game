@@ -181,3 +181,68 @@ Result:
 ### Concerns
 
 - The durable summary cache lives in frontend storage, so older summaries only reappear on the same client that previously observed and saved them
+
+## Fix Report 2 2026-07-01
+
+### Review Finding
+
+History summary cache entries were stored globally under `HISTORY_SUMMARY_KEY` and keyed only by visible log text. After a reset, new formal run, or mode switch, a fresh playthrough with matching log text could inherit stale `effectsSummary` lines from an older run.
+
+### Root Cause
+
+`frontend/src/app.js` persisted summary lines in one shared cache namespace with no playthrough boundary. Hydration trusted that global cache whenever a log entry's player-facing text matched, even when the active run had been replaced locally.
+
+### Fix
+
+- Added a dedicated frontend history-summary scope key alongside the summary cache key
+- Stored cached summaries as `{ scopeId, entries }` instead of a flat global map
+- Rotated the scope after successful reset, formal-game creation, and mode-switch transitions before hydrating the next run
+- Kept same-client reload rehydration working for the active playthrough by preserving the current scope in local storage until one of those transitions replaces the run
+- Added a regression test proving identical log text does not rehydrate stale summaries once the scope rotates
+
+### Files Changed
+
+- `frontend/src/app.js`
+- `tests/frontend-app-wiring.test.js`
+
+### RED Evidence
+
+Command:
+
+```bash
+/Users/ruilifeng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test tests/frontend-app-wiring.test.js
+```
+
+Result before the fix:
+
+- Exit code: `1`
+- Summary: `11 tests`, `9 pass`, `2 fail`
+- New failures: missing history-summary scope key/helper coverage and stale-cache regression protection
+
+### GREEN Evidence
+
+Focused Task 5 verification:
+
+```bash
+/Users/ruilifeng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test tests/frontend-character-creation.test.js tests/frontend-event-state.test.js tests/frontend-views.test.js tests/frontend-app-wiring.test.js
+```
+
+Result:
+
+- Exit code: `0`
+- Summary: `30 pass`, `0 fail`
+
+Full Node suite:
+
+```bash
+/Users/ruilifeng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test
+```
+
+Result:
+
+- Exit code: `0`
+- Summary: `141 pass`, `0 fail`
+
+### Concerns
+
+- Scope rotation is driven by frontend transitions we control locally; if a different client resets the server-side run behind this client, stale local summaries still will not hydrate unless they remain within the same preserved local scope

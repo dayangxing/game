@@ -57,22 +57,33 @@ test('daily action refresh is guarded by request, view, and game context', () =>
 test('mode and reset transitions load next actions before replacing current state', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
   const [, resetHandler] = source.match(/nodes\.resetBtn\.addEventListener\('click', async \(\) => \{([\s\S]*?)\n\}\);/) ?? [];
+  const [, startFormalHandler] = source.match(/nodes\.startFormalGameBtn\.addEventListener\('click', async \(\) => \{([\s\S]*?)\n\}\);/) ?? [];
   const setModeBody = extractFunction(source, 'setMode');
 
   assert.ok(resetHandler, 'reset handler should exist');
+  assert.ok(startFormalHandler, 'formal game handler should exist');
   assert.ok(setModeBody, 'setMode helper should exist');
 
   assert.doesNotMatch(resetHandler, /game = await api\.createGame/);
-  assert.match(resetHandler, /const nextGame = hydrateHistorySummaries\(await api\.createGame\(game\.mode\)\);/);
+  assert.match(resetHandler, /const freshGame = await api\.createGame\(game\.mode\);/);
+  assert.match(resetHandler, /rotateHistorySummaryScope\(\);/);
+  assert.match(resetHandler, /const nextGame = hydrateHistorySummaries\(freshGame\);/);
   assert.match(resetHandler, /const nextActions = await loadDailyActionsForGame\(nextGame,\s*getView\(activeViewId\)\);/);
   assert.ok(resetHandler.indexOf('const nextActions') < resetHandler.indexOf('game = nextGame;'));
   assert.ok(resetHandler.indexOf('const nextActions') < resetHandler.indexOf('dailyActions = nextActions;'));
+  assert.ok(resetHandler.indexOf('rotateHistorySummaryScope();') < resetHandler.indexOf('const nextGame = hydrateHistorySummaries(freshGame);'));
 
   assert.doesNotMatch(setModeBody, /game = await api\.setMode/);
-  assert.match(setModeBody, /const nextGame = hydrateHistorySummaries\(await api\.setMode\(game,\s*mode\)\);/);
+  assert.match(setModeBody, /const modeGame = await api\.setMode\(game,\s*mode\);/);
+  assert.match(setModeBody, /rotateHistorySummaryScope\(\);/);
+  assert.match(setModeBody, /const nextGame = hydrateHistorySummaries\(modeGame\);/);
   assert.match(setModeBody, /const nextActions = await loadDailyActionsForGame\(nextGame,\s*getView\(activeViewId\)\);/);
   assert.ok(setModeBody.indexOf('const nextActions') < setModeBody.indexOf('game = nextGame;'));
   assert.ok(setModeBody.indexOf('const nextActions') < setModeBody.indexOf('dailyActions = nextActions;'));
+  assert.ok(setModeBody.indexOf('rotateHistorySummaryScope();') < setModeBody.indexOf('const nextGame = hydrateHistorySummaries(modeGame);'));
+
+  assert.match(startFormalHandler, /rotateHistorySummaryScope\(\);/);
+  assert.ok(startFormalHandler.indexOf('rotateHistorySummaryScope();') < startFormalHandler.indexOf('game = hydrateHistorySummaries(game);'));
 });
 
 test('startup api failure notice prevents the guide from covering the error toast', () => {
@@ -130,25 +141,36 @@ test('api reload rehydrates cached player-facing history summaries onto durable 
   const loadGameHelper = extractFunction(source, 'loadGame');
   const setModeHelper = extractFunction(source, 'setMode');
   const historySummaryKey = source.match(/const HISTORY_SUMMARY_KEY = '([^']+)';/);
+  const historySummaryScopeKey = source.match(/const HISTORY_SUMMARY_SCOPE_KEY = '([^']+)';/);
 
   assert.ok(historySummaryKey, 'history summary storage key should exist');
+  assert.ok(historySummaryScopeKey, 'history summary scope storage key should exist');
   assert.match(source, /function historyEntryCacheKey\(/);
+  assert.match(source, /function getHistorySummaryScopeId\(/);
+  assert.match(source, /function rotateHistorySummaryScope\(/);
   assert.match(source, /function normalizeEffectSummary\(/);
   assert.match(source, /function persistHistorySummaryCache\(/);
   assert.match(source, /function hydrateHistorySummaries\(/);
   assert.match(submitHelper, /persistHistorySummaryCache\(game\);/);
   assert.match(loadGameHelper, /hydrateHistorySummaries\(/);
   assert.match(setModeHelper, /hydrateHistorySummaries\(/);
+  assert.match(setModeHelper, /rotateHistorySummaryScope\(\);/);
 
   const sandbox = { result: null };
   vm.runInNewContext(`
     ${historySummaryKey[0]}
+    ${historySummaryScopeKey[0]}
     ${extractFunctionDeclaration(source, 'normalizeEffectSummary')}
+    ${extractFunctionDeclaration(source, 'createHistorySummaryScopeId')}
+    ${extractFunctionDeclaration(source, 'getHistorySummaryScopeId')}
+    ${extractFunctionDeclaration(source, 'rotateHistorySummaryScope')}
     ${extractFunctionDeclaration(source, 'historyEntryCacheKey')}
     ${extractFunctionDeclaration(source, 'readHistorySummaryCache')}
     ${extractFunctionDeclaration(source, 'persistHistorySummaryCache')}
     ${extractFunctionDeclaration(source, 'hydrateHistorySummaries')}
     result = {
+      getHistorySummaryScopeId,
+      rotateHistorySummaryScope,
       persistHistorySummaryCache,
       hydrateHistorySummaries
     };
@@ -176,6 +198,60 @@ test('api reload rehydrates cached player-facing history summaries onto durable 
   }, storage);
 
   assert.deepEqual(Array.from(reloaded.log[1].effectsSummary), ['寿元 -1', '修为 +8']);
+});
+
+test('history summary hydration ignores stale cache entries after the playthrough scope rotates', () => {
+  const source = fs.readFileSync('frontend/src/app.js', 'utf8');
+  const historySummaryKey = source.match(/const HISTORY_SUMMARY_KEY = '([^']+)';/);
+  const historySummaryScopeKey = source.match(/const HISTORY_SUMMARY_SCOPE_KEY = '([^']+)';/);
+
+  assert.ok(historySummaryKey, 'history summary storage key should exist');
+  assert.ok(historySummaryScopeKey, 'history summary scope storage key should exist');
+
+  const sandbox = { result: null };
+  vm.runInNewContext(`
+    ${historySummaryKey[0]}
+    ${historySummaryScopeKey[0]}
+    ${extractFunctionDeclaration(source, 'normalizeEffectSummary')}
+    ${extractFunctionDeclaration(source, 'createHistorySummaryScopeId')}
+    ${extractFunctionDeclaration(source, 'getHistorySummaryScopeId')}
+    ${extractFunctionDeclaration(source, 'rotateHistorySummaryScope')}
+    ${extractFunctionDeclaration(source, 'historyEntryCacheKey')}
+    ${extractFunctionDeclaration(source, 'readHistorySummaryCache')}
+    ${extractFunctionDeclaration(source, 'persistHistorySummaryCache')}
+    ${extractFunctionDeclaration(source, 'hydrateHistorySummaries')}
+    result = {
+      getHistorySummaryScopeId,
+      rotateHistorySummaryScope,
+      persistHistorySummaryCache,
+      hydrateHistorySummaries
+    };
+  `, sandbox);
+
+  const storage = createStorageDouble();
+  const firstScopeId = sandbox.result.getHistorySummaryScopeId(storage);
+
+  sandbox.result.persistHistorySummaryCache({
+    log: [
+      {
+        id: 'turn-1',
+        title: '命火微暗',
+        command: '闭关修炼一日',
+        body: '经脉略有刺痛。',
+        effectsSummary: ['寿元 -1', '修为 +8']
+      }
+    ]
+  }, storage);
+
+  const secondScopeId = sandbox.result.rotateHistorySummaryScope(storage);
+  const freshRun = sandbox.result.hydrateHistorySummaries({
+    log: [
+      { id: 'turn-1', title: '命火微暗', command: '闭关修炼一日', body: '经脉略有刺痛。' }
+    ]
+  }, storage);
+
+  assert.notEqual(secondScopeId, firstScopeId);
+  assert.equal(freshRun.log[0].effectsSummary, undefined);
 });
 
 function extractFunction(source, name) {

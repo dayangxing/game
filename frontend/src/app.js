@@ -19,6 +19,7 @@ import { getView, viewList } from './ui/views.js';
 const STORAGE_KEY = 'wendao-fusheng-frontend-save-v1';
 const MODE_KEY = 'wendao-fusheng-mode-v1';
 const HISTORY_SUMMARY_KEY = 'wendao-fusheng-history-summary-v1';
+const HISTORY_SUMMARY_SCOPE_KEY = 'wendao-fusheng-history-summary-scope-v1';
 const BACKEND_BASE_URL = window.WENDAO_API_BASE_URL ?? 'http://127.0.0.1:8787';
 const RANDOM_COMMANDS = [
   '闭关修炼三月，尝试突破',
@@ -166,7 +167,9 @@ nodes.exportBtn.addEventListener('click', async () => {
 
 nodes.resetBtn.addEventListener('click', async () => {
   try {
-    const nextGame = hydrateHistorySummaries(await api.createGame(game.mode));
+    const freshGame = await api.createGame(game.mode);
+    rotateHistorySummaryScope();
+    const nextGame = hydrateHistorySummaries(freshGame);
     const nextActions = await loadDailyActionsForGame(nextGame, getView(activeViewId));
     actionRefreshSequence += 1;
     pendingApiImmediateActions = false;
@@ -241,6 +244,7 @@ nodes.startFormalGameBtn.addEventListener('click', async () => {
       rerollSeed: pendingCharacterSeed,
       attributes: pendingAttributes
     });
+    rotateHistorySummaryScope();
     game = hydrateHistorySummaries(game);
     dailyActions = await loadDailyActionsForGame(game, getView(activeViewId));
     actionRefreshSequence += 1;
@@ -273,7 +277,9 @@ async function submitDailyAction(action) {
 
 async function setMode(mode) {
   try {
-    const nextGame = hydrateHistorySummaries(await api.setMode(game, mode));
+    const modeGame = await api.setMode(game, mode);
+    rotateHistorySummaryScope();
+    const nextGame = hydrateHistorySummaries(modeGame);
     const nextActions = await loadDailyActionsForGame(nextGame, getView(activeViewId));
     actionRefreshSequence += 1;
     pendingApiImmediateActions = false;
@@ -848,6 +854,29 @@ function shouldBlockImmediateApiAction(action) {
   return game.mode === 'api' && pendingApiImmediateActions && action.source === 'immediate';
 }
 
+function createHistorySummaryScopeId() {
+  return `history-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function getHistorySummaryScopeId(storage = localStorage) {
+  const existingScopeId = storage?.getItem?.(HISTORY_SUMMARY_SCOPE_KEY);
+  if (existingScopeId) return existingScopeId;
+
+  const nextScopeId = createHistorySummaryScopeId();
+  storage?.setItem?.(HISTORY_SUMMARY_SCOPE_KEY, nextScopeId);
+  return nextScopeId;
+}
+
+function rotateHistorySummaryScope(storage = localStorage) {
+  const nextScopeId = createHistorySummaryScopeId();
+  storage?.setItem?.(HISTORY_SUMMARY_SCOPE_KEY, nextScopeId);
+  storage?.setItem?.(HISTORY_SUMMARY_KEY, JSON.stringify({
+    scopeId: nextScopeId,
+    entries: {}
+  }));
+  return nextScopeId;
+}
+
 function historyEntryCacheKey(entry = {}) {
   return JSON.stringify({
     id: entry.id ?? '',
@@ -860,10 +889,13 @@ function historyEntryCacheKey(entry = {}) {
 
 function readHistorySummaryCache(storage = localStorage) {
   try {
+    const scopeId = getHistorySummaryScopeId(storage);
     const raw = storage?.getItem?.(HISTORY_SUMMARY_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? parsed : {};
+    if (!parsed || typeof parsed !== 'object') return {};
+    if (parsed.scopeId !== scopeId) return {};
+    return parsed.entries && typeof parsed.entries === 'object' ? parsed.entries : {};
   } catch {
     return {};
   }
@@ -872,6 +904,7 @@ function readHistorySummaryCache(storage = localStorage) {
 function persistHistorySummaryCache(targetGame, storage = localStorage) {
   if (!storage?.setItem || !targetGame?.log?.length) return {};
 
+  const scopeId = getHistorySummaryScopeId(storage);
   const nextCache = { ...readHistorySummaryCache(storage) };
   for (const entry of targetGame.log) {
     const lines = normalizeEffectSummary(entry.effectsSummary);
@@ -879,7 +912,10 @@ function persistHistorySummaryCache(targetGame, storage = localStorage) {
     nextCache[historyEntryCacheKey(entry)] = lines;
   }
 
-  storage.setItem(HISTORY_SUMMARY_KEY, JSON.stringify(nextCache));
+  storage.setItem(HISTORY_SUMMARY_KEY, JSON.stringify({
+    scopeId,
+    entries: nextCache
+  }));
   return nextCache;
 }
 
