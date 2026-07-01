@@ -8,6 +8,11 @@ const FEATURED_EVENT_PRIORITY_BOOSTS = {
     mist_lantern_path: 95
   }
 };
+const RISK_LABELS = {
+  low: '低风险',
+  medium: '中等风险',
+  high: '高风险'
+};
 
 export function selectEventActions({ game, viewId, now, sequenceStart = 0 }) {
   const eligible = EVENT_CATALOG
@@ -27,7 +32,7 @@ export function selectEventActions({ game, viewId, now, sequenceStart = 0 }) {
       title: choice.label,
       icon: event.category.slice(0, 1),
       command: choice.command,
-      meta: `${event.title} / ${choice.risk}`,
+      meta: `${event.title} / ${RISK_LABELS[choice.risk] ?? '未知风险'}`,
       source: 'event',
       risk: choice.risk,
       eventId: event.id,
@@ -53,7 +58,7 @@ export function selectEventActions({ game, viewId, now, sequenceStart = 0 }) {
     title: '尝试突破',
     icon: BREAKTHROUGH_EVENT.category.slice(0, 1),
     command: '尝试突破',
-    meta: `突破至${preview.targetRealm} / 成功率 ${preview.chance}%`,
+    meta: `突破至${preview.targetRealm} / ${RISK_LABELS.high}`,
     source: 'breakthrough',
     risk: 'high',
     eventId: BREAKTHROUGH_EVENT.id,

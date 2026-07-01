@@ -139,3 +139,52 @@ Result:
 - `backend/src/app.js`
 - `backend/src/domain/events/eventResult.js`
 - `tests/backend-api.test.js`
+
+## Fix Report 2
+
+### Findings addressed
+
+1. Public daily-action `meta` no longer serializes the internal risk tokens `low`, `medium`, or `high`. Event and breakthrough actions now expose player-facing Chinese risk labels instead.
+
+### RED evidence
+
+Command:
+
+```bash
+/Users/ruilifeng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test tests/backend-api.test.js
+```
+
+Result:
+
+- `26` tests passed
+- `1` test failed
+- The new regression test failed because at least one public daily-action `meta` field still contained a raw risk token.
+
+### GREEN evidence
+
+Targeted command:
+
+```bash
+/Users/ruilifeng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test tests/backend-api.test.js
+```
+
+Result:
+
+- `27` tests passed
+- `0` tests failed
+
+Full suite command:
+
+```bash
+/Users/ruilifeng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test tests/*.test.js
+```
+
+Result:
+
+- `135` tests passed
+- `0` tests failed
+
+### Files changed
+
+- `backend/src/domain/events/eventSelector.js`
+- `tests/backend-api.test.js`

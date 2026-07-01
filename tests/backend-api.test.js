@@ -310,7 +310,7 @@ test('POST /api/v1/daily-actions inserts a breakthrough action before normal cul
 
   assert.equal(payload.ok, true);
   assert.equal(payload.data.actions[0].title, '尝试突破');
-  assert.match(payload.data.actions[0].meta, /成功率 82%/);
+  assert.match(payload.data.actions[0].meta, /高风险/);
   assert.doesNotMatch(payload.data.actions[0].meta, /breakthrough|attempt|choice/i);
   assertPublicActionShape(payload.data.actions[0]);
 });
@@ -366,7 +366,7 @@ test('POST /api/v1/daily-actions returns breakthrough plus fallback actions when
   assert.equal(payload.ok, true);
   assert.equal(payload.data.actions.length, 4);
   assert.equal(payload.data.actions[0].title, '尝试突破');
-  assert.match(payload.data.actions[0].meta, /成功率 82%/);
+  assert.match(payload.data.actions[0].meta, /高风险/);
   assert.ok(payload.data.actions.slice(1).some((action) => action.command.includes('闭关修炼三月')));
   assert.ok(payload.data.actions.every((action) => hasOnlyPublicActionFields(action)));
 });
@@ -414,6 +414,25 @@ test('POST /api/v1/daily-actions keeps routing fields server-side while returnin
   assert.equal(typeof pendingEvent.choice?.id, 'string');
   assert.equal(pendingEvent.choice.label, publicEvent.title);
   assert.match(publicEvent.meta, new RegExp(pendingEvent.event.title));
+});
+
+test('POST /api/v1/daily-actions does not expose raw risk strings in public meta', async () => {
+  const app = createBackendApp({ seed: 31, now: fixedNow });
+  app.getState().game.onboarding = completedOnboardingState();
+
+  await jsonResponse(app.handle(makeRequest('POST', '/api/v1/game/new', {
+    name: '顾清河',
+    rerollSeed: 52
+  })));
+  app.getState().game.player.cultivationProgress = 100;
+
+  const payload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+    viewId: 'cultivation',
+    gameVersion: 0
+  })));
+
+  assert.equal(payload.ok, true);
+  assert.ok(payload.data.actions.every((action) => !/\b(low|medium|high)\b/.test(action.meta)));
 });
 
 test('POST /api/v1/turns resolves selected event effects deterministically', async () => {
