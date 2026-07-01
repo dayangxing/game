@@ -188,3 +188,52 @@ Result:
 
 - `backend/src/domain/events/eventSelector.js`
 - `tests/backend-api.test.js`
+
+## Fix Report 3
+
+### Findings addressed
+
+1. Public breakthrough `meta` now includes the player-facing success rate alongside the target realm and Chinese risk label.
+
+### RED evidence
+
+Command:
+
+```bash
+/Users/ruilifeng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test tests/backend-api.test.js
+```
+
+Result:
+
+- `25` tests passed
+- `2` tests failed
+- The new regression assertions failed because breakthrough public meta still read `突破至炼气二层 / 高风险` and did not include the success rate.
+
+### GREEN evidence
+
+Targeted command:
+
+```bash
+/Users/ruilifeng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test tests/backend-api.test.js tests/breakthrough.test.js
+```
+
+Result:
+
+- `33` tests passed
+- `0` tests failed
+
+Full suite command:
+
+```bash
+/Users/ruilifeng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test tests/*.test.js
+```
+
+Result:
+
+- `135` tests passed
+- `0` tests failed
+
+### Files changed
+
+- `backend/src/domain/events/eventSelector.js`
+- `tests/backend-api.test.js`

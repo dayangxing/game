@@ -58,7 +58,7 @@ export function selectEventActions({ game, viewId, now, sequenceStart = 0 }) {
     title: '尝试突破',
     icon: BREAKTHROUGH_EVENT.category.slice(0, 1),
     command: '尝试突破',
-    meta: `突破至${preview.targetRealm} / ${RISK_LABELS.high}`,
+    meta: `突破至${preview.targetRealm} / 成功率 ${preview.chance}% / ${RISK_LABELS.high}`,
     source: 'breakthrough',
     risk: 'high',
     eventId: BREAKTHROUGH_EVENT.id,

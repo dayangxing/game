@@ -310,6 +310,8 @@ test('POST /api/v1/daily-actions inserts a breakthrough action before normal cul
 
   assert.equal(payload.ok, true);
   assert.equal(payload.data.actions[0].title, '尝试突破');
+  assert.match(payload.data.actions[0].meta, /突破至炼气二层/);
+  assert.match(payload.data.actions[0].meta, /成功率 \d+%/);
   assert.match(payload.data.actions[0].meta, /高风险/);
   assert.doesNotMatch(payload.data.actions[0].meta, /breakthrough|attempt|choice/i);
   assertPublicActionShape(payload.data.actions[0]);
@@ -366,6 +368,8 @@ test('POST /api/v1/daily-actions returns breakthrough plus fallback actions when
   assert.equal(payload.ok, true);
   assert.equal(payload.data.actions.length, 4);
   assert.equal(payload.data.actions[0].title, '尝试突破');
+  assert.match(payload.data.actions[0].meta, /突破至炼气二层/);
+  assert.match(payload.data.actions[0].meta, /成功率 \d+%/);
   assert.match(payload.data.actions[0].meta, /高风险/);
   assert.ok(payload.data.actions.slice(1).some((action) => action.command.includes('闭关修炼三月')));
   assert.ok(payload.data.actions.every((action) => hasOnlyPublicActionFields(action)));
