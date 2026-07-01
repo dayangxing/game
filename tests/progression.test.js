@@ -125,6 +125,41 @@ test('attribute effects clamp allocations and recalculate derived max stats', ()
   assert.equal(next.player.maxLifespan, base.character.initialLifespan + 56);
 });
 
+test('willpower-only attribute changes do not alter lifespan action costs', () => {
+  const base = createFormalGame({
+    attributes: {
+      rootBone: 4,
+      comprehension: 5,
+      fortune: 6,
+      willpower: 6,
+      lifeSeed: 4
+    },
+    realm: '金丹初期'
+  });
+  const next = applyEffects(base, [{ type: 'attribute', key: 'willpower', delta: 9 }]);
+
+  assert.equal(calculateLifespanCost(next), calculateLifespanCost(base));
+  assert.equal(next.derivedBonuses?.lifespanCostReduction, undefined);
+});
+
+test('maxLifespan effects clamp current lifespan to the new maximum', () => {
+  const base = createFormalGame();
+  const next = applyEffects(base, [{ type: 'maxLifespan', delta: -10 }]);
+
+  assert.equal(next.player.maxLifespan, base.player.maxLifespan - 10);
+  assert.equal(next.player.lifespan, next.player.maxLifespan);
+});
+
+test('attribute effects reject keys outside the supported attribute set', () => {
+  const base = createFormalGame();
+
+  assert.throws(
+    () => applyEffects(base, [{ type: 'attribute', key: 'alchemy', delta: 1 }]),
+    /RULE_EFFECT_INVALID:attribute/
+  );
+  assert.equal(base.character.attributes.alchemy, undefined);
+});
+
 test('turn results include health and lifespan stat deltas after progression effects', () => {
   const before = createFormalGame();
   const after = applyEffects(before, [
@@ -148,7 +183,7 @@ test('turn results include health and lifespan stat deltas after progression eff
   assert.deepEqual(turnResult.ruleResult.statChanges, {
     health: -18,
     maxHealth: -12,
-    lifespan: -4,
+    lifespan: -7,
     maxLifespan: -7
   });
 });

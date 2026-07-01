@@ -1,4 +1,4 @@
-import { deriveMaxHealth, deriveMaxLifespan } from '../attributes.js';
+import { ATTRIBUTE_KEYS, deriveMaxHealth, deriveMaxLifespan } from '../attributes.js';
 import { applyActionCost } from '../progression.js';
 
 export function resolveChoice({ game, event, choice, now }) {
@@ -104,11 +104,13 @@ function applyEffect(game, effect) {
     };
   }
   if (effect.type === 'maxLifespan') {
+    const maxLifespan = Math.max(0, (game.player?.maxLifespan ?? 0) + effect.delta);
     return {
       ...game,
       player: {
         ...game.player,
-        maxLifespan: Math.max(0, (game.player?.maxLifespan ?? 0) + effect.delta)
+        maxLifespan,
+        lifespan: clamp(game.player?.lifespan ?? 0, 0, maxLifespan)
       }
     };
   }
@@ -208,6 +210,10 @@ function clamp(value, min, max) {
 }
 
 function applyAttributeEffect(game, effect) {
+  if (!ATTRIBUTE_KEYS.includes(effect.key)) {
+    throw new Error(`RULE_EFFECT_INVALID:attribute:${effect.key}`);
+  }
+
   const attributes = {
     ...(game.character?.attributes ?? {}),
     [effect.key]: clamp(((game.character?.attributes?.[effect.key] ?? 1) + effect.delta), 1, 10)
@@ -223,10 +229,6 @@ function applyAttributeEffect(game, effect) {
       comprehension: (attributes.comprehension ?? 1) * 9,
       physique: (attributes.rootBone ?? 1) * 9,
       luck: (attributes.fortune ?? 1) * 9
-    },
-    derivedBonuses: {
-      ...game.derivedBonuses,
-      lifespanCostReduction: Math.floor((attributes.willpower ?? 1) / 5)
     },
     player: {
       ...game.player,
