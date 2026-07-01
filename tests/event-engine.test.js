@@ -164,6 +164,24 @@ test('bag selector filters out market offers that cannot pay their spirit stone 
   assert.equal(actions.some((action) => action.eventId === 'black_market_offer'), false);
 });
 
+test('realm selector surfaces the unlocked mist step reward event', () => {
+  const base = formalGame();
+  const game = {
+    ...base,
+    karma: {
+      ...base.karma,
+      futureEventFlags: ['elder_private_warning']
+    }
+  };
+  const actions = selectEventActions({
+    game,
+    viewId: 'realm',
+    now: new Date('2026-07-01T08:00:00.000Z')
+  });
+
+  assert.equal(actions.some((action) => action.eventId === 'mist_lantern_path'), true);
+});
+
 test('relation effects target the intended npc only', () => {
   const game = formalGame();
   const next = applyEffects(game, [
@@ -191,4 +209,56 @@ test('sect events update authoritative sect relation instead of dead state', () 
 
   assert.equal(result.game.player.sectRelation, game.player.sectRelation + 15);
   assert.equal('sect' in result.game, false);
+});
+
+test('reward events seed treasure and technique effects into the catalog', () => {
+  const bell = EVENT_CATALOG.find((event) => event.id === 'mist_bronze_bell');
+  const guidance = EVENT_CATALOG.find((event) => event.id === 'master_guidance');
+  const lantern = EVENT_CATALOG.find((event) => event.id === 'mist_lantern_path');
+
+  assert.equal(bell.choices.some((choice) => choice.success.effects.some((effect) => effect.type === 'treasure' && effect.id === 'calm_lotus_incense')), true);
+  assert.equal(guidance.choices.some((choice) => choice.success.effects.some((effect) => effect.type === 'technique' && effect.id === 'qingmu_jue')), true);
+  assert.equal(lantern.choices.some((choice) => choice.success.effects.some((effect) => effect.type === 'technique' && effect.id === 'mist_step')), true);
+});
+
+test('effect resolver grants treasure and technique rewards from event choices', () => {
+  const game = {
+    ...formalGame(),
+    karma: {
+      ...formalGame().karma,
+      futureEventFlags: ['elder_private_warning']
+    }
+  };
+  const bellEvent = EVENT_CATALOG.find((event) => event.id === 'mist_bronze_bell');
+  const bellChoice = bellEvent.choices.find((choice) => choice.id === 'approach');
+  const guidanceEvent = EVENT_CATALOG.find((event) => event.id === 'master_guidance');
+  const guidanceChoice = guidanceEvent.choices.find((choice) => choice.id === 'stabilize');
+  const lanternEvent = EVENT_CATALOG.find((event) => event.id === 'mist_lantern_path');
+  const lanternChoice = lanternEvent.choices.find((choice) => choice.id === 'follow');
+
+  const afterTreasure = resolveChoice({
+    game,
+    event: bellEvent,
+    choice: bellChoice,
+    now: new Date('2026-07-01T08:00:00.000Z')
+  }).game;
+  const afterQingmu = resolveChoice({
+    game,
+    event: guidanceEvent,
+    choice: guidanceChoice,
+    now: new Date('2026-07-01T08:00:00.000Z')
+  }).game;
+  const afterMistStep = resolveChoice({
+    game,
+    event: lanternEvent,
+    choice: lanternChoice,
+    now: new Date('2026-07-01T08:00:00.000Z')
+  }).game;
+
+  assert.equal(afterTreasure.treasures[0].id, 'calm_lotus_incense');
+  assert.equal(afterTreasure.derivedBonuses.breakthroughChance, 3);
+  assert.equal(afterQingmu.techniques[0].id, 'qingmu_jue');
+  assert.equal(afterQingmu.derivedBonuses.cultivationGain, 6);
+  assert.equal(afterMistStep.techniques[0].id, 'mist_step');
+  assert.equal(afterMistStep.derivedBonuses.damageReduction, 5);
 });

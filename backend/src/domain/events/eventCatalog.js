@@ -55,6 +55,7 @@ export const EVENT_CATALOG = [
   event('mist_bronze_bell', '雾中青铜铃', 'realm', ['realm'], [
     choice('approach', '靠近铜铃', '靠近雾隐秘境中的青铜铃', 'medium', [
       flag('bronze_bell', true),
+      treasure('calm_lotus_incense'),
       stat('player.qi', -5),
       futureEvent('mist_archive_fragment')
     ], '铜铃无风自鸣，像是在回应你的灵根。')
@@ -129,6 +130,7 @@ export const EVENT_CATALOG = [
       relation('xuanheng', 5)
     ], '玄衡长老指出你周天里最危险的一处逆行。'),
     choice('stabilize', '求稳灵息', '请玄衡长老指点稳固灵息之法', 'low', [
+      technique('qingmu_jue'),
       stat('player.qi', 6),
       stat('player.mood', 4),
       relation('xuanheng', 3)
@@ -168,6 +170,7 @@ export const EVENT_CATALOG = [
   ], { requiresFutureEvent: 'elder_private_warning' }),
   event('mist_lantern_path', '雾灯石径', 'realm', ['realm'], [
     choice('follow', '循雾灯前行', '沿雾隐秘境雾灯石径深入', 'high', [
+      technique('mist_step'),
       stat('player.qi', -6),
       flag('bronze_bell', true),
       futureEvent('mist_archive_full')
@@ -235,6 +238,14 @@ function item(path, delta) {
 
 function flag(id, value) {
   return { type: 'flag', id, value };
+}
+
+function treasure(id) {
+  return { type: 'treasure', id };
+}
+
+function technique(id) {
+  return { type: 'technique', id };
 }
 
 function futureEvent(id) {

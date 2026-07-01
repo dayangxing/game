@@ -4,7 +4,11 @@ import { isEventEligible } from './triggerMatcher.js';
 
 const FEATURED_EVENT_PRIORITY_BOOSTS = {
   realm: {
-    mist_bronze_bell: 100
+    mist_bronze_bell: 100,
+    mist_lantern_path: 95
+  },
+  skills: {
+    master_guidance: 80
   }
 };
 
@@ -13,7 +17,7 @@ export function selectEventActions({ game, viewId, now, sequenceStart = 0 }) {
     .map((event, index) => ({ event, index }))
     .filter(({ event }) => isEventEligible(event, game, viewId))
     .filter(({ event }) => !isEventOnCooldown(event, game))
-    .sort((left, right) => compareEvents(left, right, viewId))
+    .sort((left, right) => compareEvents(left, right, viewId, game))
     .map(({ event }) => event)
     .slice(0, 6);
 
@@ -43,14 +47,22 @@ export function selectEventActions({ game, viewId, now, sequenceStart = 0 }) {
     .slice(0, 4);
 }
 
-function compareEvents(left, right, viewId) {
-  const priorityDelta = scoreEvent(right.event, viewId) - scoreEvent(left.event, viewId);
+function compareEvents(left, right, viewId, game) {
+  const priorityDelta = scoreEvent(right.event, viewId, game) - scoreEvent(left.event, viewId, game);
   if (priorityDelta !== 0) return priorityDelta;
   return left.index - right.index;
 }
 
-function scoreEvent(event, viewId) {
-  return event.priority + (FEATURED_EVENT_PRIORITY_BOOSTS[viewId]?.[event.id] ?? 0);
+function scoreEvent(event, viewId, game) {
+  return event.priority
+    + (FEATURED_EVENT_PRIORITY_BOOSTS[viewId]?.[event.id] ?? 0)
+    + getUnlockedFutureEventBoost(event, game);
+}
+
+function getUnlockedFutureEventBoost(event, game) {
+  const requiredFutureEvent = event.trigger?.requiresFutureEvent;
+  if (!requiredFutureEvent) return 0;
+  return game.karma?.futureEventFlags?.includes(requiredFutureEvent) ? 90 : 0;
 }
 
 function isEventOnCooldown(event, game) {

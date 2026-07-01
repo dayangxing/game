@@ -1,5 +1,6 @@
 import { ATTRIBUTE_KEYS, deriveMaxHealth, deriveMaxLifespan } from '../attributes.js';
 import { applyActionCost } from '../progression.js';
+import { calculateDerivedBonuses, grantTechnique, grantTreasure } from '../rewards.js';
 
 export function resolveChoice({ game, event, choice, now }) {
   const outcome = choice.success;
@@ -57,6 +58,8 @@ function applyEffect(game, effect) {
   if (effect.type === 'stat') return updatePath(game, effect.path, effect.delta);
   if (effect.type === 'item') return updateItem(game, effect.path, effect.delta);
   if (effect.type === 'flag') return { ...game, flags: { ...game.flags, [effect.id]: effect.value } };
+  if (effect.type === 'treasure') return grantTreasure(game, effect.id);
+  if (effect.type === 'technique') return grantTechnique(game, effect.id);
   if (effect.type === 'futureEvent') {
     return {
       ...game,
@@ -220,6 +223,7 @@ function applyAttributeEffect(game, effect) {
   };
   const maxHealth = deriveMaxHealth(attributes);
   const maxLifespan = deriveMaxLifespan(game.character?.initialLifespan ?? 0, attributes);
+  const derivedBonuses = calculateDerivedBonuses(game);
 
   return {
     ...game,
@@ -232,10 +236,11 @@ function applyAttributeEffect(game, effect) {
     },
     player: {
       ...game.player,
-      maxHealth,
-      health: clamp(game.player?.health ?? 0, 0, maxHealth),
-      maxLifespan,
-      lifespan: clamp(game.player?.lifespan ?? 0, 0, maxLifespan)
-    }
+      maxHealth: maxHealth + (derivedBonuses.maxHealth ?? 0),
+      health: clamp(game.player?.health ?? 0, 0, maxHealth + (derivedBonuses.maxHealth ?? 0)),
+      maxLifespan: maxLifespan + (derivedBonuses.maxLifespan ?? 0),
+      lifespan: clamp(game.player?.lifespan ?? 0, 0, maxLifespan + (derivedBonuses.maxLifespan ?? 0))
+    },
+    derivedBonuses
   };
 }
