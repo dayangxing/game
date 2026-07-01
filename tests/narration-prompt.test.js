@@ -45,11 +45,25 @@ test('narration prompt includes compact deterministic state for attributes, vita
   assert.equal(user.afterGame.player.lifespan, 88);
   assert.equal(user.afterGame.player.maxLifespan, 96);
   assert.deepEqual(user.afterGame.treasures, [
-    { id: 'calm_lotus_incense', name: '静心莲香', rarity: '良品' }
+    {
+      name: '静心莲香',
+      rarity: '良品',
+      description: '点燃后可令识海宁静，突破时更易定神。',
+      bonuses: { breakthroughChance: 3 }
+    }
   ]);
   assert.deepEqual(user.afterGame.techniques, [
-    { id: 'qingmu_jue', name: '青木诀', grade: '凡品', type: '心法', level: 1 }
+    {
+      name: '青木诀',
+      grade: '凡品',
+      type: '心法',
+      level: 1,
+      description: '以木息滋养经脉。',
+      bonuses: { cultivationGain: 6, maxHealth: 6 }
+    }
   ]);
+  assert.equal('id' in user.afterGame.treasures[0], false);
+  assert.equal('id' in user.afterGame.techniques[0], false);
   assert.deepEqual(user.action.breakthroughPreview, {
     targetRealm: '炼气八层',
     chance: 72,
@@ -99,6 +113,13 @@ test('repair prompt asks the model to only repair invalid json output', () => {
   assert.match(system, /只能润色已结算结果/);
   assert.match(system, /flag/);
   assert.match(system, /futureEvent/);
+  assert.match(system, /attributes|属性|灵根/);
+  assert.match(system, /health|气血/);
+  assert.match(system, /maxLifespan|寿元上限/);
+  assert.match(system, /treasures|法宝|行囊/);
+  assert.match(system, /techniques|功法/);
+  assert.match(system, /breakthroughPreview|破境预览|突破预览/);
+  assert.match(system, /breakthroughResult|突破.*成功失败|成功失败.*突破/);
   assert.match(system, /成功失败/);
   assert.deepEqual(user.validationErrors, ['body too short', 'missing npcLine']);
   assert.equal(user.rawNarration.title, '短');
@@ -147,7 +168,8 @@ function makePromptInput() {
           id: 'calm_lotus_incense',
           name: '静心莲香',
           rarity: '良品',
-          description: '点燃后可令识海宁静，突破时更易定神。'
+          description: '点燃后可令识海宁静，突破时更易定神。',
+          bonuses: { breakthroughChance: 3 }
         }
       ],
       techniques: [
@@ -157,7 +179,8 @@ function makePromptInput() {
           grade: '凡品',
           type: '心法',
           level: 1,
-          description: '以木息滋养经脉。'
+          description: '以木息滋养经脉。',
+          bonuses: { cultivationGain: 6, maxHealth: 6 }
         }
       ],
       worldEvents: [{ title: '青云宗春试将近', detail: '外门弟子都在准备争夺内门名额。', turn: 0 }],
@@ -203,7 +226,8 @@ function makePromptInput() {
           id: 'calm_lotus_incense',
           name: '静心莲香',
           rarity: '良品',
-          description: '点燃后可令识海宁静，突破时更易定神。'
+          description: '点燃后可令识海宁静，突破时更易定神。',
+          bonuses: { breakthroughChance: 3 }
         }
       ],
       techniques: [
@@ -213,7 +237,8 @@ function makePromptInput() {
           grade: '凡品',
           type: '心法',
           level: 1,
-          description: '以木息滋养经脉。'
+          description: '以木息滋养经脉。',
+          bonuses: { cultivationGain: 6, maxHealth: 6 }
         }
       ],
       worldEvents: [{ title: '坊市拍卖预告', detail: '一枚雷纹筑基丹将在月末拍卖。', turn: 1 }],

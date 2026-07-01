@@ -50,7 +50,7 @@ const REPAIR_SYSTEM_PROMPT = [
   '只能润色已结算结果并修复 JSON 结构，不得改变已结算事实。',
   EVENT_RULE_BOUNDARY,
   '必须保留已结算事实，不得新增奖励、道具、境界、关系、进度、flag、futureEvent、世界事件或成功失败判定。',
-  '不得改写 attributes、health、maxHealth、lifespan、maxLifespan、treasures、techniques、breakthroughPreview 或 breakthroughResult。',
+  '不得改写 attributes、health、maxHealth、lifespan、maxLifespan、treasures、techniques、breakthroughPreview、breakthroughResult 或突破成功失败。',
   '返回值必须是合法 JSON object，不能包含 Markdown、代码块或额外文字。'
 ].join('\n');
 
@@ -166,18 +166,8 @@ function pickNarrationContext(game) {
       lifespan: game.player.lifespan,
       maxLifespan: game.player.maxLifespan
     },
-    treasures: (game.treasures ?? []).map((treasure) => ({
-      id: treasure.id,
-      name: treasure.name,
-      rarity: treasure.rarity
-    })),
-    techniques: (game.techniques ?? []).map((technique) => ({
-      id: technique.id,
-      name: technique.name,
-      grade: technique.grade,
-      type: technique.type,
-      level: technique.level
-    })),
+    treasures: (game.treasures ?? []).map(pickTreasureContext),
+    techniques: (game.techniques ?? []).map(pickTechniqueContext),
     npcs: game.npcs.map((npc) => ({
       name: npc.name,
       role: npc.role,
@@ -196,6 +186,26 @@ function pickNpcVoiceGuide(npc) {
     tone: npc.tone,
     affinity: npc.affinity,
     recentMemories: npc.memories.slice(-3)
+  };
+}
+
+function pickTreasureContext(treasure) {
+  return {
+    name: treasure.name,
+    rarity: treasure.rarity,
+    description: treasure.description,
+    bonuses: treasure.bonuses
+  };
+}
+
+function pickTechniqueContext(technique) {
+  return {
+    name: technique.name,
+    grade: technique.grade,
+    type: technique.type,
+    level: technique.level,
+    description: technique.description,
+    bonuses: technique.bonuses
   };
 }
 

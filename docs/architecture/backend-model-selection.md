@@ -30,7 +30,7 @@
 
 - `character.attributes`：根骨、悟性、福缘、心志、命种五维。
 - `player.health/maxHealth` 与 `player.lifespan/maxLifespan`：体现气血损耗、寿元压力与上限。
-- `treasures`、`techniques`：仅传递紧凑的已拥有法宝/功法标识字段，方便模型承认既有收藏。
+- `treasures`、`techniques`：仅传递紧凑的玩家可感知字段，如名称、品阶、描述与加成，方便模型承认既有收藏而不暴露内部标识。
 - `action.breakthroughPreview`：若本次行动带有突破预览，传入目标境界、成功率与失败代价。
 - `ruleEntry.breakthroughResult`：若规则结算已经给出突破成败，传入已结算结果，禁止模型重算概率或改写成败。
 
