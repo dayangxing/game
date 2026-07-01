@@ -118,3 +118,66 @@ Result:
 ## Concerns
 
 - No manual browser smoke test was run in this relay pass; verification was through the focused frontend tests plus the full Node suite
+
+## Fix Report 2026-07-01
+
+### Review Finding
+
+History effect summaries disappeared after API-mode reload because `submitDailyAction()` enriched only the in-memory latest log entry, while later `GET /api/v1/game/state` responses reloaded plain `game.log` entries without `effectsSummary`.
+
+### Root Cause
+
+`frontend/src/app.js` treated `effectsSummary` as transient render data instead of durable frontend state. The renderer only displayed `entry.effectsSummary`, and no reload path reattached previously computed player-facing summaries to stable log entries.
+
+### Fix
+
+- Added a frontend history-summary cache keyed by stable player-facing log fields (`id`, `title`, `command`, `body`, `worldEvent`)
+- Persisted enriched `effectsSummary` lines after action submission and during saves
+- Rehydrated cached summaries onto API-loaded and mode-switched game states before rendering
+- Kept the UI player-facing: summaries remain readable effect lines without exposing backend schema/debug fields
+
+### Files Changed
+
+- `frontend/src/app.js`
+- `tests/frontend-app-wiring.test.js`
+
+### RED Evidence
+
+Command:
+
+```bash
+/Users/ruilifeng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test tests/frontend-app-wiring.test.js
+```
+
+Result before the fix:
+
+- Exit code: `1`
+- New failing assertion: missing durable history-summary storage/rehydration path for API reloads
+
+### GREEN Evidence
+
+Focused frontend verification:
+
+```bash
+/Users/ruilifeng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test tests/frontend-character-creation.test.js tests/frontend-event-state.test.js tests/frontend-views.test.js tests/frontend-app-wiring.test.js
+```
+
+Result:
+
+- Exit code: `0`
+- Summary: `29 pass`, `0 fail`
+
+Full Node suite:
+
+```bash
+/Users/ruilifeng/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test
+```
+
+Result:
+
+- Exit code: `0`
+- Summary: `140 pass`, `0 fail`
+
+### Concerns
+
+- The durable summary cache lives in frontend storage, so older summaries only reappear on the same client that previously observed and saved them

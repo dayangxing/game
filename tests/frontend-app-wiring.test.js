@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import vm from 'node:vm';
 
 test('browser app configures the game api for backend-first mode', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
@@ -62,13 +63,13 @@ test('mode and reset transitions load next actions before replacing current stat
   assert.ok(setModeBody, 'setMode helper should exist');
 
   assert.doesNotMatch(resetHandler, /game = await api\.createGame/);
-  assert.match(resetHandler, /const nextGame = await api\.createGame\(game\.mode\);/);
+  assert.match(resetHandler, /const nextGame = hydrateHistorySummaries\(await api\.createGame\(game\.mode\)\);/);
   assert.match(resetHandler, /const nextActions = await loadDailyActionsForGame\(nextGame,\s*getView\(activeViewId\)\);/);
   assert.ok(resetHandler.indexOf('const nextActions') < resetHandler.indexOf('game = nextGame;'));
   assert.ok(resetHandler.indexOf('const nextActions') < resetHandler.indexOf('dailyActions = nextActions;'));
 
   assert.doesNotMatch(setModeBody, /game = await api\.setMode/);
-  assert.match(setModeBody, /const nextGame = await api\.setMode\(game,\s*mode\);/);
+  assert.match(setModeBody, /const nextGame = hydrateHistorySummaries\(await api\.setMode\(game,\s*mode\)\);/);
   assert.match(setModeBody, /const nextActions = await loadDailyActionsForGame\(nextGame,\s*getView\(activeViewId\)\);/);
   assert.ok(setModeBody.indexOf('const nextActions') < setModeBody.indexOf('game = nextGame;'));
   assert.ok(setModeBody.indexOf('const nextActions') < setModeBody.indexOf('dailyActions = nextActions;'));
@@ -123,12 +124,67 @@ test('daily action submission enriches history with player-facing summaries befo
   assert.match(helper, /saveGame\(\);/);
 });
 
+test('api reload rehydrates cached player-facing history summaries onto durable log entries', () => {
+  const source = fs.readFileSync('frontend/src/app.js', 'utf8');
+  const submitHelper = extractFunction(source, 'submitDailyAction');
+  const loadGameHelper = extractFunction(source, 'loadGame');
+  const setModeHelper = extractFunction(source, 'setMode');
+  const historySummaryKey = source.match(/const HISTORY_SUMMARY_KEY = '([^']+)';/);
+
+  assert.ok(historySummaryKey, 'history summary storage key should exist');
+  assert.match(source, /function historyEntryCacheKey\(/);
+  assert.match(source, /function normalizeEffectSummary\(/);
+  assert.match(source, /function persistHistorySummaryCache\(/);
+  assert.match(source, /function hydrateHistorySummaries\(/);
+  assert.match(submitHelper, /persistHistorySummaryCache\(game\);/);
+  assert.match(loadGameHelper, /hydrateHistorySummaries\(/);
+  assert.match(setModeHelper, /hydrateHistorySummaries\(/);
+
+  const sandbox = { result: null };
+  vm.runInNewContext(`
+    ${historySummaryKey[0]}
+    ${extractFunctionDeclaration(source, 'normalizeEffectSummary')}
+    ${extractFunctionDeclaration(source, 'historyEntryCacheKey')}
+    ${extractFunctionDeclaration(source, 'readHistorySummaryCache')}
+    ${extractFunctionDeclaration(source, 'persistHistorySummaryCache')}
+    ${extractFunctionDeclaration(source, 'hydrateHistorySummaries')}
+    result = {
+      persistHistorySummaryCache,
+      hydrateHistorySummaries
+    };
+  `, sandbox);
+
+  const storage = createStorageDouble();
+  sandbox.result.persistHistorySummaryCache({
+    log: [
+      { id: 'opening', title: '山门初醒', command: '开局', body: '晨雾未散。' },
+      {
+        id: 'turn-1',
+        title: '命火微暗',
+        command: '闭关修炼一日',
+        body: '经脉略有刺痛。',
+        effectsSummary: ['寿元 -1', '修为 +8']
+      }
+    ]
+  }, storage);
+
+  const reloaded = sandbox.result.hydrateHistorySummaries({
+    log: [
+      { id: 'opening', title: '山门初醒', command: '开局', body: '晨雾未散。' },
+      { id: 'turn-1', title: '命火微暗', command: '闭关修炼一日', body: '经脉略有刺痛。' }
+    ]
+  }, storage);
+
+  assert.deepEqual(Array.from(reloaded.log[1].effectsSummary), ['寿元 -1', '修为 +8']);
+});
+
 function extractFunction(source, name) {
   const start = source.indexOf(`async function ${name}`) !== -1
     ? source.indexOf(`async function ${name}`)
     : source.indexOf(`function ${name}`);
   assert.notEqual(start, -1, `${name} should exist`);
-  const bodyStart = source.indexOf('{', start);
+  const signatureEnd = source.indexOf(')', start);
+  const bodyStart = source.indexOf('{', signatureEnd);
   let depth = 0;
 
   for (let index = bodyStart; index < source.length; index += 1) {
@@ -139,4 +195,36 @@ function extractFunction(source, name) {
   }
 
   assert.fail(`${name} should have a complete function body`);
+}
+
+function extractFunctionDeclaration(source, name) {
+  const start = source.indexOf(`async function ${name}`) !== -1
+    ? source.indexOf(`async function ${name}`)
+    : source.indexOf(`function ${name}`);
+  assert.notEqual(start, -1, `${name} should exist`);
+  const signatureEnd = source.indexOf(')', start);
+  const bodyStart = source.indexOf('{', signatureEnd);
+  let depth = 0;
+
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === '{') depth += 1;
+    if (character === '}') depth -= 1;
+    if (depth === 0) return source.slice(start, index + 1);
+  }
+
+  assert.fail(`${name} should have a complete declaration`);
+}
+
+function createStorageDouble() {
+  const values = new Map();
+
+  return {
+    getItem(key) {
+      return values.has(key) ? values.get(key) : null;
+    },
+    setItem(key, value) {
+      values.set(key, String(value));
+    }
+  };
 }

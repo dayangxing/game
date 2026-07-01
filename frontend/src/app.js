@@ -18,6 +18,7 @@ import { getView, viewList } from './ui/views.js';
 
 const STORAGE_KEY = 'wendao-fusheng-frontend-save-v1';
 const MODE_KEY = 'wendao-fusheng-mode-v1';
+const HISTORY_SUMMARY_KEY = 'wendao-fusheng-history-summary-v1';
 const BACKEND_BASE_URL = window.WENDAO_API_BASE_URL ?? 'http://127.0.0.1:8787';
 const RANDOM_COMMANDS = [
   '闭关修炼三月，尝试突破',
@@ -165,7 +166,7 @@ nodes.exportBtn.addEventListener('click', async () => {
 
 nodes.resetBtn.addEventListener('click', async () => {
   try {
-    const nextGame = await api.createGame(game.mode);
+    const nextGame = hydrateHistorySummaries(await api.createGame(game.mode));
     const nextActions = await loadDailyActionsForGame(nextGame, getView(activeViewId));
     actionRefreshSequence += 1;
     pendingApiImmediateActions = false;
@@ -240,6 +241,7 @@ nodes.startFormalGameBtn.addEventListener('click', async () => {
       rerollSeed: pendingCharacterSeed,
       attributes: pendingAttributes
     });
+    game = hydrateHistorySummaries(game);
     dailyActions = await loadDailyActionsForGame(game, getView(activeViewId));
     actionRefreshSequence += 1;
     pendingApiImmediateActions = false;
@@ -257,8 +259,9 @@ async function submitDailyAction(action) {
   }
   try {
     const previousGame = game;
-    game = await api.submitDailyAction(game, action);
+    game = hydrateHistorySummaries(await api.submitDailyAction(game, action));
     game = enrichGameHistory(game, previousGame);
+    persistHistorySummaryCache(game);
     saveGame();
     showImmediateActionsForView(activeViewId);
     refreshDailyActionsForView(activeViewId).catch(handleApiError);
@@ -270,7 +273,7 @@ async function submitDailyAction(action) {
 
 async function setMode(mode) {
   try {
-    const nextGame = await api.setMode(game, mode);
+    const nextGame = hydrateHistorySummaries(await api.setMode(game, mode));
     const nextActions = await loadDailyActionsForGame(nextGame, getView(activeViewId));
     actionRefreshSequence += 1;
     pendingApiImmediateActions = false;
@@ -529,10 +532,19 @@ function buildRecentHistory() {
 }
 
 function formatHistoryEffectSummary(entry) {
-  const lines = Array.isArray(entry.effectsSummary)
-    ? entry.effectsSummary
-    : (entry.effectsSummary ? [entry.effectsSummary] : []);
+  const lines = normalizeEffectSummary(entry.effectsSummary);
   return lines.map((line) => `<span>${line}</span>`).join('');
+}
+
+function normalizeEffectSummary(effectsSummary) {
+  if (Array.isArray(effectsSummary)) {
+    return effectsSummary
+      .map((line) => String(line ?? '').trim())
+      .filter(Boolean);
+  }
+
+  const line = String(effectsSummary ?? '').trim();
+  return line ? [line] : [];
 }
 
 function renderViewFocus() {
@@ -666,7 +678,7 @@ async function loadGame() {
   const savedMode = localStorage.getItem(MODE_KEY) || initialMode;
   if (savedMode === 'api') {
     try {
-      return await api.createGame('api');
+      return hydrateHistorySummaries(await api.createGame('api'));
     } catch (error) {
       startupNotice = `云端暂不可用，已转为本地存档：${apiErrorMessage(error)}`;
     }
@@ -674,9 +686,11 @@ async function loadGame() {
 
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? { ...JSON.parse(raw), mode: 'mock' } : await api.createGame('mock');
+    return raw
+      ? hydrateHistorySummaries({ ...JSON.parse(raw), mode: 'mock' })
+      : hydrateHistorySummaries(await api.createGame('mock'));
   } catch {
-    return api.createGame('mock');
+    return hydrateHistorySummaries(await api.createGame('mock'));
   }
 }
 
@@ -715,6 +729,7 @@ function isSameGameSnapshot(current, snapshot) {
 }
 
 function saveGame() {
+  persistHistorySummaryCache(game);
   localStorage.setItem(MODE_KEY, game.mode);
   if (game.mode === 'mock') {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(game));
@@ -831,6 +846,61 @@ function displayActionIcon(action) {
 
 function shouldBlockImmediateApiAction(action) {
   return game.mode === 'api' && pendingApiImmediateActions && action.source === 'immediate';
+}
+
+function historyEntryCacheKey(entry = {}) {
+  return JSON.stringify({
+    id: entry.id ?? '',
+    title: entry.title ?? '',
+    command: entry.command ?? '',
+    body: entry.body ?? '',
+    worldEvent: entry.worldEvent ?? ''
+  });
+}
+
+function readHistorySummaryCache(storage = localStorage) {
+  try {
+    const raw = storage?.getItem?.(HISTORY_SUMMARY_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function persistHistorySummaryCache(targetGame, storage = localStorage) {
+  if (!storage?.setItem || !targetGame?.log?.length) return {};
+
+  const nextCache = { ...readHistorySummaryCache(storage) };
+  for (const entry of targetGame.log) {
+    const lines = normalizeEffectSummary(entry.effectsSummary);
+    if (!lines.length) continue;
+    nextCache[historyEntryCacheKey(entry)] = lines;
+  }
+
+  storage.setItem(HISTORY_SUMMARY_KEY, JSON.stringify(nextCache));
+  return nextCache;
+}
+
+function hydrateHistorySummaries(targetGame, storage = localStorage) {
+  if (!targetGame?.log?.length) return targetGame;
+
+  const cache = readHistorySummaryCache(storage);
+  if (!Object.keys(cache).length) return targetGame;
+
+  return {
+    ...targetGame,
+    log: targetGame.log.map((entry) => {
+      const existing = normalizeEffectSummary(entry.effectsSummary);
+      if (existing.length) {
+        return { ...entry, effectsSummary: existing };
+      }
+
+      const cached = normalizeEffectSummary(cache[historyEntryCacheKey(entry)]);
+      return cached.length ? { ...entry, effectsSummary: cached } : entry;
+    })
+  };
 }
 
 function enrichGameHistory(currentGame, previousGame) {
