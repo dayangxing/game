@@ -198,6 +198,7 @@ test('POST /api/v1/game/new invalidates stale pending actions and saved turn sna
 
 test('prologue actions complete onboarding through daily-actions and turns', async () => {
   const app = createBackendApp({ seed: 31, now: fixedNow });
+  const startingLifespan = app.getState().game.player.lifespan;
 
   for (const expectedStep of ONBOARDING_STEPS.map((step) => step.id)) {
     const actionsPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
@@ -216,10 +217,12 @@ test('prologue actions complete onboarding through daily-actions and turns', asy
 
     assert.equal(turnPayload.ok, true);
     assert.equal(turnPayload.data.game.onboarding.completedStepIds.includes(expectedStep), true);
+    assert.equal(turnPayload.data.game.player.lifespan, startingLifespan);
   }
 
   assert.equal(app.getState().game.onboarding.completed, true);
   assert.equal(app.getState().game.onboarding.unlockedCharacterCreation, true);
+  assert.equal(app.getState().game.player.lifespan, startingLifespan);
 });
 
 test('POST /api/v1/daily-actions rejects stale game version during tutorial onboarding', async () => {
@@ -333,6 +336,8 @@ test('POST /api/v1/turns resolves selected event effects deterministically', asy
   assert.equal(turnPayload.ok, true);
   assert.equal(turnPayload.data.game.flags.bronze_bell, true);
   assert.equal(turnPayload.data.turnResult.ruleResult.eventId, 'mist_bronze_bell');
+  assert.equal(turnPayload.data.turnResult.ruleResult.lifespanCost, 1);
+  assert.equal(turnPayload.data.game.player.lifespan, 92);
   assert.equal(turnPayload.data.game.turn, 1);
 });
 

@@ -1,6 +1,10 @@
+import { deriveMaxHealth, deriveMaxLifespan } from '../attributes.js';
+import { applyActionCost } from '../progression.js';
+
 export function resolveChoice({ game, event, choice, now }) {
   const outcome = choice.success;
-  const next = applyEffects(game, outcome.effects);
+  const withEffects = applyEffects(game, outcome.effects);
+  const next = game.onboarding?.completed === false ? withEffects : applyActionCost(withEffects);
   const turn = game.turn + 1;
   const entry = {
     id: `turn-${turn}`,
@@ -26,7 +30,8 @@ export function resolveChoice({ game, event, choice, now }) {
       success: true,
       eventId: event.id,
       choiceId: choice.id,
-      resolvedAt: now.toISOString()
+      resolvedAt: now.toISOString(),
+      lifespanCost: next.lastActionCost?.lifespan ?? 0
     }
   };
 }
@@ -68,6 +73,47 @@ function applyEffect(game, effect) {
         ? { ...npc, affinity: Math.max(0, Math.min(100, npc.affinity + effect.delta)) }
         : npc)
     };
+  }
+  if (effect.type === 'vitality') {
+    return {
+      ...game,
+      player: {
+        ...game.player,
+        health: clamp((game.player?.health ?? 0) + effect.delta, 0, game.player?.maxHealth ?? 0)
+      }
+    };
+  }
+  if (effect.type === 'maxHealth') {
+    const maxHealth = Math.max(0, (game.player?.maxHealth ?? 0) + effect.delta);
+    return {
+      ...game,
+      player: {
+        ...game.player,
+        maxHealth,
+        health: clamp(game.player?.health ?? 0, 0, maxHealth)
+      }
+    };
+  }
+  if (effect.type === 'lifespan') {
+    return {
+      ...game,
+      player: {
+        ...game.player,
+        lifespan: clamp((game.player?.lifespan ?? 0) + effect.delta, 0, game.player?.maxLifespan ?? 0)
+      }
+    };
+  }
+  if (effect.type === 'maxLifespan') {
+    return {
+      ...game,
+      player: {
+        ...game.player,
+        maxLifespan: Math.max(0, (game.player?.maxLifespan ?? 0) + effect.delta)
+      }
+    };
+  }
+  if (effect.type === 'attribute') {
+    return applyAttributeEffect(game, effect);
   }
   if (effect.type === 'sect') {
     return {
@@ -159,4 +205,35 @@ function isTargetNpc(npc, npcId) {
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function applyAttributeEffect(game, effect) {
+  const attributes = {
+    ...(game.character?.attributes ?? {}),
+    [effect.key]: clamp(((game.character?.attributes?.[effect.key] ?? 1) + effect.delta), 1, 10)
+  };
+  const maxHealth = deriveMaxHealth(attributes);
+  const maxLifespan = deriveMaxLifespan(game.character?.initialLifespan ?? 0, attributes);
+
+  return {
+    ...game,
+    character: {
+      ...game.character,
+      attributes,
+      comprehension: (attributes.comprehension ?? 1) * 9,
+      physique: (attributes.rootBone ?? 1) * 9,
+      luck: (attributes.fortune ?? 1) * 9
+    },
+    derivedBonuses: {
+      ...game.derivedBonuses,
+      lifespanCostReduction: Math.floor((attributes.willpower ?? 1) / 5)
+    },
+    player: {
+      ...game.player,
+      maxHealth,
+      health: clamp(game.player?.health ?? 0, 0, maxHealth),
+      maxLifespan,
+      lifespan: clamp(game.player?.lifespan ?? 0, 0, maxLifespan)
+    }
+  };
 }

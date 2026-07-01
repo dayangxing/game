@@ -18,7 +18,7 @@ export function buildTurnResult({ before, after, actionId, narration }) {
 }
 
 function diffStats(beforePlayer, afterPlayer) {
-  const numericStats = ['qi', 'mood', 'cultivationProgress', 'spiritStones', 'sectRelation', 'lifespan'];
+  const numericStats = ['qi', 'mood', 'cultivationProgress', 'spiritStones', 'sectRelation', 'health', 'maxHealth', 'lifespan', 'maxLifespan'];
   const changes = {};
 
   for (const key of numericStats) {
