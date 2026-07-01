@@ -69,11 +69,80 @@ test('POST /api/v1/game/new creates a seeded formal character after onboarding',
   assert.equal(payload.data.game.player.name, '顾清河');
   assert.notEqual(payload.data.game.player.name, '陆青玄');
   assert.equal(payload.data.game.characterSeed, 52);
+  assert.deepEqual(payload.data.character.attributes, {
+    rootBone: 3,
+    comprehension: 6,
+    fortune: 6,
+    willpower: 5,
+    lifeSeed: 5
+  });
+  assert.equal(payload.data.character.comprehension, 54);
+  assert.equal(payload.data.character.physique, 27);
+  assert.equal(payload.data.character.luck, 54);
+  assert.equal(payload.data.game.player.maxHealth, 114);
+  assert.equal(payload.data.game.player.health, 114);
+  assert.equal(payload.data.game.player.maxLifespan, payload.data.character.initialLifespan + 40);
+  assert.equal(payload.data.game.player.lifespan, payload.data.character.initialLifespan + 40);
   assert.equal(payload.data.game.mode, 'api');
   assert.equal(payload.data.game.onboarding.completed, true);
   assert.equal(payload.data.game.onboarding.stepId, 'formal_life');
   assert.equal(payload.data.game.onboarding.unlockedCharacterCreation, true);
   assert.deepEqual(payload.data.game.onboarding.completedStepIds, completedOnboardingState().completedStepIds);
+});
+
+test('POST /api/v1/game/new accepts a manual attribute allocation after onboarding', async () => {
+  const app = createBackendApp({ seed: 31, now: fixedNow });
+  app.getState().game.onboarding = completedOnboardingState();
+
+  const payload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/game/new', {
+    name: '顾清河',
+    rerollSeed: 52,
+    attributes: {
+      rootBone: 7,
+      comprehension: 6,
+      fortune: 4,
+      willpower: 4,
+      lifeSeed: 4
+    }
+  })));
+
+  assert.equal(payload.ok, true);
+  assert.deepEqual(payload.data.character.attributes, {
+    rootBone: 7,
+    comprehension: 6,
+    fortune: 4,
+    willpower: 4,
+    lifeSeed: 4
+  });
+  assert.equal(payload.data.character.comprehension, 54);
+  assert.equal(payload.data.character.physique, 63);
+  assert.equal(payload.data.character.luck, 36);
+  assert.equal(payload.data.game.player.maxHealth, 144);
+  assert.equal(payload.data.game.player.health, 144);
+  assert.equal(payload.data.game.player.maxLifespan, payload.data.character.initialLifespan + 32);
+  assert.equal(payload.data.game.player.lifespan, payload.data.character.initialLifespan + 32);
+});
+
+test('POST /api/v1/game/new rejects invalid manual attribute allocations', async () => {
+  const app = createBackendApp({ seed: 31, now: fixedNow });
+  app.getState().game.onboarding = completedOnboardingState();
+
+  const response = await app.handle(makeRequest('POST', '/api/v1/game/new', {
+    name: '顾清河',
+    rerollSeed: 52,
+    attributes: {
+      rootBone: 7,
+      comprehension: 6,
+      fortune: 4,
+      willpower: 4,
+      lifeSeed: 5
+    }
+  }));
+  const payload = await response.json();
+
+  assert.equal(response.status, 400);
+  assert.equal(payload.ok, false);
+  assert.equal(payload.error.code, 'CHARACTER_ATTRIBUTES_INVALID');
 });
 
 test('POST /api/v1/game/new invalidates stale pending actions and saved turn snapshots', async () => {

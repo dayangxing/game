@@ -1,18 +1,29 @@
+import {
+  deriveMaxHealth,
+  deriveMaxLifespan,
+  rollAttributeAllocation,
+  validateAttributeAllocation
+} from './attributes.js';
+
 const ORIGINS = ['山野孤子', '没落世家', '药铺学徒', '渔村遗孤', '外门杂役', '散修之后'];
 const ROOTS = ['雷木双灵根', '金火双灵根', '水木双灵根', '土灵根', '风雷异灵根', '五行杂灵根'];
 const TRAITS = ['早慧', '命火绵长', '经脉坚韧', '福缘深厚', '灵根不稳', '心魔易感', '丹道亲和', '剑心微明'];
 
-export function rollCharacter({ seed, name }) {
+export function rollCharacter({ seed, name, attributes }) {
   const rng = createRng(seed);
   const traits = pickUnique(TRAITS, 2 + Math.floor(rng() * 2), rng);
+  const allocation = attributes === undefined
+    ? rollAttributeAllocation(seed)
+    : validateAttributeAllocation(attributes);
   const character = {
     name: sanitizeName(name) || randomName(rng),
     origin: pick(ORIGINS, rng),
     spiritualRoot: pick(ROOTS, rng),
     traits,
-    comprehension: rollStat(rng, 20, 90),
-    physique: rollStat(rng, 20, 90),
-    luck: rollStat(rng, 10, 95),
+    attributes: allocation,
+    comprehension: allocation.comprehension * 9,
+    physique: allocation.rootBone * 9,
+    luck: allocation.fortune * 9,
     karmaAffinity: rollStat(rng, -30, 40),
     initialLifespan: rollStat(rng, 60, 140),
     startingResources: {
@@ -30,9 +41,9 @@ export function rollCharacter({ seed, name }) {
 
 export function assertPlayableCharacter(character) {
   const checks = [
-    ['comprehension', 20, 90],
-    ['physique', 20, 90],
-    ['luck', 10, 95],
+    ['comprehension', 9, 90],
+    ['physique', 9, 90],
+    ['luck', 9, 90],
     ['initialLifespan', 60, 140]
   ];
   for (const [key, min, max] of checks) {
@@ -111,12 +122,18 @@ function sanitizeName(name) {
 }
 
 function createFormalPlayer(character) {
+  const maxHealth = deriveMaxHealth(character.attributes);
+  const maxLifespan = deriveMaxLifespan(character.initialLifespan, character.attributes);
+
   return {
     name: character.name,
     origin: character.origin,
     realm: '炼气一层',
     spiritualRoot: character.spiritualRoot,
-    lifespan: character.initialLifespan,
+    maxHealth,
+    health: maxHealth,
+    maxLifespan,
+    lifespan: maxLifespan,
     spiritStones: character.startingResources.spiritStones,
     qi: 50,
     mood: 50,

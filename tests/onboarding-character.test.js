@@ -66,11 +66,46 @@ test('character generation is seeded and stays in playable ranges', () => {
   assert.ok(first.origin.length > 0);
   assert.ok(first.spiritualRoot.length > 0);
   assert.ok(first.traits.length >= 2);
+  assert.deepEqual(first.attributes, {
+    rootBone: 7,
+    comprehension: 3,
+    fortune: 6,
+    willpower: 5,
+    lifeSeed: 4
+  });
+  assert.equal(first.comprehension, 27);
+  assert.equal(first.physique, 63);
+  assert.equal(first.luck, 54);
   assert.ok(first.comprehension >= 20 && first.comprehension <= 90);
   assert.ok(first.physique >= 20 && first.physique <= 90);
   assert.ok(first.luck >= 10 && first.luck <= 95);
   assert.ok(first.initialLifespan >= 60 && first.initialLifespan <= 140);
   assert.doesNotThrow(() => assertPlayableCharacter(first));
+});
+
+test('character generation accepts a validated manual attribute allocation', () => {
+  const character = rollCharacter({
+    seed: 52,
+    name: '顾清河',
+    attributes: {
+      rootBone: 7,
+      comprehension: 6,
+      fortune: 4,
+      willpower: 4,
+      lifeSeed: 4
+    }
+  });
+
+  assert.deepEqual(character.attributes, {
+    rootBone: 7,
+    comprehension: 6,
+    fortune: 4,
+    willpower: 4,
+    lifeSeed: 4
+  });
+  assert.equal(character.comprehension, 54);
+  assert.equal(character.physique, 63);
+  assert.equal(character.luck, 36);
 });
 
 test('different character seeds produce meaningfully different formal characters', () => {
@@ -89,11 +124,28 @@ test('different character seeds produce meaningfully different formal characters
 
 test('formal character is applied without inheriting tutorial protagonist stats', () => {
   const game = createGame(31);
-  const character = rollCharacter({ seed: 52, name: '顾清河' });
+  const character = rollCharacter({
+    seed: 52,
+    name: '顾清河',
+    attributes: {
+      rootBone: 7,
+      comprehension: 6,
+      fortune: 4,
+      willpower: 4,
+      lifeSeed: 4
+    }
+  });
   const formalGame = applyCharacterToGame(game, character, 52);
 
   assert.equal(formalGame.characterSeed, 52);
   assert.equal(formalGame.character.name, '顾清河');
+  assert.deepEqual(formalGame.character.attributes, {
+    rootBone: 7,
+    comprehension: 6,
+    fortune: 4,
+    willpower: 4,
+    lifeSeed: 4
+  });
   assert.equal(formalGame.player.name, '顾清河');
   assert.notEqual(formalGame.player.name, '陆青玄');
   assert.deepEqual(formalGame.player, {
@@ -101,7 +153,10 @@ test('formal character is applied without inheriting tutorial protagonist stats'
     origin: character.origin,
     realm: '炼气一层',
     spiritualRoot: character.spiritualRoot,
-    lifespan: character.initialLifespan,
+    maxHealth: 144,
+    health: 144,
+    maxLifespan: character.initialLifespan + 32,
+    lifespan: character.initialLifespan + 32,
     spiritStones: character.startingResources.spiritStones,
     qi: 50,
     mood: 50,
@@ -114,7 +169,8 @@ test('formal character is applied without inheriting tutorial protagonist stats'
   assert.notEqual(formalGame.player.mood, game.player.mood);
   assert.notEqual(formalGame.player.sectRelation, game.player.sectRelation);
   assert.notEqual(formalGame.player.location, game.player.location);
-  assert.equal(formalGame.player.lifespan, character.initialLifespan);
+  assert.equal(formalGame.player.health, formalGame.player.maxHealth);
+  assert.equal(formalGame.player.lifespan, formalGame.player.maxLifespan);
   assert.deepEqual(formalGame.inventory.materials, character.startingResources.materials);
   assert.equal(formalGame.npcs.length, 2);
   assert.ok(formalGame.npcs.every((npc) => !JSON.stringify(npc).includes('陆青玄')));

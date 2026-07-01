@@ -188,7 +188,7 @@ function handleNewFormalGame({ body, requestId, state }) {
 
   try {
     const seed = Number.isInteger(body.rerollSeed) ? body.rerollSeed : state.game.seed + state.requestSequence + 101;
-    const character = rollCharacter({ seed, name });
+    const character = rollCharacter({ seed, name, attributes: body.attributes });
     const nextGame = normalizeGame(applyCharacterToGame(createGame(seed), character, seed));
     nextGame.onboarding = createCompletedFormalOnboardingState();
     state.pendingActions.clear();
@@ -200,6 +200,9 @@ function handleNewFormalGame({ body, requestId, state }) {
       character
     });
   } catch (error) {
+    if (error.message.startsWith('ATTRIBUTE_ALLOCATION_INVALID')) {
+      return errorResponse(400, requestId, 'CHARACTER_ATTRIBUTES_INVALID', '角色属性分配无效。');
+    }
     if (error.message.startsWith('CHARACTER_ROLL_INVALID')) {
       return errorResponse(500, requestId, 'CHARACTER_ROLL_INVALID', '角色随机属性超出可玩范围，请重新生成。');
     }
