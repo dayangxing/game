@@ -573,7 +573,13 @@ function renderRealmView() {
 }
 
 function renderBagView() {
-  return renderHomeView();
+  nodes.activeViewContent.innerHTML = [
+    renderTreasureCollectionPanel(),
+    renderInventoryCollectionPanel(),
+    renderActionPanel({ title: '行囊行动', meta: '丹器备物' })
+  ].join('');
+
+  syncActiveViewNodes();
 }
 
 function renderStatusPanel() {
@@ -627,6 +633,24 @@ function renderTechniqueAdvicePanel() {
     title: '修习节奏',
     meta: '心法取舍',
     body: renderTrainingAdvice()
+  });
+}
+
+function renderTreasureCollectionPanel() {
+  return renderPanel({
+    className: 'collection-section',
+    title: '奇珍法器',
+    meta: `${game.treasures?.length ?? 0} 件入囊`,
+    body: renderCollectionCards(game.treasures, '暂无奇珍入囊。')
+  });
+}
+
+function renderInventoryCollectionPanel() {
+  return renderPanel({
+    className: 'collection-section',
+    title: '丹药与材料',
+    meta: `${countInventoryStacks(game.inventory)} 类存货`,
+    body: renderCollectionCards(buildInventoryCollection(game.inventory), '行囊里仍空空如也。')
   });
 }
 

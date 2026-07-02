@@ -81,6 +81,22 @@ test('功法 tab renders learned techniques, training rhythm, and technique acti
   assert.match(renderSkillsView, /syncActiveViewNodes\(\)/);
 });
 
+test('行囊 tab renders treasures, inventory stores, and bag actions', () => {
+  const source = fs.readFileSync('frontend/src/app.js', 'utf8');
+  const renderBagView = extractNamedCallable(source, 'renderBagView');
+  const treasurePanel = extractCallablePartsOrNull(source, 'renderTreasureCollectionPanel')?.source ?? '';
+  const inventoryPanel = extractCallablePartsOrNull(source, 'renderInventoryCollectionPanel')?.source ?? '';
+  const bagSource = `${renderBagView}\n${treasurePanel}\n${inventoryPanel}`;
+
+  assert.doesNotMatch(renderBagView, /renderHomeView\(\)/);
+  assert.match(bagSource, /奇珍法器/);
+  assert.match(bagSource, /renderCollectionCards\(\s*game\.treasures\s*,\s*'暂无奇珍入囊。'\s*\)/);
+  assert.match(bagSource, /丹药与材料/);
+  assert.match(bagSource, /renderCollectionCards\(\s*buildInventoryCollection\(game\.inventory\)\s*,\s*'行囊里仍空空如也。'\s*\)/);
+  assert.match(renderBagView, /renderActionPanel\(\s*\{[\s\S]*title:\s*'行囊行动'/);
+  assert.match(renderBagView, /syncActiveViewNodes\(\)/);
+});
+
 test('overview guard rejects forbidden helper calls through local aliases', () => {
   const source = `
     function renderWorld() {
