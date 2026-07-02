@@ -41,30 +41,9 @@ test('洞府 overview does not render all inventory, all techniques, all foresha
   const renderActiveView = extractNamedCallable(source, 'renderActiveView');
   const selectorName = findRouteSelectorName(renderActiveView);
   const homeRouteTarget = findViewRouteTarget(renderActiveView, 'home', selectorName);
-  const homeHelper = extractNamedCallable(source, homeRouteTarget);
-  const forbiddenHomeCalls = [
-    'renderBagView',
-    'renderSkillsView',
-    'renderRealmView'
-  ];
-  const forbiddenHomeData = [
-    /renderCollectionCards\s*\(\s*game\.(?:treasures|techniques)\b/,
-    /renderCollectionCards\s*\(\s*buildInventoryCollection\s*\(/,
-    /renderCollectionCards\s*\(\s*(?:game\.foreshadows|\(game\.foreshadows)/,
-    /(?:game\.timeline|\(game\.timeline)[^;\n]*\.slice\(\s*-?\d{2,}\s*\)/,
-    /(?:game\.foreshadows|\(game\.foreshadows)[^;\n]*\.slice\(\s*-?\d{2,}\s*\)/,
-    /(?:game\.techniques|\(game\.techniques)[^;\n]*\.slice\(\s*-?\d{2,}\s*\)/,
-    /(?:game\.treasures|\(game\.treasures)[^;\n]*\.slice\(\s*-?\d{2,}\s*\)/
-  ];
 
   assert.ok(homeRouteTarget, 'home should route through a dedicated overview renderer');
-  assert.ok(homeHelper.length > 0);
-  for (const forbidden of forbiddenHomeCalls) {
-    assert.doesNotMatch(homeHelper, new RegExp(`\\b${forbidden}\\(`));
-  }
-  for (const forbidden of forbiddenHomeData) {
-    assert.doesNotMatch(homeHelper, forbidden);
-  }
+  assertHomeOverviewAvoidsFullDetail(source, homeRouteTarget);
 });
 
 test('sect state falls back to the current player sect relation field', () => {
@@ -217,14 +196,14 @@ function tryExtractAssignedCallable(source, name) {
 }
 
 function findViewRouteTarget(renderActiveView, viewId, selectorName) {
-  return findLookupRouteTarget(renderActiveView, viewId, selectorName)
-    || findIfRouteTarget(renderActiveView, viewId, selectorName)
-    || findSwitchRouteTarget(renderActiveView, viewId, selectorName);
+  const selectorNames = findRouteSelectorNames(renderActiveView, selectorName);
+  return findLookupRouteTarget(renderActiveView, viewId, selectorNames)
+    || findIfRouteTarget(renderActiveView, viewId, selectorNames)
+    || findSwitchRouteTarget(renderActiveView, viewId, selectorNames);
 }
 
-function findLookupRouteTarget(renderActiveView, viewId, selectorName) {
+function findLookupRouteTarget(renderActiveView, viewId, selectorNames) {
   const escapedView = escapeRegex(viewId);
-  const escapedSelector = escapeRegex(selectorName || 'activeViewId');
   const lookupBodyPattern = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*\{/g;
 
   let match;
@@ -237,43 +216,55 @@ function findLookupRouteTarget(renderActiveView, viewId, selectorName) {
     if (!targetMatch) continue;
 
     const afterMap = renderActiveView.slice(match.index);
-    if (!new RegExp(`\\b${escapeRegex(mapName)}\\s*\\[\\s*${escapedSelector}\\s*\\]`).test(afterMap)) continue;
-    if (new RegExp(`\\b${escapeRegex(mapName)}\\s*\\[\\s*${escapedSelector}\\s*\\](?:\\?\\.|\\.)?\\(`).test(afterMap)) return targetMatch[1];
+    for (const selectorName of selectorNames) {
+      const escapedSelector = escapeRegex(selectorName);
+      if (!new RegExp(`\\b${escapeRegex(mapName)}\\s*\\[\\s*${escapedSelector}\\s*\\]`).test(afterMap)) continue;
+      if (new RegExp(`\\b${escapeRegex(mapName)}\\s*\\[\\s*${escapedSelector}\\s*\\](?:\\?\\.|\\.)?\\(`).test(afterMap)) return targetMatch[1];
 
-    const aliasPattern = new RegExp(`(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*${escapeRegex(mapName)}\\s*\\[\\s*${escapedSelector}\\s*\\](?:\\s*[\\|\\?][\\|\\?]\\s*[^\\n;]+)?;?`, 'g');
-    let aliasMatch;
-    while ((aliasMatch = aliasPattern.exec(afterMap)) !== null) {
-      const alias = escapeRegex(aliasMatch[1]);
-      const callPattern = new RegExp(`\\b${alias}\\s*\\(`);
-      if (callPattern.test(afterMap.slice(aliasMatch.index + aliasMatch[0].length))) return targetMatch[1];
+      const aliasPattern = new RegExp(`(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*${escapeRegex(mapName)}\\s*\\[\\s*${escapedSelector}\\s*\\](?:\\s*[\\|\\?][\\|\\?]\\s*[^\\n;]+)?;?`, 'g');
+      let aliasMatch;
+      while ((aliasMatch = aliasPattern.exec(afterMap)) !== null) {
+        const alias = escapeRegex(aliasMatch[1]);
+        const callPattern = new RegExp(`\\b${alias}\\s*\\(`);
+        if (callPattern.test(afterMap.slice(aliasMatch.index + aliasMatch[0].length))) return targetMatch[1];
+      }
     }
   }
 
   return '';
 }
 
-function findIfRouteTarget(renderActiveView, viewId, selectorName) {
+function findIfRouteTarget(renderActiveView, viewId, selectorNames) {
   const escapedView = escapeRegex(viewId);
-  const escapedSelector = escapeRegex(selectorName || 'activeViewId');
-  const condition = new RegExp(`if\\s*\\(\\s*(?:${escapedSelector}\\s*(?:===|==)\\s*['"]${escapedView}['"]|['"]${escapedView}['"]\\s*(?:===|==)\\s*${escapedSelector})\\s*\\)`, 'g');
-  const match = condition.exec(renderActiveView);
-  if (!match) return '';
-  return findRouteInvocation(extractBraceBody(renderActiveView, renderActiveView.indexOf('{', match.index)));
+  for (const selectorName of selectorNames) {
+    const escapedSelector = escapeRegex(selectorName);
+    const condition = new RegExp(`if\\s*\\(\\s*(?:${escapedSelector}\\s*(?:===|==)\\s*['"]${escapedView}['"]|['"]${escapedView}['"]\\s*(?:===|==)\\s*${escapedSelector})\\s*\\)`, 'g');
+    const match = condition.exec(renderActiveView);
+    if (!match) continue;
+    return findRouteInvocation(extractBraceBody(renderActiveView, renderActiveView.indexOf('{', match.index)));
+  }
+
+  return '';
 }
 
-function findSwitchRouteTarget(renderActiveView, viewId, selectorName) {
-  const escapedSelector = escapeRegex(selectorName || 'activeViewId');
-  if (!new RegExp(`switch\\s*\\(\\s*${escapedSelector}\\s*\\)`).test(renderActiveView)) return '';
-
+function findSwitchRouteTarget(renderActiveView, viewId, selectorNames) {
   const escapedView = escapeRegex(viewId);
   const casePattern = new RegExp(`case\\s*(?:['"]${escapedView}['"]|${escapedView})\\s*:`, 'g');
-  const match = casePattern.exec(renderActiveView);
-  if (!match) return '';
 
-  const caseStart = match.index + match[0].length;
-  const afterCase = renderActiveView.slice(caseStart);
-  const nextCase = afterCase.search(/\n\s*(?:case\s*(?:['"][^'"]+['"]|[A-Za-z_$][\w$]+)\s*:|default\s*:)/);
-  return findRouteInvocation(nextCase === -1 ? afterCase : afterCase.slice(0, nextCase));
+  for (const selectorName of selectorNames) {
+    const escapedSelector = escapeRegex(selectorName);
+    if (!new RegExp(`switch\\s*\\(\\s*${escapedSelector}\\s*\\)`).test(renderActiveView)) continue;
+
+    const match = casePattern.exec(renderActiveView);
+    if (!match) continue;
+
+    const caseStart = match.index + match[0].length;
+    const afterCase = renderActiveView.slice(caseStart);
+    const nextCase = afterCase.search(/\n\s*(?:case\s*(?:['"][^'"]+['"]|[A-Za-z_$][\w$]+)\s*:|default\s*:)/);
+    return findRouteInvocation(nextCase === -1 ? afterCase : afterCase.slice(0, nextCase));
+  }
+
+  return '';
 }
 
 function findRouteSelectorName(renderActiveView) {
@@ -290,6 +281,96 @@ function findRouteSelectorName(renderActiveView) {
   }
 
   return 'activeViewId';
+}
+
+function findRouteSelectorNames(renderActiveView, selectorName) {
+  const names = new Set([selectorName || 'activeViewId', 'activeViewId']);
+  const aliasPattern = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([A-Za-z_$][\w$]*)\s*;/g;
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+    aliasPattern.lastIndex = 0;
+
+    for (const match of renderActiveView.matchAll(aliasPattern)) {
+      const [, alias, sourceName] = match;
+      if (names.has(sourceName) && !names.has(alias)) {
+        names.add(alias);
+        changed = true;
+      }
+    }
+  }
+
+  return [...names];
+}
+
+function assertHomeOverviewAvoidsFullDetail(source, homeRouteTarget) {
+  const visited = new Set();
+  const pending = [homeRouteTarget];
+  const forbiddenHomeCalls = [
+    'renderBagView',
+    'renderSkillsView',
+    'renderRealmView',
+    'renderWorld'
+  ];
+  const forbiddenHomeData = [
+    /renderCollectionCards\s*\(\s*game\.(?:treasures|techniques)\b/,
+    /renderCollectionCards\s*\(\s*buildInventoryCollection\s*\(/,
+    /renderCollectionCards\s*\(\s*(?:game\.foreshadows|\(game\.foreshadows)/,
+    /(?:game\.timeline|\(game\.timeline)[^;\n]*\.slice\(\s*-?\d{2,}\s*\)/,
+    /(?:game\.foreshadows|\(game\.foreshadows)[^;\n]*\.slice\(\s*-?\d{2,}\s*\)/,
+    /(?:game\.techniques|\(game\.techniques)[^;\n]*\.slice\(\s*-?\d{2,}\s*\)/,
+    /(?:game\.treasures|\(game\.treasures)[^;\n]*\.slice\(\s*-?\d{2,}\s*\)/,
+    /nodes\.foreshadows\.innerHTML\s*=\s*game\.foreshadows\b/
+  ];
+
+  while (pending.length) {
+    const helperName = pending.pop();
+    if (!helperName || visited.has(helperName)) continue;
+    visited.add(helperName);
+
+    const helperBody = extractNamedCallable(source, helperName);
+    assert.ok(helperBody.length > 0, `${helperName} should have a non-empty body`);
+
+    for (const forbidden of forbiddenHomeCalls) {
+      assert.doesNotMatch(helperBody, new RegExp(`\\b${forbidden}\\(`));
+    }
+    for (const forbidden of forbiddenHomeData) {
+      assert.doesNotMatch(helperBody, forbidden);
+    }
+
+    for (const callee of findLocalHelperCalls(helperBody)) {
+      if (!visited.has(callee) && hasNamedCallable(source, callee)) pending.push(callee);
+    }
+  }
+}
+
+function findLocalHelperCalls(body) {
+  const ignoredCalls = new Set([
+    'if',
+    'switch',
+    'for',
+    'while',
+    'map',
+    'filter',
+    'slice',
+    'join',
+    'at'
+  ]);
+
+  return [...new Set(
+    [...body.matchAll(/\b([A-Za-z_$][\w$]*)\s*\(/g)]
+      .map(([, name]) => name)
+      .filter((name) => !ignoredCalls.has(name))
+  )];
+}
+
+function hasNamedCallable(source, name) {
+  return Boolean(
+    tryExtractNamedFunction(source, `async function ${name}`) ||
+    tryExtractNamedFunction(source, `function ${name}`) ||
+    tryExtractAssignedCallable(source, name)
+  );
 }
 
 function findRouteInvocation(branch) {

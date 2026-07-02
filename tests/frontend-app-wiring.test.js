@@ -350,16 +350,16 @@ function extractFunctionDeclaration(source, name) {
 }
 
 function findViewRouteTarget(renderActiveView, viewId, selectorName) {
+  const selectorNames = findRouteSelectorNames(renderActiveView, selectorName);
   return (
-    findLookupRouteTarget(renderActiveView, viewId, selectorName) ||
-    findIfRouteTarget(renderActiveView, viewId, selectorName) ||
-    findSwitchRouteTarget(renderActiveView, viewId, selectorName)
+    findLookupRouteTarget(renderActiveView, viewId, selectorNames) ||
+    findIfRouteTarget(renderActiveView, viewId, selectorNames) ||
+    findSwitchRouteTarget(renderActiveView, viewId, selectorNames)
   );
 }
 
-function findLookupRouteTarget(renderActiveView, viewId, selectorName) {
+function findLookupRouteTarget(renderActiveView, viewId, selectorNames) {
   const escapedView = escapeRegex(viewId);
-  const escapedSelector = escapeRegex(selectorName || 'activeViewId');
   const lookupBodyPattern = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*\{/g;
 
   let match;
@@ -373,49 +373,61 @@ function findLookupRouteTarget(renderActiveView, viewId, selectorName) {
 
     const sectionStart = match.index;
     const afterMap = renderActiveView.slice(sectionStart);
-    const lookupIndexPattern = new RegExp(`\\b${escapeRegex(mapName)}\\s*\\[\\s*${escapedSelector}\\s*\\]`, 'g');
-    if (!lookupIndexPattern.test(afterMap)) continue;
+    for (const selectorName of selectorNames) {
+      const escapedSelector = escapeRegex(selectorName);
+      const lookupIndexPattern = new RegExp(`\\b${escapeRegex(mapName)}\\s*\\[\\s*${escapedSelector}\\s*\\]`, 'g');
+      if (!lookupIndexPattern.test(afterMap)) continue;
 
-    const directInvocationPattern = new RegExp(`\\b${escapeRegex(mapName)}\\s*\\[\\s*${escapedSelector}\\s*\\](?:\\?\\.|\\.)?\\(`, 'g');
-    if (directInvocationPattern.test(afterMap)) return targetMatch[1];
+      const directInvocationPattern = new RegExp(`\\b${escapeRegex(mapName)}\\s*\\[\\s*${escapedSelector}\\s*\\](?:\\?\\.|\\.)?\\(`, 'g');
+      if (directInvocationPattern.test(afterMap)) return targetMatch[1];
 
-    const aliasPattern = new RegExp(`(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*${escapeRegex(mapName)}\\s*\\[\\s*${escapedSelector}\\s*\\](?:\\s*[\\|\\?][\\|\\?]\\s*[^\\n;]+)?;?`, 'g');
-    let aliasMatch;
-    while ((aliasMatch = aliasPattern.exec(afterMap)) !== null) {
-      const alias = escapeRegex(aliasMatch[1]);
-      const callPattern = new RegExp(`\\b${alias}\\s*\\(`, 'g');
-      if (callPattern.test(afterMap.slice(aliasMatch.index + aliasMatch[0].length))) return targetMatch[1];
+      const aliasPattern = new RegExp(`(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*${escapeRegex(mapName)}\\s*\\[\\s*${escapedSelector}\\s*\\](?:\\s*[\\|\\?][\\|\\?]\\s*[^\\n;]+)?;?`, 'g');
+      let aliasMatch;
+      while ((aliasMatch = aliasPattern.exec(afterMap)) !== null) {
+        const alias = escapeRegex(aliasMatch[1]);
+        const callPattern = new RegExp(`\\b${alias}\\s*\\(`, 'g');
+        if (callPattern.test(afterMap.slice(aliasMatch.index + aliasMatch[0].length))) return targetMatch[1];
+      }
     }
   }
 
   return '';
 }
 
-function findIfRouteTarget(renderActiveView, viewId, selectorName) {
+function findIfRouteTarget(renderActiveView, viewId, selectorNames) {
   const escapedView = escapeRegex(viewId);
-  const escapedSelector = escapeRegex(selectorName || 'activeViewId');
-  const condition = new RegExp(`if\\s*\\(\\s*(?:${escapedSelector}\\s*(?:===|==)\\s*['"]${escapedView}['"]|['"]${escapedView}['"]\\s*(?:===|==)\\s*${escapedSelector})\\s*\\)`, 'g');
-  const match = condition.exec(renderActiveView);
-  if (!match) return '';
+  for (const selectorName of selectorNames) {
+    const escapedSelector = escapeRegex(selectorName);
+    const condition = new RegExp(`if\\s*\\(\\s*(?:${escapedSelector}\\s*(?:===|==)\\s*['"]${escapedView}['"]|['"]${escapedView}['"]\\s*(?:===|==)\\s*${escapedSelector})\\s*\\)`, 'g');
+    const match = condition.exec(renderActiveView);
+    if (!match) continue;
 
-  const branch = extractBraceBody(renderActiveView, renderActiveView.indexOf('{', match.index));
-  return findRouteInvocation(branch);
+    const branch = extractBraceBody(renderActiveView, renderActiveView.indexOf('{', match.index));
+    return findRouteInvocation(branch);
+  }
+
+  return '';
 }
 
-function findSwitchRouteTarget(renderActiveView, viewId, selectorName) {
-  const escapedSelector = escapeRegex(selectorName || 'activeViewId');
-  if (!new RegExp(`switch\\s*\\(\\s*${escapedSelector}\\s*\\)`).test(renderActiveView)) return '';
-
+function findSwitchRouteTarget(renderActiveView, viewId, selectorNames) {
   const escapedView = escapeRegex(viewId);
   const casePattern = new RegExp(`case\\s*(?:['"]${escapedView}['"]|${escapedView})\\s*:`, 'g');
-  const match = casePattern.exec(renderActiveView);
-  if (!match) return '';
 
-  const caseStart = match.index + match[0].length;
-  const afterCase = renderActiveView.slice(caseStart);
-  const nextCase = afterCase.search(/\n\s*(?:case\s*(?:['"][^'"]+['"]|[A-Za-z_$][\w$]+)\s*:|default\s*:)/);
-  const caseBody = nextCase === -1 ? afterCase : afterCase.slice(0, nextCase);
-  return findRouteInvocation(caseBody);
+  for (const selectorName of selectorNames) {
+    const escapedSelector = escapeRegex(selectorName);
+    if (!new RegExp(`switch\\s*\\(\\s*${escapedSelector}\\s*\\)`).test(renderActiveView)) continue;
+
+    const match = casePattern.exec(renderActiveView);
+    if (!match) continue;
+
+    const caseStart = match.index + match[0].length;
+    const afterCase = renderActiveView.slice(caseStart);
+    const nextCase = afterCase.search(/\n\s*(?:case\s*(?:['"][^'"]+['"]|[A-Za-z_$][\w$]+)\s*:|default\s*:)/);
+    const caseBody = nextCase === -1 ? afterCase : afterCase.slice(0, nextCase);
+    return findRouteInvocation(caseBody);
+  }
+
+  return '';
 }
 
 function findRouteSelectorName(renderActiveView) {
@@ -433,6 +445,27 @@ function findRouteSelectorName(renderActiveView) {
   }
 
   return 'activeViewId';
+}
+
+function findRouteSelectorNames(renderActiveView, selectorName) {
+  const names = new Set([selectorName || 'activeViewId', 'activeViewId']);
+  const aliasPattern = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([A-Za-z_$][\w$]*)\s*;/g;
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+    aliasPattern.lastIndex = 0;
+
+    for (const match of renderActiveView.matchAll(aliasPattern)) {
+      const [, alias, sourceName] = match;
+      if (names.has(sourceName) && !names.has(alias)) {
+        names.add(alias);
+        changed = true;
+      }
+    }
+  }
+
+  return [...names];
 }
 
 function findRouteInvocation(branch) {
