@@ -62,8 +62,6 @@ const nodes = {
   topTabs: document.querySelector('#topTabs'),
   viewTitle: document.querySelector('#viewTitle'),
   viewDescription: document.querySelector('#viewDescription'),
-  actionTitle: document.querySelector('#actionTitle'),
-  actionMeta: document.querySelector('#actionMeta'),
   hudResources: document.querySelector('#hudResources'),
   realm: document.querySelector('#realm'),
   spiritualRoot: document.querySelector('#spiritualRoot'),
@@ -108,7 +106,6 @@ const nodes = {
   startFormalGameBtn: document.querySelector('#startFormalGameBtn'),
   statusOverview: document.querySelector('#statusOverview'),
   attributeSummary: document.querySelector('#attributeSummary'),
-  historyTitle: document.querySelector('#historyTitle'),
   viewFocusTitle: document.querySelector('#viewFocusTitle'),
   viewFocusMeta: document.querySelector('#viewFocusMeta'),
   viewFocusBody: document.querySelector('#viewFocusBody'),
@@ -311,7 +308,8 @@ function render() {
   renderTabs();
   renderPlayer();
   renderNpcs();
-  renderStory();
+  renderStory({ refreshActiveView: false });
+  renderActiveView(activeViewId);
   renderWorld();
   renderMode();
 }
@@ -333,10 +331,6 @@ function renderFirstRunStage() {
   if (needsCharacter) {
     renderPendingCharacterStatus();
   }
-
-  renderStatusOverview();
-  renderAttributeSummary();
-  renderViewFocus();
 }
 
 function shouldShowCharacterCreation(game) {
@@ -396,8 +390,6 @@ function renderTabs() {
   const view = getView(activeViewId);
   nodes.viewTitle.textContent = view.title;
   nodes.viewDescription.textContent = view.description;
-  nodes.actionTitle.textContent = view.label === '洞府' ? '今日修行' : view.title;
-  nodes.actionMeta.textContent = `${dailyActions.length} 项`;
 
   nodes.topTabs.innerHTML = viewList.map((item) => `
     <button class="${item.id === view.id ? 'active' : ''}" type="button" data-view="${item.id}">${item.label}</button>
@@ -442,9 +434,6 @@ function renderPlayer() {
       </div>
     `;
   }).join('');
-
-  renderStatusOverview();
-  renderAttributeSummary();
 }
 
 function renderStatusOverview() {
@@ -519,29 +508,92 @@ function renderNpcs() {
   `).join('');
 }
 
-function renderStory() {
+function renderStory({ refreshActiveView = true } = {}) {
   nodes.gameDate.textContent = formatDate(game.calendar);
   nodes.turnPill.textContent = `第 ${game.turn} 回合`;
-  nodes.historyTitle.textContent = '历史行为';
+  if (refreshActiveView) renderActiveView(activeViewId);
+}
 
-  nodes.actionGrid.innerHTML = buildActionCards(dailyActions).map((card) => `
-    <button class="action-card ${card.kind}" type="button" data-action-id="${escapeAttribute(card.id)}" data-command="${escapeAttribute(card.command)}"${card.disabled ? ' disabled aria-disabled="true"' : ''}>
-      <b>${card.icon}</b>
-      <span>${card.title}</span>
-      <strong>${card.command}</strong>
-      <em>${card.meta}</em>
-    </button>
-  `).join('');
+function renderActiveView(viewId = activeViewId) {
+  switch (viewId) {
+    case 'home':
+      return renderHomeView();
+    case 'cultivation':
+      return renderCultivationView();
+    case 'skills':
+      return renderSkillsView();
+    case 'realm':
+      return renderRealmView();
+    case 'bag':
+      return renderBagView();
+    default:
+      return renderHomeView();
+  }
+}
 
-  nodes.logList.innerHTML = buildRecentHistory().map((entry) => `
-    <article class="${historyCardClass(entry)}">
-      <header><strong>${entry.title}</strong><span>${entry.command}</span></header>
-      <p>${entry.body}</p>
-      ${entry.effectsSummary ? `<div class="effects-summary">${formatHistoryEffectSummary(entry)}</div>` : ''}
-      ${entry.npcLine ? `<blockquote>${entry.npcLine}</blockquote>` : ''}
-      ${entry.worldEvent ? `<em>${entry.worldEvent}</em>` : ''}
-    </article>
-  `).join('');
+function renderHomeView() {
+  nodes.activeViewContent.innerHTML = [
+    renderStatusPanel(),
+    renderActionPanel(),
+    renderHistoryPanel(3),
+    renderFocusPanel()
+  ].join('');
+
+  syncActiveViewNodes();
+  renderStatusOverview();
+  renderAttributeSummary();
+  renderHomeFocus();
+}
+
+function renderCultivationView() {
+  return renderHomeView();
+}
+
+function renderSkillsView() {
+  return renderHomeView();
+}
+
+function renderRealmView() {
+  return renderHomeView();
+}
+
+function renderBagView() {
+  return renderHomeView();
+}
+
+function renderStatusPanel() {
+  return renderPanel({
+    className: 'stage-status',
+    title: '命途状态',
+    meta: '当前气象',
+    body: `
+      <div class="status-overview" id="statusOverview"></div>
+      <div class="attribute-summary" id="attributeSummary"></div>
+    `
+  });
+}
+
+function renderFocusPanel() {
+  return `
+    <section class="paper-card action-note">
+      <div class="section-title">
+        <h3 id="viewFocusTitle">当前见闻</h3>
+        <span id="viewFocusMeta">命簿摘录</span>
+      </div>
+      <div id="viewFocusBody"></div>
+    </section>
+  `;
+}
+
+function syncActiveViewNodes() {
+  const root = nodes.activeViewContent;
+  nodes.statusOverview = root.querySelector('#statusOverview');
+  nodes.attributeSummary = root.querySelector('#attributeSummary');
+  nodes.actionGrid = root.querySelector('#actionGrid');
+  nodes.logList = root.querySelector('#logList');
+  nodes.viewFocusTitle = root.querySelector('#viewFocusTitle');
+  nodes.viewFocusMeta = root.querySelector('#viewFocusMeta');
+  nodes.viewFocusBody = root.querySelector('#viewFocusBody');
 }
 
 function renderPanel({ className = '', title, meta, body }) {
@@ -658,8 +710,17 @@ function normalizeEffectSummary(effectsSummary) {
   return line ? [line] : [];
 }
 
-function renderViewFocus() {
-  if (activeViewId === 'bag') {
+function renderHomeFocus() {
+  nodes.viewFocusTitle.textContent = '当前见闻';
+  nodes.viewFocusMeta.textContent = '命簿摘录';
+  nodes.viewFocusBody.innerHTML = [
+    `<article class="focus-card"><strong>今日重心</strong><p>${buildSuggestionText()}</p></article>`,
+    `<article class="focus-card"><strong>最近风声</strong><p>${game.worldEvents?.at(-1)?.detail ?? '山门风平浪静，正宜养息。'}</p></article>`
+  ].join('');
+}
+
+function renderViewFocus(focusViewId = activeViewId) {
+  if (focusViewId === 'bag') {
     nodes.viewFocusTitle.textContent = '行囊见闻';
     nodes.viewFocusMeta.textContent = `${(game.treasures?.length ?? 0) + countInventoryStacks(game.inventory)} 项收藏`;
     nodes.viewFocusBody.innerHTML = [
@@ -669,7 +730,7 @@ function renderViewFocus() {
     return;
   }
 
-  if (activeViewId === 'skills') {
+  if (focusViewId === 'skills') {
     nodes.viewFocusTitle.textContent = '功法心得';
     nodes.viewFocusMeta.textContent = `${game.techniques?.length ?? 0} 门已入册`;
     nodes.viewFocusBody.innerHTML = [
@@ -679,7 +740,7 @@ function renderViewFocus() {
     return;
   }
 
-  if (activeViewId === 'cultivation') {
+  if (focusViewId === 'cultivation') {
     nodes.viewFocusTitle.textContent = '闭关要点';
     nodes.viewFocusMeta.textContent = '修行重心';
     nodes.viewFocusBody.innerHTML = [
@@ -689,7 +750,7 @@ function renderViewFocus() {
     return;
   }
 
-  if (activeViewId === 'realm') {
+  if (focusViewId === 'realm') {
     nodes.viewFocusTitle.textContent = '秘境线索';
     nodes.viewFocusMeta.textContent = `${game.foreshadows?.length ?? 0} 条伏笔`;
     nodes.viewFocusBody.innerHTML = [
@@ -699,12 +760,7 @@ function renderViewFocus() {
     return;
   }
 
-  nodes.viewFocusTitle.textContent = '当前见闻';
-  nodes.viewFocusMeta.textContent = '命簿摘录';
-  nodes.viewFocusBody.innerHTML = [
-    `<article class="focus-card"><strong>今日重心</strong><p>${buildSuggestionText()}</p></article>`,
-    `<article class="focus-card"><strong>最近风声</strong><p>${game.worldEvents?.at(-1)?.detail ?? '山门风平浪静，正宜养息。'}</p></article>`
-  ].join('');
+  renderHomeFocus();
 }
 
 function renderCollectionCards(items, emptyCopy) {

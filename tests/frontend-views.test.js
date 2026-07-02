@@ -36,8 +36,8 @@ test('bag and skills views have player-facing focus copy for obtained rewards in
 
   assert.ok(renderViewFocus, 'renderViewFocus should exist');
   assert.ok(renderCollectionCards, 'renderCollectionCards should exist');
-  assert.match(renderViewFocus, /if \(activeViewId === 'bag'\)/);
-  assert.match(renderViewFocus, /if \(activeViewId === 'skills'\)/);
+  assert.match(renderViewFocus, /if \(focusViewId === 'bag'\)/);
+  assert.match(renderViewFocus, /if \(focusViewId === 'skills'\)/);
   assert.match(renderViewFocus, /renderCollectionCards\(game\.treasures/);
   assert.match(renderViewFocus, /renderCollectionCards\(game\.techniques/);
   assert.match(renderCollectionCards, /\$\{item\.name\}/);

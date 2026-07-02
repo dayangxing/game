@@ -195,8 +195,8 @@ test('first run stage keeps onboarding and character creation inside the main st
   assert.match(helper, /nodes\.dashboardContent\.hidden = needsOnboarding \|\| needsCharacter;/);
   assert.doesNotMatch(helper, /document\.querySelector\('\.main-stage'\)\.hidden/);
   assert.match(helper, /renderPendingCharacterStatus\(\);/);
-  assert.match(helper, /renderStatusOverview\(\);/);
-  assert.match(helper, /renderViewFocus\(\);/);
+  assert.doesNotMatch(helper, /renderStatusOverview\(\);/);
+  assert.doesNotMatch(helper, /renderViewFocus\(\);/);
 });
 
 test('character creation gate uses explicit state instead of literal player name', () => {
