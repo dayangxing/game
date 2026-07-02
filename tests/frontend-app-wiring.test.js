@@ -13,30 +13,34 @@ test('browser app configures the game api for backend-first mode', () => {
 
 test('app rendering is routed through renderActiveView for active tabs', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
-  const render = extractFunctionDeclaration(source, 'render');
+  const render = extractFunction(source, 'render');
 
   assert.match(source, /function renderActiveView\(/);
   assert.match(render, /\s*renderActiveView\(\);\s*/);
-  assert.equal((source.match(/renderActiveView\(\)/g) || []).length, 1);
+  assert.equal((render.match(/\brenderActiveView\(\)/g) || []).length, 1);
 });
 
-test('activeViewId selects dedicated render paths for home, 功法, 行囊, and 秘境', () => {
+test('activeViewId selects dedicated render paths for home/cultivation/skills/realm/bag', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
   const renderActiveView = extractFunction(source, 'renderActiveView');
+  const requiredHelpers = {
+    home: 'renderHomeView',
+    cultivation: 'renderCultivationView',
+    skills: 'renderSkillsView',
+    realm: 'renderRealmView',
+    bag: 'renderBagView'
+  };
 
   assert.ok(renderActiveView, 'renderActiveView should exist');
-  assert.match(renderActiveView, /activeViewId === 'home'/);
-  assert.match(renderActiveView, /activeViewId === 'skills'/);
-  assert.match(renderActiveView, /activeViewId === 'bag'/);
-  assert.match(renderActiveView, /activeViewId === 'realm'/);
-  assert.match(renderActiveView, /activeViewId === 'cultivation'/);
-  assert.match(renderActiveView, /nodes\.viewFocusTitle\.textContent/);
-  assert.match(renderActiveView, /nodes\.viewFocusMeta\.textContent/);
-  assert.match(renderActiveView, /nodes\.viewFocusBody\.innerHTML/);
-  assert.match(renderActiveView, /nodes\.viewFocusTitle\.textContent\s*=\s*['"]当前见闻['"]/);
-  assert.match(renderActiveView, /nodes\.viewFocusTitle\.textContent\s*=\s*['"]功法心得['"]/);
-  assert.match(renderActiveView, /nodes\.viewFocusTitle\.textContent\s*=\s*['"]行囊见闻['"]/);
-  assert.match(renderActiveView, /nodes\.viewFocusTitle\.textContent\s*=\s*['"]秘境线索['"]/);
+  assert.match(renderActiveView, /activeViewId/);
+
+  for (const [viewId, helperName] of Object.entries(requiredHelpers)) {
+    assert.match(source, new RegExp(`function ${helperName}\\s*\\(`), `${helperName} should exist`);
+    assert.ok(
+      routesToHelper(renderActiveView, viewId, helperName),
+      `${viewId} should route to ${helperName}`
+    );
+  }
 });
 
 test('tab navigation renders immediate actions before refreshing backend actions', () => {
@@ -322,6 +326,67 @@ function extractFunctionDeclaration(source, name) {
   }
 
   assert.fail(`${name} should have a complete declaration`);
+}
+
+function routesToHelper(renderActiveView, viewId, helperName) {
+  if (rendersViaLookup(renderActiveView, viewId, helperName)) return true;
+  if (routesViaIf(renderActiveView, viewId, helperName)) return true;
+  return routesViaSwitch(renderActiveView, viewId, helperName);
+}
+
+function routesViaLookup(renderActiveView, viewId, helperName) {
+  const escapedView = escapeRegex(viewId);
+  const escapedHelper = escapeRegex(helperName);
+  const lookupPattern = new RegExp(`(?:^|[\\s,{])(?:['"]${escapedView}['"]|${escapedView})\\s*:\\s*${escapedHelper}\\b`, 'g');
+  return lookupPattern.test(renderActiveView);
+}
+
+function routesViaIf(renderActiveView, viewId, helperName) {
+  const escapedView = escapeRegex(viewId);
+  const condition = new RegExp(`if\\s*\\(\\s*(?:activeViewId\\s*(?:===|==)\\s*['"]${escapedView}['"]|['"]${escapedView}['"]\\s*(?:===|==)\\s*activeViewId)\\s*\\)`, 'g');
+  const match = condition.exec(renderActiveView);
+  if (!match) return false;
+
+  const branch = extractBraceBody(renderActiveView, renderActiveView.indexOf('{', match.index));
+  if (!branch) return false;
+  return new RegExp(`\\b${escapeRegex(helperName)}\\s*\\(`).test(branch);
+}
+
+function routesViaSwitch(renderActiveView, viewId, helperName) {
+  if (!/switch\s*\(\s*activeViewId\s*\)/.test(renderActiveView)) return false;
+
+  const escapedView = escapeRegex(viewId);
+  const casePattern = new RegExp(`case\\s*(?:['"]${escapedView}['"]|${escapedView})\\s*:`, 'g');
+  const match = casePattern.exec(renderActiveView);
+  if (!match) return false;
+
+  const caseStart = match.index + match[0].length;
+  const afterCase = renderActiveView.slice(caseStart);
+  const nextCase = afterCase.search(/\n\s*(?:case\s*(?:['"][^'"]+['"]|[A-Za-z_$][\w$]+)\s*:|default\s*:)/);
+  const caseBody = nextCase === -1 ? afterCase : afterCase.slice(0, nextCase);
+  return new RegExp(`\\b${escapeRegex(helperName)}\\s*\\(`).test(caseBody);
+}
+
+function extractBraceBody(source, openIndex) {
+  if (openIndex < 0 || source[openIndex] !== '{') return '';
+  let depth = 0;
+
+  for (let index = openIndex; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === '{') depth += 1;
+    if (character === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        return source.slice(openIndex + 1, index);
+      }
+    }
+  }
+
+  return '';
+}
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function createStorageDouble() {
