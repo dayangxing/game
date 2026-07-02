@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>问道浮生</title>
+    <script>
+      if (location.protocol === 'file:') {
+        location.replace('http://127.0.0.1:5173/frontend/');
+      }
+    </script>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <div class="ink-backdrop" aria-hidden="true">
+      <span class="sun"></span>
+      <span class="ridge ridge-one"></span>
+      <span class="ridge ridge-two"></span>
+      <span class="mist mist-one"></span>
+      <span class="mist mist-two"></span>
+    </div>
+
+    <div class="app">
+      <header class="topbar">
+        <div class="brand">
+          <div class="seal">道</div>
+          <div>
+            <span>AI 文字修仙</span>
+            <h1>问道浮生</h1>
+          </div>
+        </div>
+
+        <nav class="top-tabs" id="topTabs" aria-label="主导航">
+          <button class="active" type="button" data-view="home">洞府</button>
+          <button type="button" data-view="cultivation">修炼</button>
+          <button type="button" data-view="skills">个人</button>
+          <button type="button" data-view="realm">秘境</button>
+          <button type="button" data-view="bag">行囊</button>
+        </nav>
+
+        <div class="top-actions">
+          <div class="mode-toggle">
+            <button class="mode-option active" id="mockMode" type="button">本地</button>
+            <button class="mode-option" id="apiMode" type="button">云端</button>
+          </div>
+          <button id="guideBtn" type="button">指引</button>
+          <button id="saveBtn" type="button">存档</button>
+          <button id="exportBtn" type="button">传记</button>
+          <button id="resetBtn" type="button">重开</button>
+          <button id="sampleBtn" type="button">随机</button>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="main-stage">
+          <section class="onboarding-panel" id="onboardingPanel" hidden>
+            <div class="panel-kicker">新手任务</div>
+            <h2 id="onboardingTitle">山门初醒</h2>
+            <p id="onboardingBody">青云宗外门晨钟响起。</p>
+            <button id="onboardingActionBtn" type="button">继续</button>
+          </section>
+
+          <section class="character-panel" id="characterPanel" hidden>
+            <div>
+              <div class="panel-kicker">创建角色</div>
+              <h2>命格初定</h2>
+              <p>分配五维天赋，定下入门后的气血、寿元与修行走向。</p>
+            </div>
+            <input id="characterNameInput" type="text" maxlength="12" placeholder="输入角色名" />
+            <div class="allocation-summary">
+              <strong id="remainingAttributePoints">0</strong>
+              <span>剩余天赋点</span>
+            </div>
+            <div class="attribute-allocation" id="attributeAllocation"></div>
+            <div class="character-roll" id="characterRoll"></div>
+            <div class="character-actions">
+              <button id="rerollCharacterBtn" type="button">随机分配</button>
+              <button id="startFormalGameBtn" type="button">开始修行</button>
+            </div>
+          </section>
+
+          <div class="dashboard-content" id="dashboardContent">
+            <section class="hero-scroll">
+              <div>
+                <p><span id="gameDate">玄历三年 春 第1月</span><span id="turnPill">第 0 回合</span></p>
+                <h2 id="viewTitle">山门听雨，天机自生</h2>
+                <span id="viewDescription">整理今日修行、道友牵绊与天机札记，决定下一步命途。</span>
+              </div>
+              <div class="status-pill" id="worldMode">本地存档</div>
+            </section>
+
+            <div class="api-banner" id="apiBanner" hidden>
+              云箓已启，今日行止皆已入册。
+            </div>
+
+            <div class="active-view-content" id="activeViewContent"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="guide-overlay" id="guideOverlay" hidden>
+      <section class="guide-dialog" role="dialog" aria-modal="true" aria-labelledby="guideTitle">
+        <div class="guide-kicker">新手指引</div>
+        <h2 id="guideTitle">先选修行场景</h2>
+        <p id="guideBody">顶部五个入口代表不同玩法。</p>
+        <div class="guide-progress" id="guideProgress"></div>
+        <div class="guide-actions">
+          <button id="guideSkipBtn" type="button">跳过</button>
+          <button id="guideNextBtn" type="button">下一步</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>
