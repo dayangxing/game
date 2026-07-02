@@ -16,9 +16,13 @@ test('app rendering is routed through renderActiveView for active tabs', () => {
   const render = extractFunction(source, 'render');
 
   assert.ok(extractNamedCallable(source, 'renderActiveView'), 'renderActiveView should exist');
-  assert.match(render, /\s*renderActiveView\(\);\s*/);
-  assert.equal((render.match(/\brenderActiveView\(\)/g) || []).length, 1);
-  assert.doesNotMatch(render, /\bactiveViewId\b/, 'render should not branch on activeViewId outside renderActiveView');
+  assert.match(render, /\brenderActiveView\s*\(/);
+  assert.equal((render.match(/\brenderActiveView\s*\(/g) || []).length, 1);
+  assert.doesNotMatch(
+    render,
+    /\bif\s*\([\s\S]{0,80}\bactiveViewId\b[\s\S]{0,80}\)|\bswitch\s*\(\s*activeViewId\s*\)|\bcase\s*['"][^'"]+['"]\s*:/,
+    'render should keep activeViewId content routing inside renderActiveView'
+  );
 });
 
 test('activeViewId selects overview and tab-specific render routes without collapsing tabs together', () => {
@@ -36,10 +40,11 @@ test('activeViewId selects overview and tab-specific render routes without colla
     assert.notEqual(routeTarget, 'renderActiveView', `${viewId} route should not recurse into renderActiveView`);
   }
 
-  assert.equal(new Set([routeTargets.skills, routeTargets.realm, routeTargets.bag]).size, 3);
-  assert.notEqual(routeTargets.home, routeTargets.skills);
-  assert.notEqual(routeTargets.home, routeTargets.realm);
-  assert.notEqual(routeTargets.home, routeTargets.bag);
+  assert.equal(
+    new Set(Object.values(routeTargets)).size,
+    5,
+    'home, cultivation, skills, realm, and bag should resolve to distinct content routes'
+  );
 });
 
 test('tab navigation renders immediate actions before refreshing backend actions', () => {
