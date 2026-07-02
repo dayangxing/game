@@ -15,9 +15,10 @@ test('app rendering is routed through renderActiveView for active tabs', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
   const render = extractFunction(source, 'render');
 
-  assert.match(source, /function renderActiveView\(/);
+  assert.ok(extractNamedCallable(source, 'renderActiveView'), 'renderActiveView should exist');
   assert.match(render, /\s*renderActiveView\(\);\s*/);
   assert.equal((render.match(/\brenderActiveView\(\)/g) || []).length, 1);
+  assert.doesNotMatch(render, /\bactiveViewId\b/, 'render should not branch on activeViewId outside renderActiveView');
 });
 
 test('activeViewId selects overview and tab-specific render routes without collapsing tabs together', () => {
@@ -289,22 +290,39 @@ test('history summary hydration ignores stale cache entries after the playthroug
 });
 
 function extractFunction(source, name) {
-  const start = source.indexOf(`async function ${name}`) !== -1
-    ? source.indexOf(`async function ${name}`)
-    : source.indexOf(`function ${name}`);
-  assert.notEqual(start, -1, `${name} should exist`);
-  const signatureEnd = source.indexOf(')', start);
-  const bodyStart = source.indexOf('{', signatureEnd);
-  let depth = 0;
+  return extractNamedCallable(source, name);
+}
 
-  for (let index = bodyStart; index < source.length; index += 1) {
-    const character = source[index];
-    if (character === '{') depth += 1;
-    if (character === '}') depth -= 1;
-    if (depth === 0) return source.slice(bodyStart + 1, index);
+function extractNamedCallable(source, name) {
+  const functionBody = tryExtractNamedFunction(source, `async function ${name}`)
+    || tryExtractNamedFunction(source, `function ${name}`)
+    || tryExtractAssignedCallable(source, name);
+
+  assert.ok(functionBody, `${name} should exist`);
+  return functionBody;
+}
+
+function tryExtractNamedFunction(source, signature) {
+  const start = source.indexOf(signature);
+  if (start === -1) return '';
+  const signatureEnd = source.indexOf(')', start);
+  return extractBraceBody(source, source.indexOf('{', signatureEnd));
+}
+
+function tryExtractAssignedCallable(source, name) {
+  const patterns = [
+    new RegExp(`(?:const|let|var)\\s+${escapeRegex(name)}\\s*=\\s*(?:async\\s*)?\\([^)]*\\)\\s*=>`),
+    new RegExp(`(?:const|let|var)\\s+${escapeRegex(name)}\\s*=\\s*(?:async\\s*)?function\\s*\\([^)]*\\)`)
+  ];
+
+  for (const pattern of patterns) {
+    const match = pattern.exec(source);
+    if (!match) continue;
+    const openIndex = source.indexOf('{', match.index + match[0].length);
+    return extractBraceBody(source, openIndex);
   }
 
-  assert.fail(`${name} should have a complete function body`);
+  return '';
 }
 
 function extractFunctionDeclaration(source, name) {

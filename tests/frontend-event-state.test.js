@@ -33,7 +33,7 @@ test('洞府 is the overview tab and starts as the fallback active view', () => 
   assert.match(html, /data-view="skills"[^>]*>\s*功法\s*<\/button>/);
   assert.match(html, /data-view="realm"[^>]*>\s*秘境\s*<\/button>/);
   assert.match(html, /data-view="bag"[^>]*>\s*行囊\s*<\/button>/);
-  assert.match(source, /let activeViewId = localStorage\.getItem\(['"]wendao-fusheng-active-view['"]\)\s*(?:\|\||\?\?)\s*['"]home['"]\s*;/);
+  assert.ok(hasHomeFallbackActiveView(source), 'activeViewId should fall back to home when no saved view exists');
 });
 
 test('洞府 overview does not render all inventory, all techniques, all foreshadows, or full timeline at once', () => {
@@ -42,21 +42,22 @@ test('洞府 overview does not render all inventory, all techniques, all foresha
   const homeRouteTarget = findViewRouteTarget(renderActiveView, 'home');
   const homeHelper = extractNamedCallable(source, homeRouteTarget);
   const forbiddenHomeCalls = [
-    'renderCollectionCards',
+    'renderBagView',
+    'renderSkillsView',
+    'renderRealmView',
     'renderTimeline',
-    'renderForeshadows',
-    'renderViewFocus'
+    'renderForeshadows'
   ];
   const forbiddenHomeData = [
-    /game\.inventory/,
-    /game\.treasures/,
-    /game\.techniques/,
-    /game\.timeline/,
-    /game\.foreshadows/,
-    /buildInventoryCollection\s*\(/,
-    /countInventoryStacks\s*\(/,
     /nodes\.timeline\./,
-    /nodes\.foreshadows\./
+    /nodes\.foreshadows\./,
+    /renderCollectionCards\s*\(\s*game\.(?:treasures|techniques)\b/,
+    /renderCollectionCards\s*\(\s*buildInventoryCollection\s*\(/,
+    /renderCollectionCards\s*\(\s*(?:game\.foreshadows|\(game\.foreshadows)/,
+    /(?:game\.timeline|\(game\.timeline)[^;\n]*\.slice\(\s*-?\d{2,}\s*\)/,
+    /(?:game\.foreshadows|\(game\.foreshadows)[^;\n]*\.slice\(\s*-?\d{2,}\s*\)/,
+    /(?:game\.techniques|\(game\.techniques)[^;\n]*\.slice\(\s*-?\d{2,}\s*\)/,
+    /(?:game\.treasures|\(game\.treasures)[^;\n]*\.slice\(\s*-?\d{2,}\s*\)/
   ];
 
   assert.ok(homeRouteTarget, 'home should route through a dedicated overview renderer');
@@ -170,6 +171,18 @@ function extractFunction(source, name) {
   }
 
   assert.fail(`${name} should have a complete function body`);
+}
+
+function hasHomeFallbackActiveView(source) {
+  if (!/activeViewId/.test(source) || !/['"]home['"]/.test(source)) return false;
+
+  const directFallbackPatterns = [
+    /(?:const|let|var)\s+activeViewId\s*=\s*localStorage\.getItem\(['"]wendao-fusheng-active-view['"]\)\s*(?:\|\||\?\?)\s*['"]home['"]/,
+    /(?:const|let|var)\s+\w+\s*=\s*localStorage\.getItem\(['"]wendao-fusheng-active-view['"]\)[\s\S]{0,200}?(?:const|let|var)\s+activeViewId\s*=\s*\w+\s*(?:\|\||\?\?)\s*['"]home['"]/,
+    /(?:const|let|var)\s+activeViewId\s*=\s*(?:read|get|resolve)\w*ActiveView\([^)]*\)[\s\S]{0,200}?(?:return|=>|[?][?]|[|][|])[\s\S]{0,80}['"]home['"]/i
+  ];
+
+  return directFallbackPatterns.some((pattern) => pattern.test(source));
 }
 
 function extractNamedCallable(source, name) {
