@@ -76,6 +76,7 @@ const nodes = {
   turnPill: document.querySelector('#turnPill'),
   logList: document.querySelector('#logList'),
   actionGrid: document.querySelector('#actionGrid'),
+  activeViewContent: document.querySelector('#activeViewContent'),
   timeline: document.querySelector('#timeline'),
   foreshadows: document.querySelector('#foreshadows'),
   guideBtn: document.querySelector('#guideBtn'),
@@ -122,7 +123,7 @@ render();
 if (startupNotice) showToast(startupNotice);
 if (!startupNotice && shouldAutoOpenGuide(localStorage)) openGuide();
 
-nodes.actionGrid.addEventListener('click', async (event) => {
+nodes.activeViewContent.addEventListener('click', async (event) => {
   const button = event.target.closest('button[data-command]');
   if (!button) return;
   const action = dailyActions.find((item) => item.id === button.dataset.actionId);

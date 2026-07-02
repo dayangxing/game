@@ -6,9 +6,10 @@ test('frontend source renders central status and collection panels without relyi
   const html = fs.readFileSync('frontend/index.html', 'utf8');
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
 
-  assert.match(html, /id="statusOverview"/);
-  assert.match(html, /id="attributeSummary"/);
-  assert.match(html, /id="viewFocusBody"/);
+  assert.match(html, /id="activeViewContent"/);
+  assert.doesNotMatch(html, /id="statusOverview"/);
+  assert.doesNotMatch(html, /id="attributeSummary"/);
+  assert.doesNotMatch(html, /id="viewFocusBody"/);
   assert.match(source, /function renderStatusOverview/);
   assert.match(source, /function renderAttributeSummary/);
   assert.match(source, /function renderViewFocus/);

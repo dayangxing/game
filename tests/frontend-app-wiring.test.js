@@ -29,6 +29,14 @@ test('app rendering is routed through renderActiveView for active tabs', () => {
   assert.equal((render.match(/\brenderActiveView\s*\(/g) || []).length, 1);
 });
 
+test('dashboard content delegates dynamic action clicks from the active view container', () => {
+  const source = fs.readFileSync('frontend/src/app.js', 'utf8');
+
+  assert.match(source, /activeViewContent:\s*document\.querySelector\('#activeViewContent'\)/);
+  assert.match(source, /nodes\.activeViewContent\.addEventListener\('click'/);
+  assert.doesNotMatch(source, /nodes\.actionGrid\.addEventListener\('click'/);
+});
+
 test('activeViewId selects overview and tab-specific render routes without collapsing tabs together', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
   const renderActiveView = extractNamedCallable(source, 'renderActiveView');

@@ -10,7 +10,8 @@ test('frontend page does not expose a free text command input', () => {
 
   assert.equal(html.includes('id="commandInput"'), false);
   assert.equal(html.includes('id="commandForm"'), false);
-  assert.equal(html.includes('id="actionGrid"'), true);
+  assert.equal(html.includes('id="activeViewContent"'), true);
+  assert.equal(html.includes('id="actionGrid"'), false);
 });
 
 test('daily action api returns structured options for future AI generation', async () => {
