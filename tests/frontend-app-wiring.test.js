@@ -329,7 +329,7 @@ function extractFunctionDeclaration(source, name) {
 }
 
 function routesToHelper(renderActiveView, viewId, helperName) {
-  if (rendersViaLookup(renderActiveView, viewId, helperName)) return true;
+  if (routesViaLookup(renderActiveView, viewId, helperName)) return true;
   if (routesViaIf(renderActiveView, viewId, helperName)) return true;
   return routesViaSwitch(renderActiveView, viewId, helperName);
 }
@@ -337,8 +337,35 @@ function routesToHelper(renderActiveView, viewId, helperName) {
 function routesViaLookup(renderActiveView, viewId, helperName) {
   const escapedView = escapeRegex(viewId);
   const escapedHelper = escapeRegex(helperName);
-  const lookupPattern = new RegExp(`(?:^|[\\s,{])(?:['"]${escapedView}['"]|${escapedView})\\s*:\\s*${escapedHelper}\\b`, 'g');
-  return lookupPattern.test(renderActiveView);
+  const lookupPattern = new RegExp(`(?:^|[\\s,])(?:['"]${escapedView}['"]|${escapedView})\\s*:\\s*${escapedHelper}\\b`, 'g');
+  const lookupBodyPattern = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*\{/g;
+
+  let match;
+  while ((match = lookupBodyPattern.exec(renderActiveView)) !== null) {
+    const mapName = match[1];
+    const mapBodyStart = renderActiveView.indexOf('{', match.index);
+    const mapBody = extractBraceBody(renderActiveView, mapBodyStart);
+    if (!mapBody) continue;
+    if (!lookupPattern.test(mapBody)) continue;
+
+    const sectionStart = match.index;
+    const afterMap = renderActiveView.slice(sectionStart);
+    const lookupIndexPattern = new RegExp(`\\b${escapeRegex(mapName)}\\s*\\[\\s*activeViewId\\s*\\]`, 'g');
+    if (!lookupIndexPattern.test(afterMap)) continue;
+
+    const directInvocationPattern = new RegExp(`\\b${escapeRegex(mapName)}\\s*\\[\\s*activeViewId\\s*\\](?:\\?\\.|\\.)?\\(`, 'g');
+    if (directInvocationPattern.test(afterMap)) return true;
+
+    const aliasPattern = new RegExp(`(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*${escapeRegex(mapName)}\\s*\\[\\s*activeViewId\\s*\\](?:\\s*[\\|\\?][\\|\\?]\\s*[^\\n;]+)?;?`, 'g');
+    let aliasMatch;
+    while ((aliasMatch = aliasPattern.exec(afterMap)) !== null) {
+      const alias = escapeRegex(aliasMatch[1]);
+      const callPattern = new RegExp(`\\b${alias}\\s*\\(`, 'g');
+      if (callPattern.test(afterMap.slice(aliasMatch.index + aliasMatch[0].length))) return true;
+    }
+  }
+
+  return false;
 }
 
 function routesViaIf(renderActiveView, viewId, helperName) {

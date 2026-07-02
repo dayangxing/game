@@ -38,6 +38,15 @@ test('洞府 is the overview tab and starts as the fallback active view', () => 
 test('洞府 overview does not render all inventory, all techniques, all foreshadows, or full timeline at once', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
   const homeHelper = extractFunction(source, 'renderHomeView');
+  const forbiddenHomeHelpers = [
+    'renderSkillsView',
+    'renderBagView',
+    'renderRealmView',
+    'renderCollectionCards',
+    'renderTimeline',
+    'renderForeshadows',
+    'renderViewFocus'
+  ];
   const requiredHelpers = [
     'renderHomeView',
     'renderCultivationView',
@@ -51,8 +60,9 @@ test('洞府 overview does not render all inventory, all techniques, all foresha
   }
 
   assert.ok(homeHelper.length > 0);
-  assert.doesNotMatch(homeHelper, /\brenderCollectionCards\(/);
-  assert.doesNotMatch(homeHelper, /\brenderTimeline\(/);
+  for (const forbidden of forbiddenHomeHelpers) {
+    assert.doesNotMatch(homeHelper, new RegExp(`\\b${forbidden}\\(`));
+  }
   assert.doesNotMatch(homeHelper, /game\.timeline/);
   assert.doesNotMatch(homeHelper, /game\.foreshadows/);
 });
