@@ -14,21 +14,26 @@ test('browser app configures the game api for backend-first mode', () => {
 test('app rendering is routed through renderActiveView for active tabs', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
   const render = extractFunction(source, 'render');
+  const renderActiveView = extractNamedCallable(source, 'renderActiveView');
 
-  assert.ok(extractNamedCallable(source, 'renderActiveView'), 'renderActiveView should exist');
-  assert.match(render, /\brenderActiveView\s*\(/);
+  assert.ok(renderActiveView, 'renderActiveView should exist');
+  assert.ok(
+    /\brenderActiveView\s*\(\s*activeViewId\s*\)/.test(render)
+      || /\bactiveViewId\b/.test(renderActiveView),
+    'render() should pass activeViewId to renderActiveView, or renderActiveView should read activeViewId directly'
+  );
   assert.equal((render.match(/\brenderActiveView\s*\(/g) || []).length, 1);
 });
 
 test('activeViewId selects overview and tab-specific render routes without collapsing tabs together', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
   const renderActiveView = extractNamedCallable(source, 'renderActiveView');
+  const selectorName = findRouteSelectorName(renderActiveView);
   const routeTargets = Object.fromEntries(
-    ['home', 'cultivation', 'skills', 'realm', 'bag'].map((viewId) => [viewId, findViewRouteTarget(renderActiveView, viewId)])
+    ['home', 'cultivation', 'skills', 'realm', 'bag'].map((viewId) => [viewId, findViewRouteTarget(renderActiveView, viewId, selectorName)])
   );
 
   assert.ok(renderActiveView, 'renderActiveView should exist');
-  assert.match(renderActiveView, /activeViewId/);
 
   for (const [viewId, routeTarget] of Object.entries(routeTargets)) {
     assert.ok(routeTarget, `${viewId} should have a dedicated render route`);
@@ -344,16 +349,17 @@ function extractFunctionDeclaration(source, name) {
   assert.fail(`${name} should have a complete declaration`);
 }
 
-function findViewRouteTarget(renderActiveView, viewId) {
+function findViewRouteTarget(renderActiveView, viewId, selectorName) {
   return (
-    findLookupRouteTarget(renderActiveView, viewId) ||
-    findIfRouteTarget(renderActiveView, viewId) ||
-    findSwitchRouteTarget(renderActiveView, viewId)
+    findLookupRouteTarget(renderActiveView, viewId, selectorName) ||
+    findIfRouteTarget(renderActiveView, viewId, selectorName) ||
+    findSwitchRouteTarget(renderActiveView, viewId, selectorName)
   );
 }
 
-function findLookupRouteTarget(renderActiveView, viewId) {
+function findLookupRouteTarget(renderActiveView, viewId, selectorName) {
   const escapedView = escapeRegex(viewId);
+  const escapedSelector = escapeRegex(selectorName || 'activeViewId');
   const lookupBodyPattern = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*\{/g;
 
   let match;
@@ -367,13 +373,13 @@ function findLookupRouteTarget(renderActiveView, viewId) {
 
     const sectionStart = match.index;
     const afterMap = renderActiveView.slice(sectionStart);
-    const lookupIndexPattern = new RegExp(`\\b${escapeRegex(mapName)}\\s*\\[\\s*activeViewId\\s*\\]`, 'g');
+    const lookupIndexPattern = new RegExp(`\\b${escapeRegex(mapName)}\\s*\\[\\s*${escapedSelector}\\s*\\]`, 'g');
     if (!lookupIndexPattern.test(afterMap)) continue;
 
-    const directInvocationPattern = new RegExp(`\\b${escapeRegex(mapName)}\\s*\\[\\s*activeViewId\\s*\\](?:\\?\\.|\\.)?\\(`, 'g');
+    const directInvocationPattern = new RegExp(`\\b${escapeRegex(mapName)}\\s*\\[\\s*${escapedSelector}\\s*\\](?:\\?\\.|\\.)?\\(`, 'g');
     if (directInvocationPattern.test(afterMap)) return targetMatch[1];
 
-    const aliasPattern = new RegExp(`(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*${escapeRegex(mapName)}\\s*\\[\\s*activeViewId\\s*\\](?:\\s*[\\|\\?][\\|\\?]\\s*[^\\n;]+)?;?`, 'g');
+    const aliasPattern = new RegExp(`(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*${escapeRegex(mapName)}\\s*\\[\\s*${escapedSelector}\\s*\\](?:\\s*[\\|\\?][\\|\\?]\\s*[^\\n;]+)?;?`, 'g');
     let aliasMatch;
     while ((aliasMatch = aliasPattern.exec(afterMap)) !== null) {
       const alias = escapeRegex(aliasMatch[1]);
@@ -385,9 +391,10 @@ function findLookupRouteTarget(renderActiveView, viewId) {
   return '';
 }
 
-function findIfRouteTarget(renderActiveView, viewId) {
+function findIfRouteTarget(renderActiveView, viewId, selectorName) {
   const escapedView = escapeRegex(viewId);
-  const condition = new RegExp(`if\\s*\\(\\s*(?:activeViewId\\s*(?:===|==)\\s*['"]${escapedView}['"]|['"]${escapedView}['"]\\s*(?:===|==)\\s*activeViewId)\\s*\\)`, 'g');
+  const escapedSelector = escapeRegex(selectorName || 'activeViewId');
+  const condition = new RegExp(`if\\s*\\(\\s*(?:${escapedSelector}\\s*(?:===|==)\\s*['"]${escapedView}['"]|['"]${escapedView}['"]\\s*(?:===|==)\\s*${escapedSelector})\\s*\\)`, 'g');
   const match = condition.exec(renderActiveView);
   if (!match) return '';
 
@@ -395,8 +402,9 @@ function findIfRouteTarget(renderActiveView, viewId) {
   return findRouteInvocation(branch);
 }
 
-function findSwitchRouteTarget(renderActiveView, viewId) {
-  if (!/switch\s*\(\s*activeViewId\s*\)/.test(renderActiveView)) return '';
+function findSwitchRouteTarget(renderActiveView, viewId, selectorName) {
+  const escapedSelector = escapeRegex(selectorName || 'activeViewId');
+  if (!new RegExp(`switch\\s*\\(\\s*${escapedSelector}\\s*\\)`).test(renderActiveView)) return '';
 
   const escapedView = escapeRegex(viewId);
   const casePattern = new RegExp(`case\\s*(?:['"]${escapedView}['"]|${escapedView})\\s*:`, 'g');
@@ -408,6 +416,23 @@ function findSwitchRouteTarget(renderActiveView, viewId) {
   const nextCase = afterCase.search(/\n\s*(?:case\s*(?:['"][^'"]+['"]|[A-Za-z_$][\w$]+)\s*:|default\s*:)/);
   const caseBody = nextCase === -1 ? afterCase : afterCase.slice(0, nextCase);
   return findRouteInvocation(caseBody);
+}
+
+function findRouteSelectorName(renderActiveView) {
+  const functionMatch = renderActiveView.match(/^\s*(?:async\s+)?function\s+[A-Za-z_$][\w$]*\s*\(\s*([A-Za-z_$][\w$]*)/m);
+  if (functionMatch) return functionMatch[1];
+
+  const arrowMatch = renderActiveView.match(/^\s*(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*=\s*(?:async\s*)?\(\s*([A-Za-z_$][\w$]*)/m);
+  if (arrowMatch) return arrowMatch[1];
+
+  const conciseArrowMatch = renderActiveView.match(/^\s*(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*=\s*(?:async\s*)?[A-Za-z_$][\w$]*\s*=>/m);
+  if (conciseArrowMatch) {
+    const header = conciseArrowMatch[0];
+    const bareMatch = header.match(/=\s*(?:async\s*)?([A-Za-z_$][\w$]*)\s*=>$/);
+    if (bareMatch) return bareMatch[1];
+  }
+
+  return 'activeViewId';
 }
 
 function findRouteInvocation(branch) {
