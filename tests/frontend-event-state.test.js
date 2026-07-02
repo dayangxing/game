@@ -23,6 +23,29 @@ test('frontend source renders central status and collection panels without relyi
   assert.match(source, /game\.techniques/);
 });
 
+test('洞府 is the overview tab and starts as the fallback active view', () => {
+  const html = fs.readFileSync('frontend/index.html', 'utf8');
+  const source = fs.readFileSync('frontend/src/app.js', 'utf8');
+
+  assert.match(html, /<button class="active" type="button" data-view="home">洞府<\/button>/);
+  assert.match(html, /<button type="button" data-view="skills">功法<\/button>/);
+  assert.match(html, /<button type="button" data-view="realm">秘境<\/button>/);
+  assert.match(html, /<button type="button" data-view="bag">行囊<\/button>/);
+  assert.match(source, /let activeViewId = localStorage\.getItem\('wendao-fusheng-active-view'\) \|\| 'home';/);
+});
+
+test('洞府 overview does not render all inventory, all techniques, all foreshadows, or full timeline at once', () => {
+  const source = fs.readFileSync('frontend/src/app.js', 'utf8');
+  const renderActiveView = extractFunction(source, 'renderActiveView');
+  const homeBranch = extractIfBranch(renderActiveView, 'home');
+
+  assert.ok(homeBranch.length > 0);
+  assert.doesNotMatch(homeBranch, /game\.treasures/);
+  assert.doesNotMatch(homeBranch, /game\.techniques/);
+  assert.doesNotMatch(homeBranch, /game\.foreshadows/);
+  assert.doesNotMatch(homeBranch, /game\.timeline/);
+});
+
 test('sect state falls back to the current player sect relation field', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
 
@@ -104,3 +127,40 @@ test('visible frontend copy avoids api labels and debug parameters', () => {
   assert.doesNotMatch(source, /后端 API|本地 Mock|Mock 推演|API 模式|后端存档由服务端维护|后端行动刷新中|后端连接失败|后端 API 暂不可用/);
   assert.doesNotMatch(source, /\/\s*\$\{action\.choiceId\}/);
 });
+
+function extractFunction(source, name) {
+  const start = source.indexOf(`function ${name}`);
+  assert.notEqual(start, -1, `${name} should exist`);
+  const bodyStart = source.indexOf('{', start);
+  let depth = 0;
+
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === '{') depth += 1;
+    if (character === '}') depth -= 1;
+    if (depth === 0) {
+      return source.slice(bodyStart + 1, index);
+    }
+  }
+
+  assert.fail(`${name} should have a complete function body`);
+}
+
+function extractIfBranch(functionBody, viewId) {
+  const matcher = new RegExp(`if \\(\\s*activeViewId === ['"]${viewId}['"]\\s*\\)\\s*\\{`);
+  const start = functionBody.search(matcher);
+  assert.notEqual(start, -1, `${viewId} branch should exist in renderActiveView`);
+  const startBrace = functionBody.indexOf('{', start);
+  let depth = 0;
+
+  for (let index = startBrace; index < functionBody.length; index += 1) {
+    const character = functionBody[index];
+    if (character === '{') depth += 1;
+    if (character === '}') depth -= 1;
+    if (depth === 0) {
+      return functionBody.slice(startBrace + 1, index);
+    }
+  }
+
+  assert.fail(`missing closing brace for ${viewId} branch`);
+}

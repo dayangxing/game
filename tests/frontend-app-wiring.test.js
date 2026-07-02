@@ -11,6 +11,34 @@ test('browser app configures the game api for backend-first mode', () => {
   assert.match(source, /preferredMode:\s*initialMode/);
 });
 
+test('app rendering is routed through renderActiveView for active tabs', () => {
+  const source = fs.readFileSync('frontend/src/app.js', 'utf8');
+  const render = extractFunctionDeclaration(source, 'render');
+
+  assert.match(source, /function renderActiveView\(/);
+  assert.match(render, /\s*renderActiveView\(\);\s*/);
+  assert.equal((source.match(/renderActiveView\(\)/g) || []).length, 1);
+});
+
+test('activeViewId selects dedicated render paths for home, 功法, 行囊, and 秘境', () => {
+  const source = fs.readFileSync('frontend/src/app.js', 'utf8');
+  const renderActiveView = extractFunction(source, 'renderActiveView');
+
+  assert.ok(renderActiveView, 'renderActiveView should exist');
+  assert.match(renderActiveView, /activeViewId === 'home'/);
+  assert.match(renderActiveView, /activeViewId === 'skills'/);
+  assert.match(renderActiveView, /activeViewId === 'bag'/);
+  assert.match(renderActiveView, /activeViewId === 'realm'/);
+  assert.match(renderActiveView, /activeViewId === 'cultivation'/);
+  assert.match(renderActiveView, /nodes\.viewFocusTitle\.textContent/);
+  assert.match(renderActiveView, /nodes\.viewFocusMeta\.textContent/);
+  assert.match(renderActiveView, /nodes\.viewFocusBody\.innerHTML/);
+  assert.match(renderActiveView, /nodes\.viewFocusTitle\.textContent\s*=\s*['"]当前见闻['"]/);
+  assert.match(renderActiveView, /nodes\.viewFocusTitle\.textContent\s*=\s*['"]功法心得['"]/);
+  assert.match(renderActiveView, /nodes\.viewFocusTitle\.textContent\s*=\s*['"]行囊见闻['"]/);
+  assert.match(renderActiveView, /nodes\.viewFocusTitle\.textContent\s*=\s*['"]秘境线索['"]/);
+});
+
 test('tab navigation renders immediate actions before refreshing backend actions', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
   const [, handler] = source.match(/nodes\.topTabs\.addEventListener\('click', \(event\) => \{([\s\S]*?)\n\}\);/) ?? [];
