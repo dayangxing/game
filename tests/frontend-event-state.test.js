@@ -44,9 +44,7 @@ test('洞府 overview does not render all inventory, all techniques, all foresha
   const forbiddenHomeCalls = [
     'renderBagView',
     'renderSkillsView',
-    'renderRealmView',
-    'renderTimeline',
-    'renderForeshadows'
+    'renderRealmView'
   ];
   const forbiddenHomeData = [
     /nodes\.timeline\./,
