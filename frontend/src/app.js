@@ -546,7 +546,16 @@ function renderHomeView() {
 }
 
 function renderCultivationView() {
-  return renderHomeView();
+  nodes.activeViewContent.innerHTML = [
+    renderStatusPanel(),
+    renderCultivationFocusPanel(),
+    renderActionPanel(),
+    renderHistoryPanel(5)
+  ].join('');
+
+  syncActiveViewNodes();
+  renderStatusOverview();
+  renderAttributeSummary();
 }
 
 function renderSkillsView() {
@@ -583,6 +592,18 @@ function renderFocusPanel() {
       <div id="viewFocusBody"></div>
     </section>
   `;
+}
+
+function renderCultivationFocusPanel() {
+  return renderPanel({
+    className: 'action-note cultivation-focus',
+    title: '闭关要点',
+    meta: '修行重心',
+    body: [
+      `<article class="focus-card"><strong>当前瓶颈</strong><p>${summarizeCultivationFocus()}</p></article>`,
+      `<article class="focus-card"><strong>近期建议</strong><p>${buildSuggestionText()}</p></article>`
+    ].join('')
+  });
 }
 
 function syncActiveViewNodes() {

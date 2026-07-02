@@ -47,6 +47,24 @@ test('洞府 overview does not render all inventory, all techniques, all foresha
   assertHomeOverviewAvoidsFullDetail(source, homeRouteTarget);
 });
 
+test('修炼 tab renders cultivation status, focus, actions, and recent history', () => {
+  const source = fs.readFileSync('frontend/src/app.js', 'utf8');
+  const renderCultivationView = extractNamedCallable(source, 'renderCultivationView');
+  const focusPanel = extractCallablePartsOrNull(source, 'renderCultivationFocusPanel')?.source ?? '';
+  const cultivationSource = `${renderCultivationView}\n${focusPanel}`;
+
+  assert.doesNotMatch(renderCultivationView, /renderHomeView\(\)/);
+  assert.match(renderCultivationView, /renderStatusPanel\(\)/);
+  assert.match(renderCultivationView, /renderActionPanel\(\)/);
+  assert.match(renderCultivationView, /renderHistoryPanel\(\s*5\s*\)/);
+  assert.match(renderCultivationView, /renderStatusOverview\(\)/);
+  assert.match(renderCultivationView, /renderAttributeSummary\(\)/);
+  assert.match(cultivationSource, /闭关要点/);
+  assert.match(cultivationSource, /summarizeCultivationFocus\(\)/);
+  assert.match(cultivationSource, /buildSuggestionText\(\)/);
+  assert.doesNotMatch(cultivationSource, /breakthroughChance|breakthroughRate|successRate/);
+});
+
 test('overview guard rejects forbidden helper calls through local aliases', () => {
   const source = `
     function renderWorld() {
