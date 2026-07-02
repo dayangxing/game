@@ -544,8 +544,67 @@ function renderStory() {
   `).join('');
 }
 
-function buildRecentHistory() {
-  const entries = game.log.slice(-5).reverse();
+function renderPanel({ className = '', title, meta, body }) {
+  return `
+    <section class="paper-card ${className}">
+      ${renderSectionTitle(title, meta)}
+      ${body}
+    </section>
+  `;
+}
+
+function renderSectionTitle(title, meta) {
+  return `
+    <div class="section-title">
+      <h3>${title}</h3>
+      <span>${meta}</span>
+    </div>
+  `;
+}
+
+function renderActionPanel() {
+  return renderPanel({
+    className: 'action-section',
+    title: '今日修行',
+    meta: '每日行动',
+    body: `
+      <div class="action-grid" id="actionGrid">
+        ${buildActionCards(dailyActions).map((card) => `
+          <button class="action-card ${card.kind}" type="button" data-action-id="${escapeAttribute(card.id)}" data-command="${escapeAttribute(card.command)}"${card.disabled ? ' disabled aria-disabled="true"' : ''}>
+            <b>${card.icon}</b>
+            <span>${card.title}</span>
+            <strong>${card.command}</strong>
+            <em>${card.meta}</em>
+          </button>
+        `).join('')}
+      </div>
+    `
+  });
+}
+
+function renderHistoryPanel(limit = 5) {
+  return renderPanel({
+    className: 'story-section',
+    title: '历史行为',
+    meta: `最近${limit}回合`,
+    body: `
+      <div class="log-list" id="logList">
+        ${buildRecentHistory(limit).map((entry) => `
+          <article class="${historyCardClass(entry)}">
+            <header><strong>${entry.title}</strong><span>${entry.command}</span></header>
+            <p>${entry.body}</p>
+            ${entry.effectsSummary ? `<div class="effects-summary">${formatHistoryEffectSummary(entry)}</div>` : ''}
+            ${entry.npcLine ? `<blockquote>${entry.npcLine}</blockquote>` : ''}
+            ${entry.worldEvent ? `<em>${entry.worldEvent}</em>` : ''}
+          </article>
+        `).join('')}
+      </div>
+    `
+  });
+}
+
+function buildRecentHistory(limit = 5) {
+  const entries = game.log.slice(-limit).reverse();
   return streamingNarration ? [streamingNarration, ...entries] : entries;
 }
 

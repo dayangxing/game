@@ -37,6 +37,24 @@ test('dashboard content delegates dynamic action clicks from the active view con
   assert.doesNotMatch(source, /nodes\.actionGrid\.addEventListener\('click'/);
 });
 
+test('shared active-view panel helpers render actions and history without direct card listeners', () => {
+  const source = fs.readFileSync('frontend/src/app.js', 'utf8');
+  const panelHelper = extractFunction(source, 'renderPanel');
+  const titleHelper = extractFunction(source, 'renderSectionTitle');
+  const actionPanel = extractFunction(source, 'renderActionPanel');
+  const historyPanel = extractFunction(source, 'renderHistoryPanel');
+
+  assert.match(source, /function renderHistoryPanel\(limit = 5\)/);
+  assert.match(panelHelper, /renderSectionTitle\(title,\s*meta\)/);
+  assert.match(titleHelper, /<div class="section-title">/);
+  assert.match(actionPanel, /id="actionGrid"/);
+  assert.match(actionPanel, /buildActionCards\(dailyActions\)/);
+  assert.doesNotMatch(actionPanel, /addEventListener/);
+  assert.match(historyPanel, /buildRecentHistory\(limit\)/);
+  assert.match(historyPanel, /historyCardClass\(entry\)/);
+  assert.match(historyPanel, /formatHistoryEffectSummary\(entry\)/);
+});
+
 test('activeViewId selects overview and tab-specific render routes without collapsing tabs together', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
   const renderActiveView = extractNamedCallable(source, 'renderActiveView');
