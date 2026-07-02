@@ -97,6 +97,25 @@ test('行囊 tab renders treasures, inventory stores, and bag actions', () => {
   assert.match(renderBagView, /syncActiveViewNodes\(\)/);
 });
 
+test('秘境 tab renders clues, timeline, foreshadows, and realm actions', () => {
+  const source = fs.readFileSync('frontend/src/app.js', 'utf8');
+  const renderRealmView = extractNamedCallable(source, 'renderRealmView');
+  const cluePanel = extractCallablePartsOrNull(source, 'renderRealmCluePanel')?.source ?? '';
+  const timelinePanel = extractCallablePartsOrNull(source, 'renderTimelinePanel')?.source ?? '';
+  const foreshadowPanel = extractCallablePartsOrNull(source, 'renderForeshadowPanel')?.source ?? '';
+  const realmSource = `${renderRealmView}\n${cluePanel}\n${timelinePanel}\n${foreshadowPanel}`;
+
+  assert.doesNotMatch(renderRealmView, /renderHomeView\(\)/);
+  assert.match(realmSource, /秘境线索/);
+  assert.match(realmSource, /game\.timeline\.at\(-1\)|game\.timeline\.slice\(-1\)/);
+  assert.match(realmSource, /天机事件/);
+  assert.match(realmSource, /game\.timeline\.slice\(-6\)\.reverse\(\)/);
+  assert.match(realmSource, /长期伏笔/);
+  assert.match(realmSource, /game\.foreshadows/);
+  assert.match(renderRealmView, /renderActionPanel\(\s*\{[\s\S]*title:\s*'秘境行动'/);
+  assert.match(renderRealmView, /syncActiveViewNodes\(\)/);
+});
+
 test('overview guard rejects forbidden helper calls through local aliases', () => {
   const source = `
     function renderWorld() {

@@ -569,7 +569,14 @@ function renderSkillsView() {
 }
 
 function renderRealmView() {
-  return renderHomeView();
+  nodes.activeViewContent.innerHTML = [
+    renderRealmCluePanel(),
+    renderTimelinePanel(),
+    renderForeshadowPanel(),
+    renderActionPanel({ title: '秘境行动', meta: '探索抉择' })
+  ].join('');
+
+  syncActiveViewNodes();
 }
 
 function renderBagView() {
@@ -651,6 +658,57 @@ function renderInventoryCollectionPanel() {
     title: '丹药与材料',
     meta: `${countInventoryStacks(game.inventory)} 类存货`,
     body: renderCollectionCards(buildInventoryCollection(game.inventory), '行囊里仍空空如也。')
+  });
+}
+
+function renderRealmCluePanel() {
+  const latestEvent = game.timeline.at(-1)?.detail ?? '山门今日平静无波。';
+  const foreshadowSummary = (game.foreshadows ?? []).slice(-2).join(' ') || '尚无新的征兆。';
+  return renderPanel({
+    className: 'action-note realm-clues',
+    title: '秘境线索',
+    meta: `${game.foreshadows?.length ?? 0} 条伏笔`,
+    body: [
+      `<article class="focus-card"><strong>最新异动</strong><p>${latestEvent}</p></article>`,
+      `<article class="focus-card"><strong>未明征兆</strong><p>${foreshadowSummary}</p></article>`
+    ].join('')
+  });
+}
+
+function renderTimelinePanel() {
+  const events = game.timeline.slice(-6).reverse();
+  return renderPanel({
+    className: 'story-section timeline-section',
+    title: '天机事件',
+    meta: '近六件',
+    body: events.length
+      ? `
+        <div class="timeline-list">
+          ${events.map((item) => `
+            <article class="timeline-item">
+              <i></i>
+              <div><strong>${item.title}</strong><p>${item.detail}</p></div>
+            </article>
+          `).join('')}
+        </div>
+      `
+      : '<div class="empty-collection">暂未记下新的天机事件。</div>'
+  });
+}
+
+function renderForeshadowPanel() {
+  const foreshadows = game.foreshadows ?? [];
+  return renderPanel({
+    className: 'story-section foreshadow-section',
+    title: '长期伏笔',
+    meta: `${foreshadows.length} 条`,
+    body: foreshadows.length
+      ? `
+        <div class="foreshadow-list">
+          ${foreshadows.map((item) => `<article>${item}</article>`).join('')}
+        </div>
+      `
+      : '<div class="empty-collection">命簿尚未浮现新的远兆。</div>'
   });
 }
 
