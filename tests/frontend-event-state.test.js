@@ -205,6 +205,25 @@ test('status cards keep a stable wide card ratio instead of stretching tall', ()
   assert.match(css, /\.status-card-head\s+strong\s*\{[\s\S]*overflow-wrap:\s*anywhere/);
 });
 
+test('tab screens use full-width readable grids without losing tuning hooks', () => {
+  const css = fs.readFileSync('frontend/src/styles.css', 'utf8');
+
+  assert.match(css, /\.active-view-content\s*\{[\s\S]*grid-column:\s*1\s*\/\s*-1/);
+  assert.match(css, /\.active-view-content\s*\{[\s\S]*display:\s*grid/);
+  assert.match(css, /\.active-view-content\s*\{[\s\S]*grid-template-columns:\s*var\(--main-card-columns\)/);
+  assert.match(css, /\.view-screen\s*\{/);
+  assert.match(css, /\.view-grid\s*\{/);
+  assert.match(css, /\.view-grid\.compact\s*\{/);
+  assert.match(css, /\.view-grid\.split\s*\{/);
+  assert.match(css, /\.active-view-content\s*>\s*\.stage-status\s*\{[\s\S]*grid-column:\s*1\s*\/\s*-1/);
+  assert.match(css, /\.active-view-content\s*>\s*\.action-section\s*\{[\s\S]*grid-column:\s*1\s*\/\s*-1/);
+  assert.match(css, /\.active-view-content\s*>\s*\.story-section\s*\{[\s\S]*grid-column:\s*1\s*\/\s*-1/);
+  assert.match(css, /--hero-scroll-width:\s*100%/);
+  assert.match(css, /--status-card-min-height:\s*104px/);
+  assert.match(css, /--action-card-min-height:\s*122px/);
+  assert.match(css, /@keyframes history-card-refresh/);
+});
+
 test('visible frontend copy avoids api labels and debug parameters', () => {
   const html = fs.readFileSync('frontend/index.html', 'utf8');
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
