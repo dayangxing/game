@@ -17,10 +17,14 @@ test('app rendering is routed through renderActiveView for active tabs', () => {
   const renderActiveView = extractNamedCallable(source, 'renderActiveView');
 
   assert.ok(renderActiveView, 'renderActiveView should exist');
-  assert.ok(
+  const renderRoutesThroughActiveView =
     /\brenderActiveView\s*\(\s*activeViewId\s*\)/.test(render)
-      || /\bactiveViewId\b/.test(renderActiveView),
-    'render() should pass activeViewId to renderActiveView, or renderActiveView should read activeViewId directly'
+    || /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*activeViewId\s*;\s*\brenderActiveView\s*\(\s*\1\s*\)/s.test(render)
+    || /\bactiveViewId\b/.test(renderActiveView);
+
+  assert.ok(
+    renderRoutesThroughActiveView,
+    'render() should pass activeViewId to renderActiveView, even through a local alias, or renderActiveView should read activeViewId directly'
   );
   assert.equal((render.match(/\brenderActiveView\s*\(/g) || []).length, 1);
 });
@@ -323,6 +327,18 @@ function tryExtractAssignedCallable(source, name) {
   for (const pattern of patterns) {
     const match = pattern.exec(source);
     if (!match) continue;
+    const arrowIndex = source.indexOf('=>', match.index);
+    if (arrowIndex !== -1) {
+      const braceIndex = source.indexOf('{', arrowIndex + 2);
+      if (braceIndex !== -1) {
+        return extractBraceBody(source, braceIndex);
+      }
+
+      const expressionStart = arrowIndex + 2;
+      const expressionEnd = findStatementBoundary(source, expressionStart);
+      return source.slice(expressionStart, expressionEnd).trim();
+    }
+
     const openIndex = source.indexOf('{', match.index + match[0].length);
     return extractBraceBody(source, openIndex);
   }
@@ -507,6 +523,45 @@ function extractBraceBody(source, openIndex) {
   }
 
   return '';
+}
+
+function findStatementBoundary(source, startIndex) {
+  let depth = 0;
+  let quote = '';
+
+  for (let index = startIndex; index < source.length; index += 1) {
+    const character = source[index];
+
+    if (quote) {
+      if (character === '\\') {
+        index += 1;
+        continue;
+      }
+      if (character === quote) quote = '';
+      continue;
+    }
+
+    if (character === '\'' || character === '"' || character === '`') {
+      quote = character;
+      continue;
+    }
+
+    if (character === '(' || character === '[' || character === '{') {
+      depth += 1;
+      continue;
+    }
+
+    if (character === ')' || character === ']' || character === '}') {
+      depth = Math.max(0, depth - 1);
+      continue;
+    }
+
+    if (depth === 0 && (character === ';' || character === '\n')) {
+      return index;
+    }
+  }
+
+  return source.length;
 }
 
 function escapeRegex(value) {

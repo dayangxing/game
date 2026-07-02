@@ -188,6 +188,18 @@ function tryExtractAssignedCallable(source, name) {
   for (const pattern of patterns) {
     const match = pattern.exec(source);
     if (!match) continue;
+    const arrowIndex = source.indexOf('=>', match.index);
+    if (arrowIndex !== -1) {
+      const braceIndex = source.indexOf('{', arrowIndex + 2);
+      if (braceIndex !== -1) {
+        return extractBraceBody(source, braceIndex);
+      }
+
+      const expressionStart = arrowIndex + 2;
+      const expressionEnd = findStatementBoundary(source, expressionStart);
+      return source.slice(expressionStart, expressionEnd).trim();
+    }
+
     const openIndex = source.indexOf('{', match.index + match[0].length);
     return extractBraceBody(source, openIndex);
   }
@@ -432,6 +444,45 @@ function extractBraceBody(source, openIndex) {
   }
 
   assert.fail('callable body should have balanced braces');
+}
+
+function findStatementBoundary(source, startIndex) {
+  let depth = 0;
+  let quote = '';
+
+  for (let index = startIndex; index < source.length; index += 1) {
+    const character = source[index];
+
+    if (quote) {
+      if (character === '\\') {
+        index += 1;
+        continue;
+      }
+      if (character === quote) quote = '';
+      continue;
+    }
+
+    if (character === '\'' || character === '"' || character === '`') {
+      quote = character;
+      continue;
+    }
+
+    if (character === '(' || character === '[' || character === '{') {
+      depth += 1;
+      continue;
+    }
+
+    if (character === ')' || character === ']' || character === '}') {
+      depth = Math.max(0, depth - 1);
+      continue;
+    }
+
+    if (depth === 0 && (character === ';' || character === '\n')) {
+      return index;
+    }
+  }
+
+  return source.length;
 }
 
 function escapeRegex(value) {
