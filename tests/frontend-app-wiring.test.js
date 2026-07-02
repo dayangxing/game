@@ -27,7 +27,7 @@ test('app rendering is routed through renderActiveView for active tabs', () => {
 
 test('activeViewId selects overview and tab-specific render routes without collapsing tabs together', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
-  const renderActiveView = extractFunction(source, 'renderActiveView');
+  const renderActiveView = extractNamedCallable(source, 'renderActiveView');
   const routeTargets = Object.fromEntries(
     ['home', 'cultivation', 'skills', 'realm', 'bag'].map((viewId) => [viewId, findViewRouteTarget(renderActiveView, viewId)])
   );

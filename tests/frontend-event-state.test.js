@@ -38,7 +38,7 @@ test('洞府 is the overview tab and starts as the fallback active view', () => 
 
 test('洞府 overview does not render all inventory, all techniques, all foreshadows, or full timeline at once', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
-  const renderActiveView = extractFunction(source, 'renderActiveView');
+  const renderActiveView = extractNamedCallable(source, 'renderActiveView');
   const homeRouteTarget = findViewRouteTarget(renderActiveView, 'home');
   const homeHelper = extractNamedCallable(source, homeRouteTarget);
   const forbiddenHomeCalls = [
