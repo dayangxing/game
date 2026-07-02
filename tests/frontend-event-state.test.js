@@ -216,6 +216,28 @@ test('visible frontend copy avoids api labels and debug parameters', () => {
   assert.doesNotMatch(source, /\/\s*\$\{action\.choiceId\}/);
 });
 
+test('right sidebar keeps compact resources without full timeline or foreshadow dumps', () => {
+  const html = fs.readFileSync('frontend/index.html', 'utf8');
+  const source = fs.readFileSync('frontend/src/app.js', 'utf8');
+  const render = extractFunction(source, 'render');
+
+  assert.match(html, /id="hudResources"/);
+  assert.match(html, /id="resetBtn"/);
+  assert.match(html, /id="sampleBtn"/);
+  assert.doesNotMatch(html, /id="timeline"/);
+  assert.doesNotMatch(html, /id="foreshadows"/);
+  assert.doesNotMatch(html, /<h3>天机事件<\/h3>/);
+  assert.doesNotMatch(html, /<h3>长期伏笔<\/h3>/);
+  assert.doesNotMatch(source, /timeline:\s*document\.querySelector\('#timeline'\)/);
+  assert.doesNotMatch(source, /foreshadows:\s*document\.querySelector\('#foreshadows'\)/);
+  assert.doesNotMatch(render, /renderWorld\(\)/);
+  assert.doesNotMatch(source, /function renderWorld\(/);
+  assert.match(source, /renderHealthState\(\)/);
+  assert.match(source, /renderKarmaState\(\)/);
+  assert.match(source, /renderSectState\(\)/);
+  assert.match(source, /renderInventoryState\(\)/);
+});
+
 function extractFunction(source, name) {
   return extractCallableParts(source, name).body;
 }

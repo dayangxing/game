@@ -76,8 +76,6 @@ const nodes = {
   logList: document.querySelector('#logList'),
   actionGrid: document.querySelector('#actionGrid'),
   activeViewContent: document.querySelector('#activeViewContent'),
-  timeline: document.querySelector('#timeline'),
-  foreshadows: document.querySelector('#foreshadows'),
   guideBtn: document.querySelector('#guideBtn'),
   guideOverlay: document.querySelector('#guideOverlay'),
   guideTitle: document.querySelector('#guideTitle'),
@@ -315,7 +313,6 @@ function render() {
   renderNpcs();
   renderStory({ refreshActiveView: false });
   renderActiveView(activeViewId);
-  renderWorld();
   renderMode();
 }
 
@@ -967,18 +964,6 @@ function summarizeCultivationFocus() {
 
 function buildSuggestionText() {
   return (game.suggestions ?? []).slice(0, 2).join('；') || '今日不妨先静坐调息，再看局势。';
-}
-
-function renderWorld() {
-  nodes.timeline.innerHTML = game.timeline.slice(-6).reverse().map((item) => `
-    <article class="timeline-item">
-      <i></i>
-      <div><strong>${item.title}</strong><p>${item.detail}</p></div>
-    </article>
-  `).join('');
-
-  nodes.foreshadows.innerHTML = game.foreshadows.map((item) => `<article>${item}</article>`).join('');
-  renderViewFocus();
 }
 
 function renderMode() {
