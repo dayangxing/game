@@ -559,7 +559,13 @@ function renderCultivationView() {
 }
 
 function renderSkillsView() {
-  return renderHomeView();
+  nodes.activeViewContent.innerHTML = [
+    renderTechniqueCollectionPanel(),
+    renderTechniqueAdvicePanel(),
+    renderActionPanel({ title: '功法行动', meta: '今日参修' })
+  ].join('');
+
+  syncActiveViewNodes();
 }
 
 function renderRealmView() {
@@ -606,6 +612,24 @@ function renderCultivationFocusPanel() {
   });
 }
 
+function renderTechniqueCollectionPanel() {
+  return renderPanel({
+    className: 'collection-section',
+    title: '已得功法',
+    meta: `${game.techniques?.length ?? 0} 门已入册`,
+    body: renderCollectionCards(game.techniques, '尚未习得新的功法。')
+  });
+}
+
+function renderTechniqueAdvicePanel() {
+  return renderPanel({
+    className: 'action-note technique-advice',
+    title: '修习节奏',
+    meta: '心法取舍',
+    body: renderTrainingAdvice()
+  });
+}
+
 function syncActiveViewNodes() {
   const root = nodes.activeViewContent;
   nodes.statusOverview = root.querySelector('#statusOverview');
@@ -635,11 +659,11 @@ function renderSectionTitle(title, meta) {
   `;
 }
 
-function renderActionPanel() {
+function renderActionPanel({ title = '今日修行', meta = '每日行动' } = {}) {
   return renderPanel({
     className: 'action-section',
-    title: '今日修行',
-    meta: '每日行动',
+    title,
+    meta,
     body: `
       <div class="action-grid" id="actionGrid">
         ${buildActionCards(dailyActions).map((card) => `

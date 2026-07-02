@@ -65,6 +65,22 @@ test('修炼 tab renders cultivation status, focus, actions, and recent history'
   assert.doesNotMatch(cultivationSource, /breakthroughChance|breakthroughRate|successRate/);
 });
 
+test('功法 tab renders learned techniques, training rhythm, and technique actions', () => {
+  const source = fs.readFileSync('frontend/src/app.js', 'utf8');
+  const renderSkillsView = extractNamedCallable(source, 'renderSkillsView');
+  const collectionPanel = extractCallablePartsOrNull(source, 'renderTechniqueCollectionPanel')?.source ?? '';
+  const advicePanel = extractCallablePartsOrNull(source, 'renderTechniqueAdvicePanel')?.source ?? '';
+  const skillsSource = `${renderSkillsView}\n${collectionPanel}\n${advicePanel}`;
+
+  assert.doesNotMatch(renderSkillsView, /renderHomeView\(\)/);
+  assert.match(skillsSource, /已得功法/);
+  assert.match(skillsSource, /renderCollectionCards\(\s*game\.techniques\s*,\s*'尚未习得新的功法。'\s*\)/);
+  assert.match(skillsSource, /修习节奏/);
+  assert.match(skillsSource, /renderTrainingAdvice\(\)/);
+  assert.match(renderSkillsView, /renderActionPanel\(\s*\{[\s\S]*title:\s*'功法行动'/);
+  assert.match(renderSkillsView, /syncActiveViewNodes\(\)/);
+});
+
 test('overview guard rejects forbidden helper calls through local aliases', () => {
   const source = `
     function renderWorld() {
