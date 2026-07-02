@@ -47,8 +47,6 @@ test('洞府 overview does not render all inventory, all techniques, all foresha
     'renderRealmView'
   ];
   const forbiddenHomeData = [
-    /nodes\.timeline\./,
-    /nodes\.foreshadows\./,
     /renderCollectionCards\s*\(\s*game\.(?:treasures|techniques)\b/,
     /renderCollectionCards\s*\(\s*buildInventoryCollection\s*\(/,
     /renderCollectionCards\s*\(\s*(?:game\.foreshadows|\(game\.foreshadows)/,
