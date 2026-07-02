@@ -317,10 +317,8 @@ function assertHomeOverviewAvoidsFullDetail(source, homeRouteTarget) {
     /renderCollectionCards\s*\(\s*game\.(?:treasures|techniques)\b/,
     /renderCollectionCards\s*\(\s*buildInventoryCollection\s*\(/,
     /renderCollectionCards\s*\(\s*(?:game\.foreshadows|\(game\.foreshadows)/,
-    /(?:game\.timeline|\(game\.timeline)[^;\n]*\.slice\(\s*-?\d{2,}\s*\)/,
-    /(?:game\.foreshadows|\(game\.foreshadows)[^;\n]*\.slice\(\s*-?\d{2,}\s*\)/,
-    /(?:game\.techniques|\(game\.techniques)[^;\n]*\.slice\(\s*-?\d{2,}\s*\)/,
-    /(?:game\.treasures|\(game\.treasures)[^;\n]*\.slice\(\s*-?\d{2,}\s*\)/,
+    /render[A-Za-z_$]*Timeline[A-Za-z_$]*\s*\(\s*(?:game\.timeline|\(game\.timeline\))\s*(?:[,)]|$)/,
+    /render[A-Za-z_$]*Foreshadow[A-Za-z_$]*\s*\(\s*(?:game\.foreshadows|\(game\.foreshadows\))\s*(?:[,)]|$)/,
     /nodes\.foreshadows\.innerHTML\s*=\s*game\.foreshadows\b/
   ];
 
