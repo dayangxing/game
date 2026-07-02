@@ -23,9 +23,9 @@ export const viewList = [
   },
   {
     id: 'skills',
-    label: '命簿',
-    title: '命簿总览',
-    description: '汇总角色状态、功法、资源与道友牵绊，查看当前修行底蕴。',
+    label: '个人',
+    title: '个人面板',
+    description: '查看人物属性、境界、功法与道友牵绊，梳理当前修行底蕴。',
     cards: [
       { title: '青木诀', icon: '木', command: '研读青木诀，尝试让木息滋养经脉', meta: '心法' },
       { title: '掌心雷', icon: '雷', command: '演练掌心雷，测试雷灵根的斗法威力', meta: '术法' },

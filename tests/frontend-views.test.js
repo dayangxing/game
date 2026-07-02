@@ -6,7 +6,7 @@ import { getView, viewList } from '../frontend/src/ui/views.js';
 
 test('top navigation exposes five playable game views', () => {
   assert.deepEqual(viewList.map((view) => view.id), ['home', 'cultivation', 'skills', 'realm', 'bag']);
-  assert.deepEqual(viewList.map((view) => view.label), ['洞府', '修炼', '命簿', '秘境', '行囊']);
+  assert.deepEqual(viewList.map((view) => view.label), ['洞府', '修炼', '个人', '秘境', '行囊']);
 });
 
 test('each view has a title, description, and cards', () => {
@@ -29,29 +29,35 @@ test('cultivation and realm views include playable commands', () => {
   assert.ok(realm.cards.some((card) => card.command.includes('秘境') || card.command.includes('后山')));
 });
 
-test('bag and 命簿 views have player-facing copy for obtained rewards and character status', () => {
+test('bag and personal views separate inventory collections from detailed character status', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
   const renderSkillsView = extractFunction(source, 'renderSkillsView');
-  const characterProfilePanel = extractFunction(source, 'renderCharacterProfilePanel');
-  const resourcePanel = extractFunction(source, 'renderResourceLedgerPanel');
-  const relationshipPanel = extractFunction(source, 'renderRelationshipPanel');
+  const personalPanel = extractFunction(source, 'renderPersonalPanel');
+  const profileSection = extractFunction(source, 'renderPersonalProfileSection');
+  const attributeSection = extractFunction(source, 'renderPersonalAttributeSection');
+  const statusSection = extractFunction(source, 'renderPersonalStatusSection');
+  const relationshipSection = extractFunction(source, 'renderPersonalRelationshipSection');
   const renderCollectionCards = extractFunction(source, 'renderCollectionCards');
   const skillsView = getView('skills');
 
-  assert.equal(skillsView.label, '命簿');
-  assert.match(skillsView.title, /命簿/);
-  assert.match(skillsView.description, /角色|状态|功法|资源|牵绊/);
+  assert.equal(skillsView.label, '个人');
+  assert.match(skillsView.title, /个人面板/);
+  assert.match(skillsView.description, /属性|境界|功法|牵绊/);
   assert.ok(renderSkillsView, 'renderSkillsView should exist');
-  assert.ok(characterProfilePanel, 'renderCharacterProfilePanel should exist');
-  assert.ok(resourcePanel, 'renderResourceLedgerPanel should exist');
-  assert.ok(relationshipPanel, 'renderRelationshipPanel should exist');
+  assert.ok(personalPanel, 'renderPersonalPanel should exist');
+  assert.ok(profileSection, 'renderPersonalProfileSection should exist');
+  assert.ok(attributeSection, 'renderPersonalAttributeSection should exist');
+  assert.ok(statusSection, 'renderPersonalStatusSection should exist');
+  assert.ok(relationshipSection, 'renderPersonalRelationshipSection should exist');
   assert.ok(renderCollectionCards, 'renderCollectionCards should exist');
-  assert.match(renderSkillsView, /renderTechniqueCollectionPanel\(\)/);
-  assert.match(renderSkillsView, /renderRelationshipPanel\(\)/);
-  assert.match(renderSkillsView, /renderResourceLedgerPanel\(\)/);
-  assert.match(characterProfilePanel, /角色总览/);
-  assert.match(resourcePanel, /气血与寿元/);
-  assert.match(relationshipPanel, /game\.npcs\.map/);
+  assert.match(renderSkillsView, /renderPersonalPanel\(\)/);
+  assert.doesNotMatch(renderSkillsView, /renderTreasureCollectionPanel\(\)/);
+  assert.doesNotMatch(renderSkillsView, /renderInventoryCollectionPanel\(\)/);
+  assert.match(personalPanel, /个人面板/);
+  assert.match(profileSection, /人物/);
+  assert.match(attributeSection, /五维/);
+  assert.match(statusSection, /气血与寿元/);
+  assert.match(relationshipSection, /game\.npcs\.map/);
   assert.match(source, /renderCollectionCards\(game\.treasures/);
   assert.match(source, /renderCollectionCards\(game\.techniques/);
   assert.match(renderCollectionCards, /\$\{item\.name\}/);

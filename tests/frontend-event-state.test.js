@@ -31,7 +31,7 @@ test('洞府 is the overview tab and starts as the fallback active view', () => 
   assert.match(html, /data-view="home"[^>]*>\s*洞府\s*<\/button>/);
   assert.match(html, /class="active"[^>]*data-view="home"|data-view="home"[^>]*class="active"/);
   assert.match(html, /data-view="cultivation"[^>]*>\s*修炼\s*<\/button>/);
-  assert.match(html, /data-view="skills"[^>]*>\s*命簿\s*<\/button>/);
+  assert.match(html, /data-view="skills"[^>]*>\s*个人\s*<\/button>/);
   assert.match(html, /data-view="realm"[^>]*>\s*秘境\s*<\/button>/);
   assert.match(html, /data-view="bag"[^>]*>\s*行囊\s*<\/button>/);
   assert.ok(hasHomeFallbackActiveView(source), 'activeViewId should fall back to home when no saved view exists');
@@ -80,25 +80,46 @@ test('修炼 tab renders cultivation status and focus without action choices', (
   assert.doesNotMatch(cultivationSource, /breakthroughChance|breakthroughRate|successRate/);
 });
 
-test('命簿 tab renders unified character status without action choices', () => {
+test('个人 tab renders a detailed character sheet without bag duplicates or action choices', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
   const renderSkillsView = extractNamedCallable(source, 'renderSkillsView');
-  const profilePanel = extractCallablePartsOrNull(source, 'renderCharacterProfilePanel')?.source ?? '';
-  const resourcePanel = extractCallablePartsOrNull(source, 'renderResourceLedgerPanel')?.source ?? '';
-  const relationshipPanel = extractCallablePartsOrNull(source, 'renderRelationshipPanel')?.source ?? '';
-  const collectionPanel = extractCallablePartsOrNull(source, 'renderTechniqueCollectionPanel')?.source ?? '';
-  const skillsSource = `${renderSkillsView}\n${profilePanel}\n${resourcePanel}\n${relationshipPanel}\n${collectionPanel}`;
+  const personalPanel = extractCallablePartsOrNull(source, 'renderPersonalPanel')?.source ?? '';
+  const profileSection = extractCallablePartsOrNull(source, 'renderPersonalProfileSection')?.source ?? '';
+  const sectSection = extractCallablePartsOrNull(source, 'renderPersonalSectSection')?.source ?? '';
+  const attributeSection = extractCallablePartsOrNull(source, 'renderPersonalAttributeSection')?.source ?? '';
+  const statusSection = extractCallablePartsOrNull(source, 'renderPersonalStatusSection')?.source ?? '';
+  const relationshipSection = extractCallablePartsOrNull(source, 'renderPersonalRelationshipSection')?.source ?? '';
+  const techniqueSection = extractCallablePartsOrNull(source, 'renderPersonalTechniqueSection')?.source ?? '';
+  const skillsSource = [
+    renderSkillsView,
+    personalPanel,
+    profileSection,
+    sectSection,
+    attributeSection,
+    statusSection,
+    relationshipSection,
+    techniqueSection
+  ].join('\n');
 
   assert.doesNotMatch(renderSkillsView, /renderHomeView\(\)/);
   assert.doesNotMatch(renderSkillsView, /renderActionPanel\(/);
-  assert.match(skillsSource, /角色总览/);
-  assert.match(skillsSource, /资源与门派/);
+  assert.match(renderSkillsView, /renderPersonalPanel\(\)/);
+  assert.doesNotMatch(renderSkillsView, /renderTreasureCollectionPanel\(\)/);
+  assert.doesNotMatch(renderSkillsView, /renderInventoryCollectionPanel\(\)/);
+  assert.doesNotMatch(renderSkillsView, /renderStatusPanel\(\)/);
+  assert.match(skillsSource, /个人面板/);
+  assert.match(skillsSource, /人物/);
+  assert.match(skillsSource, /五维/);
+  assert.match(skillsSource, /生命与修行/);
+  assert.match(skillsSource, /宗门/);
   assert.match(skillsSource, /道友牵绊/);
-  assert.match(skillsSource, /已得功法/);
+  assert.match(skillsSource, /已修功法/);
   assert.match(skillsSource, /气血与寿元/);
-  assert.match(skillsSource, /renderResourceLedgerPanel/);
   assert.match(skillsSource, /game\.npcs\.map/);
-  assert.match(skillsSource, /renderCollectionCards\(\s*game\.techniques\s*,\s*'尚未习得新的功法。'\s*\)/);
+  assert.match(skillsSource, /game\.techniques/);
+  assert.doesNotMatch(skillsSource, /奇珍法器|丹药与材料/);
+  assert.doesNotMatch(renderSkillsView, /renderCollectionCards\(\s*game\.treasures/);
+  assert.doesNotMatch(renderSkillsView, /renderCollectionCards\(\s*buildInventoryCollection\(game\.inventory\)/);
   assert.match(renderSkillsView, /syncActiveViewNodes\(\)/);
 });
 
@@ -203,6 +224,9 @@ test('frontend styles include dense center-stage status, collection, and history
   assert.match(css, /\.attribute-summary\s*\{/);
   assert.match(css, /\.collection-grid\s*\{/);
   assert.match(css, /\.effects-summary\s*\{/);
+  assert.match(css, /\.personal-panel\s*\{/);
+  assert.match(css, /\.personal-sheet\s*\{/);
+  assert.match(css, /\.personal-attribute-grid\s*\{/);
   assert.match(css, /\.action-card\s*\{/);
   assert.match(css, /\.log-card\.is-new\s*\{/);
   assert.match(css, /@keyframes history-card-refresh/);
@@ -256,7 +280,7 @@ test('visible frontend copy avoids api labels and debug parameters', () => {
   assert.doesNotMatch(source, /\/\s*\$\{action\.choiceId\}/);
 });
 
-test('sidebars are removed and character state moves to the 命簿 tab', () => {
+test('sidebars are removed and character state moves to the 个人 tab', () => {
   const html = fs.readFileSync('frontend/index.html', 'utf8');
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
   const render = extractFunction(source, 'render');

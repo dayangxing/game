@@ -14,7 +14,7 @@ test('immediate view actions keep tab navigation usable before backend actions r
   assert.ok(actions.every((action) => action.id.startsWith('skills-immediate-')));
   assert.ok(actions.some((action) => action.command.includes('青木诀')));
   assert.ok(actions.every((action) => action.source === 'immediate'));
-  assert.ok(actions.every((action) => action.storyHook.includes('当前界面：命簿')));
+  assert.ok(actions.every((action) => action.storyHook.includes('当前界面：个人')));
   assert.equal(actions[0].llmRequest.task, 'daily_action_generation');
   assert.equal(actions[0].llmRequest.context.view.id, 'skills');
 });
