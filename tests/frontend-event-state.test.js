@@ -223,6 +223,14 @@ function extractFunction(source, name) {
 function hasHomeFallbackActiveView(source) {
   if (!/activeViewId/.test(source) || !/['"]home['"]/.test(source)) return false;
 
+  if (
+    /(?:const|let|var)\s+activeViewId\s*=\s*readInitialActiveViewId\(\);/.test(source)
+    && /function readInitialActiveViewId\(\)\s*\{[\s\S]*return resolveViewId\(localStorage\.getItem\(['"]wendao-fusheng-active-view['"]\)\);[\s\S]*?\}/.test(source)
+    && /function resolveViewId\(viewId\)\s*\{[\s\S]*:\s*['"]home['"]/.test(source)
+  ) {
+    return true;
+  }
+
   const directFallbackPatterns = [
     /(?:const|let|var)\s+activeViewId\s*=\s*localStorage\.getItem\(['"]wendao-fusheng-active-view['"]\)\s*(?:\|\||\?\?)\s*['"]home['"]/,
     /(?:const|let|var)\s+\w+\s*=\s*localStorage\.getItem\(['"]wendao-fusheng-active-view['"]\)[\s\S]{0,200}?(?:const|let|var)\s+activeViewId\s*=\s*\w+\s*(?:\|\||\?\?)\s*['"]home['"]/,

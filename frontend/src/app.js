@@ -36,6 +36,7 @@ let actionRefreshSequence = 0;
 let pendingApiImmediateActions = false;
 let streamingNarration = null;
 let highlightedHistoryEntryId = null;
+let suppressNextHashChange = false;
 let pendingCharacterSeed = Number(localStorage.getItem('wendao-fusheng-character-seed') ?? Date.now());
 let pendingAttributes = createDefaultAllocation();
 const api = createGameApi({
@@ -45,7 +46,7 @@ const api = createGameApi({
 });
 const layoutMode = getLayoutMode();
 let game = await loadGame();
-let activeViewId = localStorage.getItem('wendao-fusheng-active-view') || 'home';
+let activeViewId = readInitialActiveViewId();
 let dailyActions = await loadDailyActionsForGame(game, getView(activeViewId)).catch((error) => {
   startupNotice = apiErrorMessage(error);
   return createImmediateViewActions(game, getView(activeViewId));
@@ -131,11 +132,15 @@ nodes.activeViewContent.addEventListener('click', async (event) => {
 nodes.topTabs.addEventListener('click', (event) => {
   const button = event.target.closest('button[data-view]');
   if (!button) return;
-  activeViewId = button.dataset.view;
-  localStorage.setItem('wendao-fusheng-active-view', activeViewId);
-  showImmediateActionsForView(activeViewId);
-  render();
-  refreshDailyActionsForView(activeViewId).catch(handleApiError);
+  setActiveView(button.dataset.view);
+});
+
+window.addEventListener('hashchange', () => {
+  if (suppressNextHashChange) {
+    suppressNextHashChange = false;
+    return;
+  }
+  setActiveView(viewIdFromHash(), { updateHash: false });
 });
 
 nodes.guideBtn.addEventListener('click', () => openGuide());
@@ -394,6 +399,43 @@ function renderTabs() {
   nodes.topTabs.innerHTML = viewList.map((item) => `
     <button class="${item.id === view.id ? 'active' : ''}" type="button" data-view="${item.id}">${item.label}</button>
   `).join('');
+}
+
+function viewIdFromHash() {
+  let hashViewId = '';
+  try {
+    hashViewId = decodeURIComponent(window.location.hash.replace(/^#/, '').trim());
+  } catch {
+    return 'home';
+  }
+
+  if (!hashViewId) return '';
+  return resolveViewId(hashViewId);
+}
+
+function readInitialActiveViewId() {
+  const hashViewId = viewIdFromHash();
+  if (hashViewId) return hashViewId;
+  return resolveViewId(localStorage.getItem('wendao-fusheng-active-view'));
+}
+
+function resolveViewId(viewId) {
+  return viewList.some((view) => view.id === viewId) ? viewId : 'home';
+}
+
+function setActiveView(viewId, { updateHash = true } = {}) {
+  const nextViewId = resolveViewId(viewId);
+  activeViewId = nextViewId;
+  localStorage.setItem('wendao-fusheng-active-view', activeViewId);
+
+  if (updateHash && window.location.hash !== `#${activeViewId}`) {
+    suppressNextHashChange = true;
+    window.location.hash = `#${activeViewId}`;
+  }
+
+  showImmediateActionsForView(activeViewId);
+  render();
+  refreshDailyActionsForView(activeViewId).catch(handleApiError);
 }
 
 function renderPlayer() {

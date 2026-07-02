@@ -106,10 +106,35 @@ test('tab navigation renders immediate actions before refreshing backend actions
   const [, handler] = source.match(/nodes\.topTabs\.addEventListener\('click', \(event\) => \{([\s\S]*?)\n\}\);/) ?? [];
 
   assert.ok(handler, 'top tab click handler should exist');
-  assert.match(handler, /showImmediateActionsForView\(activeViewId\);/);
+  assert.match(handler, /setActiveView\(button\.dataset\.view\);/);
   assert.match(source, /function showImmediateActionsForView\(viewId\) \{/);
   assert.match(source, /dailyActions = createImmediateViewActions\(game,\s*getView\(viewId\)\);/);
-  assert.ok(handler.indexOf('render();') < handler.indexOf('refreshDailyActionsForView(activeViewId)'));
+  const setActiveView = extractFunction(source, 'setActiveView');
+  assert.ok(setActiveView, 'setActiveView should exist');
+  assert.match(setActiveView, /showImmediateActionsForView\(activeViewId\);/);
+  assert.ok(setActiveView.indexOf('render();') < setActiveView.indexOf('refreshDailyActionsForView(activeViewId)'));
+});
+
+test('tab navigation supports hash startup and browser back refreshes', () => {
+  const source = fs.readFileSync('frontend/src/app.js', 'utf8');
+  const viewIdFromHash = extractFunction(source, 'viewIdFromHash');
+  const initialView = extractFunction(source, 'readInitialActiveViewId');
+  const setActiveView = extractFunction(source, 'setActiveView');
+  const [, hashHandler] = source.match(/window\.addEventListener\('hashchange', \(\) => \{([\s\S]*?)\n\}\);/) ?? [];
+
+  assert.ok(viewIdFromHash, 'viewIdFromHash should exist');
+  assert.match(viewIdFromHash, /window\.location\.hash/);
+  assert.match(viewIdFromHash, /resolveViewId\(hashViewId\)/);
+  assert.ok(initialView.indexOf('viewIdFromHash()') < initialView.indexOf('localStorage.getItem'));
+  assert.match(source, /let activeViewId = readInitialActiveViewId\(\);/);
+
+  assert.match(setActiveView, /const nextViewId = resolveViewId\(viewId\);/);
+  assert.match(setActiveView, /localStorage\.setItem\('wendao-fusheng-active-view', activeViewId\);/);
+  assert.match(setActiveView, /window\.location\.hash = `#\$\{activeViewId\}`;/);
+  assert.match(setActiveView, /refreshDailyActionsForView\(activeViewId\)\.catch\(handleApiError\);/);
+
+  assert.ok(hashHandler, 'hashchange handler should exist');
+  assert.match(hashHandler, /setActiveView\(viewIdFromHash\(\), \{ updateHash: false \}\);/);
 });
 
 test('api mode locks provisional immediate actions until backend actions refresh', () => {
