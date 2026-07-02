@@ -57,20 +57,9 @@ document.documentElement.dataset.layout = layoutMode.id;
 document.body.classList.add(layoutMode.shellClass);
 
 const nodes = {
-  playerName: document.querySelector('#playerName'),
-  playerOrigin: document.querySelector('#playerOrigin'),
-  avatar: document.querySelector('#avatar'),
   topTabs: document.querySelector('#topTabs'),
   viewTitle: document.querySelector('#viewTitle'),
   viewDescription: document.querySelector('#viewDescription'),
-  hudResources: document.querySelector('#hudResources'),
-  realm: document.querySelector('#realm'),
-  spiritualRoot: document.querySelector('#spiritualRoot'),
-  location: document.querySelector('#location'),
-  meters: document.querySelector('#meters'),
-  sectRelationLabel: document.querySelector('#sectRelationLabel'),
-  sectRelationBar: document.querySelector('#sectRelationBar'),
-  npcList: document.querySelector('#npcList'),
   gameDate: document.querySelector('#gameDate'),
   turnPill: document.querySelector('#turnPill'),
   logList: document.querySelector('#logList'),
@@ -277,7 +266,7 @@ async function submitDailyAction(action) {
     clearStreamingNarration();
     showImmediateActionsForView(activeViewId);
     refreshDailyActionsForView(activeViewId).catch(handleApiError);
-    nodes.logList.scrollTo({ top: 0, behavior: 'smooth' });
+    nodes.logList?.scrollTo({ top: 0, behavior: 'smooth' });
   } catch (error) {
     clearStreamingNarration();
     renderStory();
@@ -309,8 +298,6 @@ async function setMode(mode) {
 function render() {
   renderFirstRunStage();
   renderTabs();
-  renderPlayer();
-  renderNpcs();
   renderStory({ refreshActiveView: false });
   renderActiveView(activeViewId);
   renderMode();
@@ -435,46 +422,6 @@ function setActiveView(viewId, { updateHash = true } = {}) {
   refreshDailyActionsForView(activeViewId).catch(handleApiError);
 }
 
-function renderPlayer() {
-  const { player } = game;
-  nodes.playerName.textContent = player.name;
-  nodes.playerOrigin.textContent = player.origin;
-  nodes.avatar.textContent = player.name.slice(0, 1);
-  nodes.realm.textContent = player.realm;
-  nodes.spiritualRoot.textContent = player.spiritualRoot;
-  nodes.location.textContent = player.location;
-  nodes.sectRelationLabel.textContent = String(player.sectRelation ?? 0);
-  nodes.sectRelationBar.style.width = `${player.sectRelation ?? 0}%`;
-
-  nodes.hudResources.innerHTML = [
-    '<h3>气血与寿元</h3>',
-    renderHealthState(),
-    '<h3>因果</h3>',
-    renderKarmaState(),
-    '<h3>门派</h3>',
-    renderSectState(),
-    '<h3>丹药与材料</h3>',
-    renderInventoryState()
-  ].join('');
-
-  const meters = [
-    ['灵气', player.qi ?? 0, 'qi'],
-    ['心境', player.mood ?? 0, 'mood'],
-    ['破境', player.cultivationProgress ?? 0, 'progress'],
-    ['灵石', player.spiritStones ?? 0, 'stones']
-  ];
-
-  nodes.meters.innerHTML = meters.map(([label, value, kind]) => {
-    const percent = kind === 'stones' ? Math.min(100, value / 2) : Math.min(100, value);
-    return `
-      <div class="meter-row">
-        <div><span>${label}</span><strong>${value}</strong></div>
-        <div class="bar ${kind}"><i style="width:${percent}%"></i></div>
-      </div>
-    `;
-  }).join('');
-}
-
 function renderStatusOverview() {
   const healthNow = game.player.health ?? game.player.maxHealth ?? 0;
   const healthMax = game.player.maxHealth ?? (healthNow || 1);
@@ -535,18 +482,6 @@ function renderAttributeSummary() {
   `).join('');
 }
 
-function renderNpcs() {
-  nodes.npcList.innerHTML = game.npcs.map((npc) => `
-    <article class="npc-card">
-      <div>
-        <strong>${npc.name}</strong>
-        <span>${npc.role}</span>
-      </div>
-      <b>${npc.affinity}</b>
-    </article>
-  `).join('');
-}
-
 function renderStory({ refreshActiveView = true } = {}) {
   nodes.gameDate.textContent = formatDate(game.calendar);
   nodes.turnPill.textContent = `第 ${game.turn} 回合`;
@@ -554,6 +489,7 @@ function renderStory({ refreshActiveView = true } = {}) {
 }
 
 function renderActiveView(viewId = activeViewId) {
+  nodes.activeViewContent.dataset.activeView = viewId;
   switch (viewId) {
     case 'home':
       return renderHomeView();
@@ -573,8 +509,8 @@ function renderActiveView(viewId = activeViewId) {
 function renderHomeView() {
   nodes.activeViewContent.innerHTML = [
     renderStatusPanel(),
-    renderActionPanel(),
     renderHistoryPanel(3),
+    renderActionPanel(),
     renderFocusPanel()
   ].join('');
 
@@ -587,9 +523,7 @@ function renderHomeView() {
 function renderCultivationView() {
   nodes.activeViewContent.innerHTML = [
     renderStatusPanel(),
-    renderCultivationFocusPanel(),
-    renderActionPanel(),
-    renderHistoryPanel(5)
+    renderCultivationFocusPanel()
   ].join('');
 
   syncActiveViewNodes();
@@ -599,20 +533,25 @@ function renderCultivationView() {
 
 function renderSkillsView() {
   nodes.activeViewContent.innerHTML = [
+    renderCharacterProfilePanel(),
+    renderStatusPanel(),
+    renderResourceLedgerPanel(),
+    renderRelationshipPanel(),
     renderTechniqueCollectionPanel(),
-    renderTechniqueAdvicePanel(),
-    renderActionPanel({ title: '功法行动', meta: '今日参修' })
+    renderTreasureCollectionPanel(),
+    renderInventoryCollectionPanel()
   ].join('');
 
   syncActiveViewNodes();
+  renderStatusOverview();
+  renderAttributeSummary();
 }
 
 function renderRealmView() {
   nodes.activeViewContent.innerHTML = [
     renderRealmCluePanel(),
     renderTimelinePanel(),
-    renderForeshadowPanel(),
-    renderActionPanel({ title: '秘境行动', meta: '探索抉择' })
+    renderForeshadowPanel()
   ].join('');
 
   syncActiveViewNodes();
@@ -621,8 +560,7 @@ function renderRealmView() {
 function renderBagView() {
   nodes.activeViewContent.innerHTML = [
     renderTreasureCollectionPanel(),
-    renderInventoryCollectionPanel(),
-    renderActionPanel({ title: '行囊行动', meta: '丹器备物' })
+    renderInventoryCollectionPanel()
   ].join('');
 
   syncActiveViewNodes();
@@ -661,6 +599,104 @@ function renderCultivationFocusPanel() {
       `<article class="focus-card"><strong>当前瓶颈</strong><p>${summarizeCultivationFocus()}</p></article>`,
       `<article class="focus-card"><strong>近期建议</strong><p>${buildSuggestionText()}</p></article>`
     ].join('')
+  });
+}
+
+function renderCharacterProfilePanel() {
+  const { player } = game;
+  const traits = (game.character?.traits ?? []).join('、') || '命格未定';
+  return renderPanel({
+    className: 'character-profile',
+    title: '角色总览',
+    meta: player.origin ?? '求道者',
+    body: `
+      <div class="profile-head">
+        <div class="avatar compact-avatar">${player.name.slice(0, 1)}</div>
+        <div>
+          <strong>${player.name}</strong>
+          <span>${player.spiritualRoot} · ${player.realm}</span>
+        </div>
+      </div>
+      <div class="profile-grid">
+        <div class="state-row"><span>所在</span><strong>${player.location}</strong></div>
+        <div class="state-row"><span>出身</span><strong>${player.origin}</strong></div>
+        <div class="state-row"><span>命格</span><strong>${traits}</strong></div>
+        <div class="state-row"><span>灵石</span><strong>${player.spiritStones ?? 0}</strong></div>
+      </div>
+      ${renderMeterRows()}
+    `
+  });
+}
+
+function renderMeterRows() {
+  const meters = [
+    ['灵气', game.player.qi ?? 0, 'qi'],
+    ['心境', game.player.mood ?? 0, 'mood'],
+    ['破境', game.player.cultivationProgress ?? 0, 'progress'],
+    ['灵石', game.player.spiritStones ?? 0, 'stones']
+  ];
+
+  return `
+    <div class="profile-meter-grid">
+      ${meters.map(([label, value, kind]) => {
+        const percent = kind === 'stones' ? Math.min(100, value / 2) : Math.min(100, value);
+        return `
+          <div class="meter-row">
+            <div><span>${label}</span><strong>${value}</strong></div>
+            <div class="bar ${kind}"><i style="width:${percent}%"></i></div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+function renderResourceLedgerPanel() {
+  return renderPanel({
+    className: 'resource-grid resource-ledger',
+    title: '资源与门派',
+    meta: '随身底蕴',
+    body: `
+      <section>
+        <h4>气血与寿元</h4>
+        ${renderHealthState()}
+      </section>
+      <section>
+        <h4>因果</h4>
+        ${renderKarmaState()}
+      </section>
+      <section>
+        <h4>门派</h4>
+        ${renderSectState()}
+      </section>
+      <section>
+        <h4>丹药与材料</h4>
+        ${renderInventoryState()}
+      </section>
+    `
+  });
+}
+
+function renderRelationshipPanel() {
+  const npcCards = Array.isArray(game.npcs)
+    ? game.npcs.map((npc) => `
+      <article class="npc-card">
+        <div>
+          <strong>${npc.name}</strong>
+          <span>${npc.role}</span>
+        </div>
+        <b>${npc.affinity}</b>
+      </article>
+    `)
+    : [];
+
+  return renderPanel({
+    className: 'relationship-section',
+    title: '道友牵绊',
+    meta: `${npcCards.length} 人`,
+    body: npcCards.length
+      ? `<div class="npc-list state-npc-list">${npcCards.join('')}</div>`
+      : '<div class="empty-collection">暂未结下新的道友牵绊。</div>'
   });
 }
 

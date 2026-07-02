@@ -17,7 +17,7 @@ test('frontend source renders central status and collection panels without relyi
   assert.match(source, /nodes\.statusOverview\.innerHTML/);
   assert.match(source, /nodes\.attributeSummary\.innerHTML/);
   assert.match(source, /nodes\.viewFocusBody\.innerHTML/);
-  assert.match(source, /nodes\.hudResources\.innerHTML/);
+  assert.match(source, /renderResourceLedgerPanel/);
   assert.match(source, /气血/);
   assert.match(source, /寿元/);
   assert.match(source, /game\.treasures/);
@@ -31,7 +31,7 @@ test('洞府 is the overview tab and starts as the fallback active view', () => 
   assert.match(html, /data-view="home"[^>]*>\s*洞府\s*<\/button>/);
   assert.match(html, /class="active"[^>]*data-view="home"|data-view="home"[^>]*class="active"/);
   assert.match(html, /data-view="cultivation"[^>]*>\s*修炼\s*<\/button>/);
-  assert.match(html, /data-view="skills"[^>]*>\s*功法\s*<\/button>/);
+  assert.match(html, /data-view="skills"[^>]*>\s*命簿\s*<\/button>/);
   assert.match(html, /data-view="realm"[^>]*>\s*秘境\s*<\/button>/);
   assert.match(html, /data-view="bag"[^>]*>\s*行囊\s*<\/button>/);
   assert.ok(hasHomeFallbackActiveView(source), 'activeViewId should fall back to home when no saved view exists');
@@ -47,7 +47,23 @@ test('洞府 overview does not render all inventory, all techniques, all foresha
   assertHomeOverviewAvoidsFullDetail(source, homeRouteTarget);
 });
 
-test('修炼 tab renders cultivation status, focus, actions, and recent history', () => {
+test('only 洞府 renders action choices and places history before compact actions', () => {
+  const source = fs.readFileSync('frontend/src/app.js', 'utf8');
+  const renderHomeView = extractNamedCallable(source, 'renderHomeView');
+  const tabRenderers = ['renderCultivationView', 'renderSkillsView', 'renderRealmView', 'renderBagView']
+    .map((name) => extractNamedCallable(source, name));
+
+  assert.match(renderHomeView, /renderHistoryPanel\(\s*3\s*\)[\s\S]*renderActionPanel\(\)/);
+  assert.ok(
+    renderHomeView.indexOf('renderHistoryPanel(3)') < renderHomeView.indexOf('renderActionPanel()'),
+    'history should render before action choices on the home screen'
+  );
+  for (const renderer of tabRenderers) {
+    assert.doesNotMatch(renderer, /renderActionPanel\(/);
+  }
+});
+
+test('修炼 tab renders cultivation status and focus without action choices', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
   const renderCultivationView = extractNamedCallable(source, 'renderCultivationView');
   const focusPanel = extractCallablePartsOrNull(source, 'renderCultivationFocusPanel')?.source ?? '';
@@ -55,8 +71,7 @@ test('修炼 tab renders cultivation status, focus, actions, and recent history'
 
   assert.doesNotMatch(renderCultivationView, /renderHomeView\(\)/);
   assert.match(renderCultivationView, /renderStatusPanel\(\)/);
-  assert.match(renderCultivationView, /renderActionPanel\(\)/);
-  assert.match(renderCultivationView, /renderHistoryPanel\(\s*5\s*\)/);
+  assert.doesNotMatch(renderCultivationView, /renderActionPanel\(/);
   assert.match(renderCultivationView, /renderStatusOverview\(\)/);
   assert.match(renderCultivationView, /renderAttributeSummary\(\)/);
   assert.match(cultivationSource, /闭关要点/);
@@ -65,19 +80,25 @@ test('修炼 tab renders cultivation status, focus, actions, and recent history'
   assert.doesNotMatch(cultivationSource, /breakthroughChance|breakthroughRate|successRate/);
 });
 
-test('功法 tab renders learned techniques, training rhythm, and technique actions', () => {
+test('命簿 tab renders unified character status without action choices', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
   const renderSkillsView = extractNamedCallable(source, 'renderSkillsView');
+  const profilePanel = extractCallablePartsOrNull(source, 'renderCharacterProfilePanel')?.source ?? '';
+  const resourcePanel = extractCallablePartsOrNull(source, 'renderResourceLedgerPanel')?.source ?? '';
+  const relationshipPanel = extractCallablePartsOrNull(source, 'renderRelationshipPanel')?.source ?? '';
   const collectionPanel = extractCallablePartsOrNull(source, 'renderTechniqueCollectionPanel')?.source ?? '';
-  const advicePanel = extractCallablePartsOrNull(source, 'renderTechniqueAdvicePanel')?.source ?? '';
-  const skillsSource = `${renderSkillsView}\n${collectionPanel}\n${advicePanel}`;
+  const skillsSource = `${renderSkillsView}\n${profilePanel}\n${resourcePanel}\n${relationshipPanel}\n${collectionPanel}`;
 
   assert.doesNotMatch(renderSkillsView, /renderHomeView\(\)/);
+  assert.doesNotMatch(renderSkillsView, /renderActionPanel\(/);
+  assert.match(skillsSource, /角色总览/);
+  assert.match(skillsSource, /资源与门派/);
+  assert.match(skillsSource, /道友牵绊/);
   assert.match(skillsSource, /已得功法/);
+  assert.match(skillsSource, /气血与寿元/);
+  assert.match(skillsSource, /renderResourceLedgerPanel/);
+  assert.match(skillsSource, /game\.npcs\.map/);
   assert.match(skillsSource, /renderCollectionCards\(\s*game\.techniques\s*,\s*'尚未习得新的功法。'\s*\)/);
-  assert.match(skillsSource, /修习节奏/);
-  assert.match(skillsSource, /renderTrainingAdvice\(\)/);
-  assert.match(renderSkillsView, /renderActionPanel\(\s*\{[\s\S]*title:\s*'功法行动'/);
   assert.match(renderSkillsView, /syncActiveViewNodes\(\)/);
 });
 
@@ -89,11 +110,11 @@ test('行囊 tab renders treasures, inventory stores, and bag actions', () => {
   const bagSource = `${renderBagView}\n${treasurePanel}\n${inventoryPanel}`;
 
   assert.doesNotMatch(renderBagView, /renderHomeView\(\)/);
+  assert.doesNotMatch(renderBagView, /renderActionPanel\(/);
   assert.match(bagSource, /奇珍法器/);
   assert.match(bagSource, /renderCollectionCards\(\s*game\.treasures\s*,\s*'暂无奇珍入囊。'\s*\)/);
   assert.match(bagSource, /丹药与材料/);
   assert.match(bagSource, /renderCollectionCards\(\s*buildInventoryCollection\(game\.inventory\)\s*,\s*'行囊里仍空空如也。'\s*\)/);
-  assert.match(renderBagView, /renderActionPanel\(\s*\{[\s\S]*title:\s*'行囊行动'/);
   assert.match(renderBagView, /syncActiveViewNodes\(\)/);
 });
 
@@ -106,13 +127,13 @@ test('秘境 tab renders clues, timeline, foreshadows, and realm actions', () =>
   const realmSource = `${renderRealmView}\n${cluePanel}\n${timelinePanel}\n${foreshadowPanel}`;
 
   assert.doesNotMatch(renderRealmView, /renderHomeView\(\)/);
+  assert.doesNotMatch(renderRealmView, /renderActionPanel\(/);
   assert.match(realmSource, /秘境线索/);
   assert.match(realmSource, /game\.timeline\.at\(-1\)|game\.timeline\.slice\(-1\)/);
   assert.match(realmSource, /天机事件/);
   assert.match(realmSource, /game\.timeline\.slice\(-6\)\.reverse\(\)/);
   assert.match(realmSource, /长期伏笔/);
   assert.match(realmSource, /game\.foreshadows/);
-  assert.match(renderRealmView, /renderActionPanel\(\s*\{[\s\S]*title:\s*'秘境行动'/);
   assert.match(renderRealmView, /syncActiveViewNodes\(\)/);
 });
 
@@ -193,8 +214,8 @@ test('status cards keep a stable wide card ratio instead of stretching tall', ()
 
   assert.match(css, /--main-card-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
   assert.match(css, /--hero-scroll-width:\s*100%/);
-  assert.match(css, /--status-card-min-height:\s*104px/);
-  assert.match(css, /--action-card-min-height:\s*122px/);
+  assert.match(css, /--status-card-min-height:\s*82px/);
+  assert.match(css, /--action-card-min-height:\s*86px/);
   assert.match(css, /\.stage-status\s*\{[\s\S]*grid-column:\s*1\s*\/\s*-1/);
   assert.match(css, /\.hero-scroll\s*\{[\s\S]*width:\s*min\(100%,\s*var\(--hero-scroll-width\)\)/);
   assert.match(css, /\.status-overview\s*\{[\s\S]*grid-template-columns:\s*var\(--main-card-columns\)/);
@@ -219,8 +240,8 @@ test('tab screens use full-width readable grids without losing tuning hooks', ()
   assert.match(css, /\.active-view-content\s*>\s*\.action-section\s*\{[\s\S]*grid-column:\s*1\s*\/\s*-1/);
   assert.match(css, /\.active-view-content\s*>\s*\.story-section\s*\{[\s\S]*grid-column:\s*1\s*\/\s*-1/);
   assert.match(css, /--hero-scroll-width:\s*100%/);
-  assert.match(css, /--status-card-min-height:\s*104px/);
-  assert.match(css, /--action-card-min-height:\s*122px/);
+  assert.match(css, /--status-card-min-height:\s*82px/);
+  assert.match(css, /--action-card-min-height:\s*86px/);
   assert.match(css, /@keyframes history-card-refresh/);
 });
 
@@ -235,20 +256,29 @@ test('visible frontend copy avoids api labels and debug parameters', () => {
   assert.doesNotMatch(source, /\/\s*\$\{action\.choiceId\}/);
 });
 
-test('right sidebar keeps compact resources without full timeline or foreshadow dumps', () => {
+test('sidebars are removed and character state moves to the 命簿 tab', () => {
   const html = fs.readFileSync('frontend/index.html', 'utf8');
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
   const render = extractFunction(source, 'render');
 
-  assert.match(html, /id="hudResources"/);
+  assert.doesNotMatch(html, /class="sidebar/);
+  assert.doesNotMatch(html, /id="hudResources"/);
+  assert.doesNotMatch(html, /id="npcList"/);
+  assert.doesNotMatch(html, /id="meters"/);
+  assert.doesNotMatch(html, /id="sectRelationLabel"/);
+  assert.doesNotMatch(html, /id="playerName"/);
   assert.match(html, /id="resetBtn"/);
   assert.match(html, /id="sampleBtn"/);
   assert.doesNotMatch(html, /id="timeline"/);
   assert.doesNotMatch(html, /id="foreshadows"/);
   assert.doesNotMatch(html, /<h3>天机事件<\/h3>/);
   assert.doesNotMatch(html, /<h3>长期伏笔<\/h3>/);
+  assert.doesNotMatch(source, /hudResources:\s*document\.querySelector/);
+  assert.doesNotMatch(source, /npcList:\s*document\.querySelector/);
   assert.doesNotMatch(source, /timeline:\s*document\.querySelector\('#timeline'\)/);
   assert.doesNotMatch(source, /foreshadows:\s*document\.querySelector\('#foreshadows'\)/);
+  assert.doesNotMatch(render, /renderPlayer\(\)/);
+  assert.doesNotMatch(render, /renderNpcs\(\)/);
   assert.doesNotMatch(render, /renderWorld\(\)/);
   assert.doesNotMatch(source, /function renderWorld\(/);
   assert.match(source, /renderHealthState\(\)/);

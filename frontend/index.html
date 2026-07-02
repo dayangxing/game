@@ -33,7 +33,7 @@
         <nav class="top-tabs" id="topTabs" aria-label="主导航">
           <button class="active" type="button" data-view="home">洞府</button>
           <button type="button" data-view="cultivation">修炼</button>
-          <button type="button" data-view="skills">功法</button>
+          <button type="button" data-view="skills">命簿</button>
           <button type="button" data-view="realm">秘境</button>
           <button type="button" data-view="bag">行囊</button>
         </nav>
@@ -46,51 +46,12 @@
           <button id="guideBtn" type="button">指引</button>
           <button id="saveBtn" type="button">存档</button>
           <button id="exportBtn" type="button">传记</button>
+          <button id="resetBtn" type="button">重开</button>
+          <button id="sampleBtn" type="button">随机</button>
         </div>
       </header>
 
       <main class="layout">
-        <aside class="sidebar left">
-          <section class="paper-card role-card">
-            <div class="role-head">
-              <div class="avatar" id="avatar">陆</div>
-              <div>
-                <p>求道者</p>
-                <h2 id="playerName">陆青玄</h2>
-                <span id="playerOrigin">山野孤子</span>
-              </div>
-            </div>
-            <div class="realm-block">
-              <span>境界</span>
-              <strong id="realm">炼气七层</strong>
-              <em id="spiritualRoot">雷木双灵根</em>
-            </div>
-            <div class="location" id="location">青云宗外门</div>
-            <div class="meters" id="meters"></div>
-          </section>
-
-          <section class="paper-card">
-            <div class="section-title">
-              <h3>主线任务</h3>
-              <span id="turnPill">第 0 回合</span>
-            </div>
-            <div class="quest-stack">
-              <article><strong>春试入门</strong><span>提升破境进度，争取内门名额</span></article>
-              <article><strong>秘境传闻</strong><span>追查雾隐秘境与身世线索</span></article>
-              <article><strong>宗门声望</strong><span>完成委托，提升青云宗关系</span></article>
-            </div>
-          </section>
-
-          <section class="paper-card">
-            <div class="section-title">
-              <h3>道友牵绊</h3>
-              <span id="sectRelationLabel">32</span>
-            </div>
-            <div class="bar sect"><i id="sectRelationBar"></i></div>
-            <div class="npc-list" id="npcList"></div>
-          </section>
-        </aside>
-
         <section class="main-stage">
           <section class="onboarding-panel" id="onboardingPanel" hidden>
             <div class="panel-kicker">新手任务</div>
@@ -121,7 +82,7 @@
           <div class="dashboard-content" id="dashboardContent">
             <section class="hero-scroll">
               <div>
-                <p id="gameDate">玄历三年 春 第1月</p>
+                <p><span id="gameDate">玄历三年 春 第1月</span><span id="turnPill">第 0 回合</span></p>
                 <h2 id="viewTitle">山门听雨，天机自生</h2>
                 <span id="viewDescription">整理今日修行、道友牵绊与天机札记，决定下一步命途。</span>
               </div>
@@ -135,20 +96,6 @@
             <div class="active-view-content" id="activeViewContent"></div>
           </div>
         </section>
-
-        <aside class="sidebar right">
-          <section class="paper-card resource-card">
-            <div class="section-title">
-              <h3>资源</h3>
-              <span>状态</span>
-            </div>
-            <div class="resource-grid" id="hudResources"></div>
-            <div class="utility-actions compact-utility">
-              <button id="resetBtn" type="button">重开一世</button>
-              <button id="sampleBtn" type="button">随机行动</button>
-            </div>
-          </section>
-        </aside>
       </main>
     </div>
 

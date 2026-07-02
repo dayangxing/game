@@ -23,9 +23,9 @@ export const viewList = [
   },
   {
     id: 'skills',
-    label: '功法',
-    title: '功法阁',
-    description: '研习心法、身法与术诀，形成角色成长路线与战斗风格。',
+    label: '命簿',
+    title: '命簿总览',
+    description: '汇总角色状态、功法、资源与道友牵绊，查看当前修行底蕴。',
     cards: [
       { title: '青木诀', icon: '木', command: '研读青木诀，尝试让木息滋养经脉', meta: '心法' },
       { title: '掌心雷', icon: '雷', command: '演练掌心雷，测试雷灵根的斗法威力', meta: '术法' },

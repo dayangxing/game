@@ -14,8 +14,8 @@
   --shadow: 0 24px 60px rgba(32, 34, 28, 0.18);
   --hero-scroll-width: 100%;
   --main-card-columns: repeat(2, minmax(0, 1fr));
-  --status-card-min-height: 104px;
-  --action-card-min-height: 122px;
+  --status-card-min-height: 82px;
+  --action-card-min-height: 86px;
 }
 
 * {
@@ -131,7 +131,7 @@ button {
 }
 
 [data-layout="desktop"] .topbar {
-  grid-template-columns: 250px minmax(420px, 1fr) 360px;
+  grid-template-columns: 250px minmax(420px, 1fr) 430px;
 }
 
 .brand,
@@ -212,7 +212,7 @@ button {
 }
 
 .top-tabs button {
-  min-width: 72px;
+  min-width: 68px;
   height: 38px;
 }
 
@@ -248,12 +248,12 @@ button {
 .mode-option,
 .top-actions > button {
   height: 38px;
-  padding: 0 12px;
+  padding: 0 10px;
 }
 
 .layout {
   display: grid;
-  grid-template-columns: 300px minmax(620px, 1fr) 340px;
+  grid-template-columns: minmax(920px, 1fr);
   gap: 16px;
   align-items: start;
 }
@@ -442,9 +442,9 @@ button {
 .hero-scroll {
   position: relative;
   width: min(100%, var(--hero-scroll-width));
-  min-height: 80px;
+  min-height: 70px;
   overflow: hidden;
-  padding: 18px;
+  padding: 14px;
   background:
     linear-gradient(90deg, rgba(255, 252, 240, 0.86), rgba(255, 252, 240, 0.42)),
     var(--paper);
@@ -468,21 +468,28 @@ button {
   max-width: 560px;
 }
 
+.hero-scroll p {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin: 0;
+}
+
 .hero-scroll h2 {
-  margin: 8px 0;
-  font-size: 42px;
+  margin: 6px 0;
+  font-size: 36px;
   font-weight: 700;
 }
 
 .status-pill {
   position: absolute;
   z-index: 1;
-  top: 18px;
-  right: 18px;
+  top: 14px;
+  right: 14px;
 }
 
 .api-banner {
-  padding: 12px 14px;
+  padding: 10px 12px;
   border: 1px solid rgba(47, 143, 112, 0.22);
   border-radius: 8px;
   color: #2e765f;
@@ -551,6 +558,52 @@ button {
 
 .active-view-content > .action-note {
   grid-column: 1 / -1;
+}
+
+.active-view-content[data-active-view="home"] > .story-section,
+.active-view-content[data-active-view="home"] > .action-section {
+  grid-column: auto;
+}
+
+.active-view-content[data-active-view="home"] > .action-note {
+  grid-column: 1 / -1;
+}
+
+.active-view-content[data-active-view="home"] .stage-status {
+  padding: 12px;
+}
+
+.active-view-content[data-active-view="home"] .status-overview {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.active-view-content[data-active-view="home"] .status-card {
+  min-height: 72px;
+}
+
+.active-view-content[data-active-view="home"] .status-card p {
+  max-height: 2.9em;
+  overflow: hidden;
+}
+
+.active-view-content[data-active-view="home"] .attribute-summary {
+  gap: 8px;
+}
+
+.active-view-content[data-active-view="home"] .summary-card {
+  min-height: 66px;
+}
+
+.active-view-content[data-active-view="home"] .summary-card p {
+  display: none;
+}
+
+.active-view-content[data-active-view="home"] .action-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.active-view-content[data-active-view="home"] .log-list {
+  max-height: 220px;
 }
 
 .hero-scroll,
@@ -756,16 +809,16 @@ button {
 .action-grid {
   display: grid;
   grid-template-columns: var(--main-card-columns);
-  gap: 12px;
+  gap: 10px;
 }
 
 .action-card {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
+  grid-template-columns: 40px minmax(0, 1fr);
   grid-template-rows: auto 1fr auto;
-  gap: 8px 12px;
+  gap: 6px 10px;
   min-height: var(--action-card-min-height);
-  padding: 14px;
+  padding: 10px;
   border: 1px solid rgba(61, 68, 56, 0.16);
   border-radius: 8px;
   color: var(--ink);
@@ -786,8 +839,8 @@ button {
   display: grid;
   grid-row: 1 / span 3;
   place-items: center;
-  width: 48px;
-  height: 48px;
+  width: 40px;
+  height: 40px;
   border: 1px solid rgba(181, 71, 63, 0.32);
   border-radius: 8px;
   color: var(--cinnabar);
@@ -827,15 +880,15 @@ button {
 
 .action-card strong {
   color: var(--ink-soft);
-  font-size: 14px;
-  line-height: 1.48;
+  font-size: 13px;
+  line-height: 1.42;
   min-width: 0;
 }
 
 .action-card em {
   display: inline-flex;
   width: fit-content;
-  padding: 4px 8px;
+  padding: 3px 7px;
   border: 1px solid rgba(61, 68, 56, 0.13);
   border-radius: 8px;
   color: var(--ink-soft);
@@ -845,7 +898,7 @@ button {
 }
 
 .story-section {
-  min-height: 300px;
+  min-height: 0;
 }
 
 .stage-status,
@@ -886,9 +939,9 @@ button {
 .status-card {
   display: grid;
   grid-template-rows: auto 8px 1fr;
-  gap: 8px;
+  gap: 6px;
   min-height: var(--status-card-min-height);
-  padding: 12px;
+  padding: 10px;
   align-content: start;
 }
 
@@ -938,13 +991,13 @@ button {
 
 .summary-card {
   display: grid;
-  gap: 8px;
-  min-height: 118px;
-  padding: 12px;
+  gap: 6px;
+  min-height: 92px;
+  padding: 10px;
 }
 
 .summary-card strong {
-  font-size: 24px;
+  font-size: 22px;
   color: var(--gold);
 }
 
@@ -994,14 +1047,14 @@ button {
 
 .log-list {
   display: grid;
-  max-height: 500px;
+  max-height: 260px;
   overflow: auto;
-  gap: 12px;
+  gap: 10px;
   padding-right: 4px;
 }
 
 .log-card {
-  padding: 14px;
+  padding: 12px;
   border: 1px solid rgba(61, 68, 56, 0.14);
   border-radius: 8px;
   background: rgba(255, 252, 240, 0.48);
@@ -1114,6 +1167,70 @@ blockquote {
 .resource-grid {
   display: grid;
   gap: 4px;
+}
+
+.character-profile,
+.resource-ledger,
+.relationship-section {
+  min-height: 0;
+}
+
+.profile-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.profile-head strong {
+  display: block;
+  font-size: 22px;
+}
+
+.profile-head span {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.compact-avatar {
+  width: 48px;
+  height: 48px;
+  font-size: 22px;
+}
+
+.profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 12px;
+}
+
+.profile-meter-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+  margin-top: 12px;
+}
+
+.resource-ledger section {
+  display: grid;
+  gap: 2px;
+  padding-top: 4px;
+}
+
+.resource-ledger section + section {
+  margin-top: 8px;
+}
+
+.resource-ledger h4 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.state-npc-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .resource-grid h3 {
