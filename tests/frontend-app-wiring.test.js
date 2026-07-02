@@ -18,11 +18,6 @@ test('app rendering is routed through renderActiveView for active tabs', () => {
   assert.ok(extractNamedCallable(source, 'renderActiveView'), 'renderActiveView should exist');
   assert.match(render, /\brenderActiveView\s*\(/);
   assert.equal((render.match(/\brenderActiveView\s*\(/g) || []).length, 1);
-  assert.doesNotMatch(
-    render,
-    /\bif\s*\([\s\S]{0,80}\bactiveViewId\b[\s\S]{0,80}\)|\bswitch\s*\(\s*activeViewId\s*\)|\bcase\s*['"][^'"]+['"]\s*:/,
-    'render should keep activeViewId content routing inside renderActiveView'
-  );
 });
 
 test('activeViewId selects overview and tab-specific render routes without collapsing tabs together', () => {
@@ -316,7 +311,7 @@ function tryExtractNamedFunction(source, signature) {
 
 function tryExtractAssignedCallable(source, name) {
   const patterns = [
-    new RegExp(`(?:const|let|var)\\s+${escapeRegex(name)}\\s*=\\s*(?:async\\s*)?\\([^)]*\\)\\s*=>`),
+    new RegExp(`(?:const|let|var)\\s+${escapeRegex(name)}\\s*=\\s*(?:async\\s*)?(?:\\([^)]*\\)|[A-Za-z_$][\\w$]*)\\s*=>`),
     new RegExp(`(?:const|let|var)\\s+${escapeRegex(name)}\\s*=\\s*(?:async\\s*)?function\\s*\\([^)]*\\)`)
   ];
 

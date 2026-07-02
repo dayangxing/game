@@ -203,7 +203,7 @@ function tryExtractNamedFunction(source, signature) {
 
 function tryExtractAssignedCallable(source, name) {
   const patterns = [
-    new RegExp(`(?:const|let|var)\\s+${escapeRegex(name)}\\s*=\\s*(?:async\\s*)?\\([^)]*\\)\\s*=>`),
+    new RegExp(`(?:const|let|var)\\s+${escapeRegex(name)}\\s*=\\s*(?:async\\s*)?(?:\\([^)]*\\)|[A-Za-z_$][\\w$]*)\\s*=>`),
     new RegExp(`(?:const|let|var)\\s+${escapeRegex(name)}\\s*=\\s*(?:async\\s*)?function\\s*\\([^)]*\\)`)
   ];
 
