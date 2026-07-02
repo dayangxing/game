@@ -337,13 +337,13 @@ function assertHomeOverviewAvoidsFullDetail(source, homeRouteTarget) {
       assert.doesNotMatch(helperBody, forbidden);
     }
 
-    for (const callee of findLocalHelperCalls(helperBody)) {
+    for (const callee of findLocalHelperCalls(source, helperBody)) {
       if (!visited.has(callee) && hasNamedCallable(source, callee)) pending.push(callee);
     }
   }
 }
 
-function findLocalHelperCalls(body) {
+function findLocalHelperCalls(source, body) {
   const ignoredCalls = new Set([
     'if',
     'switch',
@@ -355,12 +355,36 @@ function findLocalHelperCalls(body) {
     'join',
     'at'
   ]);
+  const localAliases = new Map();
+  const aliasPattern = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([A-Za-z_$][\w$]*)\s*;/g;
+
+  for (const match of body.matchAll(aliasPattern)) {
+    const [, alias, target] = match;
+    if (ignoredCalls.has(alias) || ignoredCalls.has(target)) continue;
+    localAliases.set(alias, target);
+  }
 
   return [...new Set(
     [...body.matchAll(/\b([A-Za-z_$][\w$]*)\s*\(/g)]
-      .map(([, name]) => name)
-      .filter((name) => !ignoredCalls.has(name))
+      .map(([, name]) => resolveLocalHelperAlias(name, localAliases, source, ignoredCalls))
+      .filter(Boolean)
   )];
+}
+
+function resolveLocalHelperAlias(name, localAliases, source, ignoredCalls) {
+  const seen = new Set();
+  let current = name;
+
+  while (current && !seen.has(current)) {
+    seen.add(current);
+    if (ignoredCalls.has(current)) return '';
+
+    const aliasTarget = localAliases.get(current);
+    if (!aliasTarget) return hasNamedCallable(source, current) ? current : '';
+    current = aliasTarget;
+  }
+
+  return '';
 }
 
 function hasNamedCallable(source, name) {
