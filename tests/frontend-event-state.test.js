@@ -46,6 +46,24 @@ test('洞府 overview does not render all inventory, all techniques, all foresha
   assertHomeOverviewAvoidsFullDetail(source, homeRouteTarget);
 });
 
+test('overview guard rejects forbidden helper calls through local aliases', () => {
+  const source = `
+    function renderWorld() {
+      nodes.foreshadows.innerHTML = game.foreshadows.join('');
+    }
+
+    function renderHomeView() {
+      const showAll = renderWorld;
+      showAll();
+    }
+  `;
+
+  assert.throws(
+    () => assertHomeOverviewAvoidsFullDetail(source, 'renderHomeView'),
+    /renderWorld/
+  );
+});
+
 test('sect state falls back to the current player sect relation field', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
 
@@ -129,24 +147,7 @@ test('visible frontend copy avoids api labels and debug parameters', () => {
 });
 
 function extractFunction(source, name) {
-  const start = source.indexOf(`async function ${name}`) !== -1
-    ? source.indexOf(`async function ${name}`)
-    : source.indexOf(`function ${name}`);
-  assert.notEqual(start, -1, `${name} should exist`);
-  const signatureEnd = source.indexOf(')', start);
-  const bodyStart = source.indexOf('{', signatureEnd);
-  let depth = 0;
-
-  for (let index = bodyStart; index < source.length; index += 1) {
-    const character = source[index];
-    if (character === '{') depth += 1;
-    if (character === '}') depth -= 1;
-    if (depth === 0) {
-      return source.slice(bodyStart + 1, index);
-    }
-  }
-
-  assert.fail(`${name} should have a complete function body`);
+  return extractCallableParts(source, name).body;
 }
 
 function hasHomeFallbackActiveView(source) {
@@ -162,21 +163,26 @@ function hasHomeFallbackActiveView(source) {
 }
 
 function extractNamedCallable(source, name) {
-  assert.ok(name, 'route target should exist');
+  return extractCallableParts(source, name).source;
+}
 
-  const functionBody = tryExtractNamedFunction(source, `async function ${name}`)
+function extractCallableParts(source, name) {
+  assert.ok(name, 'route target should exist');
+  const callable = extractCallablePartsOrNull(source, name);
+  assert.ok(callable, `${name} should be declared as a callable renderer`);
+  return callable;
+}
+
+function extractCallablePartsOrNull(source, name) {
+  return tryExtractNamedFunction(source, `async function ${name}`)
     || tryExtractNamedFunction(source, `function ${name}`)
     || tryExtractAssignedCallable(source, name);
-
-  assert.ok(functionBody, `${name} should be declared as a callable renderer`);
-  return functionBody;
 }
 
 function tryExtractNamedFunction(source, signature) {
   const start = source.indexOf(signature);
-  if (start === -1) return '';
-  const signatureEnd = source.indexOf(')', start);
-  return extractBraceBody(source, source.indexOf('{', signatureEnd));
+  if (start === -1) return null;
+  return extractCallableFromStart(source, start);
 }
 
 function tryExtractAssignedCallable(source, name) {
@@ -192,19 +198,22 @@ function tryExtractAssignedCallable(source, name) {
     if (arrowIndex !== -1) {
       const braceIndex = source.indexOf('{', arrowIndex + 2);
       if (braceIndex !== -1) {
-        return extractBraceBody(source, braceIndex);
+        return extractCallableFromStart(source, match.index);
       }
 
       const expressionStart = arrowIndex + 2;
       const expressionEnd = findStatementBoundary(source, expressionStart);
-      return source.slice(expressionStart, expressionEnd).trim();
+      const sourceEnd = findStatementTerminator(source, expressionEnd);
+      return {
+        source: source.slice(match.index, sourceEnd).trim(),
+        body: source.slice(expressionStart, expressionEnd).trim()
+      };
     }
 
-    const openIndex = source.indexOf('{', match.index + match[0].length);
-    return extractBraceBody(source, openIndex);
+    return extractCallableFromStart(source, match.index);
   }
 
-  return '';
+  return null;
 }
 
 function findViewRouteTarget(renderActiveView, viewId, selectorName) {
@@ -339,7 +348,7 @@ function assertHomeOverviewAvoidsFullDetail(source, homeRouteTarget) {
     if (!helperName || visited.has(helperName)) continue;
     visited.add(helperName);
 
-    const helperBody = extractNamedCallable(source, helperName);
+    const helperBody = extractFunction(source, helperName);
     assert.ok(helperBody.length > 0, `${helperName} should have a non-empty body`);
 
     for (const forbidden of forbiddenHomeCalls) {
@@ -350,6 +359,7 @@ function assertHomeOverviewAvoidsFullDetail(source, homeRouteTarget) {
     }
 
     for (const callee of findLocalHelperCalls(source, helperBody)) {
+      assert.ok(!forbiddenHomeCalls.includes(callee), `${helperName} should not call forbidden helper ${callee}`);
       if (!visited.has(callee) && hasNamedCallable(source, callee)) pending.push(callee);
     }
   }
@@ -400,11 +410,7 @@ function resolveLocalHelperAlias(name, localAliases, source, ignoredCalls) {
 }
 
 function hasNamedCallable(source, name) {
-  return Boolean(
-    tryExtractNamedFunction(source, `async function ${name}`) ||
-    tryExtractNamedFunction(source, `function ${name}`) ||
-    tryExtractAssignedCallable(source, name)
-  );
+  return Boolean(extractCallablePartsOrNull(source, name));
 }
 
 function findRouteInvocation(branch) {
@@ -483,6 +489,36 @@ function findStatementBoundary(source, startIndex) {
   }
 
   return source.length;
+}
+
+function findStatementTerminator(source, endIndex) {
+  let index = endIndex;
+  while (index < source.length && /\s/.test(source[index])) index += 1;
+  return source[index] === ';' ? index + 1 : index;
+}
+
+function extractCallableFromStart(source, start) {
+  const signatureEnd = source.indexOf(')', start);
+  const bodyStart = source.indexOf('{', signatureEnd);
+  const body = extractBraceBody(source, bodyStart);
+  let depth = 0;
+
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === '{') depth += 1;
+    if (character === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        const sourceEnd = findStatementTerminator(source, index + 1);
+        return {
+          source: source.slice(start, sourceEnd).trim(),
+          body
+        };
+      }
+    }
+  }
+
+  assert.fail('callable source should have balanced braces');
 }
 
 function escapeRegex(value) {

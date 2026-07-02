@@ -51,6 +51,30 @@ test('activeViewId selects overview and tab-specific render routes without colla
   );
 });
 
+test('callable extraction keeps the selector signature for function and arrow render routes', () => {
+  const functionSource = `
+    function renderActiveView(viewId) {
+      switch (viewId) {
+        case 'home':
+          return renderHomeView();
+        default:
+          return renderBagView();
+      }
+    }
+  `;
+  const arrowSource = `
+    const renderActiveView = (selectedView) => routeMap[selectedView]?.();
+  `;
+
+  const extractedFunction = extractNamedCallable(functionSource, 'renderActiveView');
+  const extractedArrow = extractNamedCallable(arrowSource, 'renderActiveView');
+
+  assert.match(extractedFunction, /^function renderActiveView\(viewId\)/);
+  assert.match(extractedArrow, /^const renderActiveView = \(selectedView\) =>/);
+  assert.equal(findRouteSelectorName(extractedFunction), 'viewId');
+  assert.equal(findRouteSelectorName(extractedArrow), 'selectedView');
+});
+
 test('tab navigation renders immediate actions before refreshing backend actions', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
   const [, handler] = source.match(/nodes\.topTabs\.addEventListener\('click', \(event\) => \{([\s\S]*?)\n\}\);/) ?? [];
@@ -299,23 +323,29 @@ test('history summary hydration ignores stale cache entries after the playthroug
 });
 
 function extractFunction(source, name) {
-  return extractNamedCallable(source, name);
+  return extractCallableParts(source, name).body;
 }
 
 function extractNamedCallable(source, name) {
-  const functionBody = tryExtractNamedFunction(source, `async function ${name}`)
+  return extractCallableParts(source, name).source;
+}
+
+function extractCallableParts(source, name) {
+  const callable = extractCallablePartsOrNull(source, name);
+  assert.ok(callable, `${name} should exist`);
+  return callable;
+}
+
+function extractCallablePartsOrNull(source, name) {
+  return tryExtractNamedFunction(source, `async function ${name}`)
     || tryExtractNamedFunction(source, `function ${name}`)
     || tryExtractAssignedCallable(source, name);
-
-  assert.ok(functionBody, `${name} should exist`);
-  return functionBody;
 }
 
 function tryExtractNamedFunction(source, signature) {
   const start = source.indexOf(signature);
-  if (start === -1) return '';
-  const signatureEnd = source.indexOf(')', start);
-  return extractBraceBody(source, source.indexOf('{', signatureEnd));
+  if (start === -1) return null;
+  return extractCallableFromStart(source, start);
 }
 
 function tryExtractAssignedCallable(source, name) {
@@ -331,19 +361,22 @@ function tryExtractAssignedCallable(source, name) {
     if (arrowIndex !== -1) {
       const braceIndex = source.indexOf('{', arrowIndex + 2);
       if (braceIndex !== -1) {
-        return extractBraceBody(source, braceIndex);
+        return extractCallableFromStart(source, match.index);
       }
 
       const expressionStart = arrowIndex + 2;
       const expressionEnd = findStatementBoundary(source, expressionStart);
-      return source.slice(expressionStart, expressionEnd).trim();
+      const sourceEnd = findStatementTerminator(source, expressionEnd);
+      return {
+        source: source.slice(match.index, sourceEnd).trim(),
+        body: source.slice(expressionStart, expressionEnd).trim()
+      };
     }
 
-    const openIndex = source.indexOf('{', match.index + match[0].length);
-    return extractBraceBody(source, openIndex);
+    return extractCallableFromStart(source, match.index);
   }
 
-  return '';
+  return null;
 }
 
 function extractFunctionDeclaration(source, name) {
@@ -562,6 +595,37 @@ function findStatementBoundary(source, startIndex) {
   }
 
   return source.length;
+}
+
+function findStatementTerminator(source, endIndex) {
+  let index = endIndex;
+  while (index < source.length && /\s/.test(source[index])) index += 1;
+  return source[index] === ';' ? index + 1 : index;
+}
+
+function extractCallableFromStart(source, start) {
+  const signatureEnd = source.indexOf(')', start);
+  const bodyStart = source.indexOf('{', signatureEnd);
+  const body = extractBraceBody(source, bodyStart);
+  if (!body) return null;
+
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === '{') depth += 1;
+    if (character === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        const sourceEnd = findStatementTerminator(source, index + 1);
+        return {
+          source: source.slice(start, sourceEnd).trim(),
+          body
+        };
+      }
+    }
+  }
+
+  return null;
 }
 
 function escapeRegex(value) {
