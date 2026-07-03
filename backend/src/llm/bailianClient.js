@@ -3,6 +3,7 @@ import {
   buildNarrationMessages,
   buildRepairNarrationMessages
 } from './prompts/narrationPrompt.js';
+import { buildStoryDirectorMessages } from './prompts/storyDirectorPrompt.js';
 
 export function createBailianClient({ env = process.env, fetchImpl = globalThis.fetch } = {}) {
   const selection = getModelSelection(env);
@@ -88,6 +89,20 @@ export function createBailianClient({ env = process.env, fetchImpl = globalThis.
         model: selection.chatModel,
         temperature: 0.2,
         messages: buildRepairNarrationMessages({ validationErrors, rawNarration, afterGame })
+      });
+    },
+
+    async generateStoryDirector({ game, input }) {
+      return chatJson({
+        model: selection.chatModel,
+        messages: buildStoryDirectorMessages({ game, input })
+      });
+    },
+
+    streamStoryDirector({ game, input }) {
+      return streamChatContent({
+        model: selection.chatModel,
+        messages: buildStoryDirectorMessages({ game, input })
       });
     },
 

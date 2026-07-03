@@ -126,6 +126,48 @@ test('bailian client exposes streamed chat content deltas as they arrive', async
   ]);
 });
 
+test('bailian client exposes story director generation and streaming wrappers', async () => {
+  const capturedTasks = [];
+  const chunks = [
+    'data: {"choices":[{"delta":{"content":"{\\"scene\\":\\"命火微动\\",\\"mode\\":\\"continue\\",\\"npcLines\\":[],"}}]}\n\n',
+    'data: {"choices":[{"delta":{"content":"\\"effectHints\\":[],\\"choices\\":[],\\"memoryHints\\":[]}"}}]}\n\n',
+    'data: [DONE]\n\n'
+  ];
+  const client = createBailianClient({
+    env: {
+      BAILIAN_API_KEY: 'unit-test-token'
+    },
+    async fetchImpl(url, init) {
+      const body = JSON.parse(init.body);
+      capturedTasks.push(JSON.parse(body.messages.find((message) => message.role === 'user').content).task);
+      return {
+        ok: true,
+        body: streamFromStrings(chunks)
+      };
+    }
+  });
+
+  const generated = await client.generateStoryDirector({
+    game: minimalGame(),
+    input: { type: 'continue' }
+  });
+  const deltas = [];
+  for await (const delta of client.streamStoryDirector({
+    game: minimalGame(),
+    input: { type: 'continue' }
+  })) {
+    deltas.push(delta);
+  }
+
+  assert.equal(generated.scene, '命火微动');
+  assert.equal(generated.mode, 'continue');
+  assert.deepEqual(capturedTasks, ['continuous_story_director', 'continuous_story_director']);
+  assert.deepEqual(deltas, [
+    '{"scene":"命火微动","mode":"continue","npcLines":[],',
+    '"effectHints":[],"choices":[],"memoryHints":[]}'
+  ]);
+});
+
 test('bailian client fails closed when no api key is configured', async () => {
   const client = createBailianClient({
     env: {},
@@ -151,4 +193,33 @@ function streamFromStrings(chunks) {
       controller.close();
     }
   });
+}
+
+function minimalGame() {
+  return {
+    turn: 0,
+    calendar: { year: 3, season: '春', month: 1 },
+    player: {
+      name: '顾清河',
+      realm: '炼气一层',
+      location: '青云宗外门',
+      health: 100,
+      maxHealth: 100,
+      lifespan: 100,
+      maxLifespan: 100,
+      qi: 50,
+      mood: 50,
+      cultivationProgress: 10,
+      sectRelation: 20
+    },
+    character: { attributes: {} },
+    inventory: { pills: {}, materials: {} },
+    npcs: [],
+    storyMemory: {
+      longSummary: '青云宗新生入门。',
+      recentTurns: [],
+      openThreads: [],
+      characterNotes: []
+    }
+  };
 }
