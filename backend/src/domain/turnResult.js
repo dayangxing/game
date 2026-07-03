@@ -1,4 +1,4 @@
-export function buildTurnResult({ before, after, actionId, narration }) {
+export function buildTurnResult({ before, after, actionId, narration, timeResult }) {
   const entry = after.log.at(-1);
 
   return {
@@ -6,7 +6,8 @@ export function buildTurnResult({ before, after, actionId, narration }) {
     actionId,
     ruleResult: {
       success: true,
-      statChanges: diffStats(before.player, after.player)
+      statChanges: diffStats(before.player, after.player),
+      ...(timeResult ? { timeResult: publicTimeResult(timeResult) } : {})
     },
     narration: narration ?? {
       title: entry.title,
@@ -14,6 +15,16 @@ export function buildTurnResult({ before, after, actionId, narration }) {
       npcLine: entry.npcLine,
       foreshadow: after.foreshadows.at(-1) ?? ''
     }
+  };
+}
+
+function publicTimeResult(timeResult = {}) {
+  return {
+    label: timeResult.label,
+    netLifespanDelta: timeResult.netLifespanDelta,
+    maxLifespanDelta: timeResult.maxLifespanDelta,
+    warningLevel: timeResult.warningLevel,
+    note: timeResult.note
   };
 }
 
