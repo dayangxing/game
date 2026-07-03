@@ -121,6 +121,9 @@ function handleDailyActions({ body, requestId, state, now }) {
     return errorResponse(409, requestId, 'GAME_VERSION_MISMATCH', '客户端存档版本过旧，请刷新游戏状态。');
   }
 
+  const ended = rejectIfGameEnded({ requestId, state });
+  if (ended) return ended;
+
   if (!state.game.onboarding.completed) {
     const action = createTutorialAction({
       game: state.game,
@@ -364,6 +367,8 @@ function validateDirectorTurnRequest({ body, requestId, state }) {
   if (!state.game.onboarding?.completed) {
     return errorResponse(409, requestId, 'ONBOARDING_REQUIRED', '完成新手任务后才能进入连续剧情。');
   }
+  const ended = rejectIfGameEnded({ requestId, state });
+  if (ended) return ended;
   if (body.clientTurn !== state.game.turn) {
     return errorResponse(409, requestId, 'TURN_MISMATCH', '客户端回合已过期，请刷新游戏状态。');
   }
@@ -503,6 +508,9 @@ function pickPublicStatePatch(game) {
 }
 
 function resolveTurnRules({ body, requestId, state, now }) {
+  const ended = rejectIfGameEnded({ requestId, state });
+  if (ended) return ended;
+
   const action = state.pendingActions.get(body.actionId);
 
   if (!action) {
@@ -616,13 +624,15 @@ function finalizeTurn({ resolved, state, now }) {
     before: resolved.before,
     after: state.game,
     actionId: resolved.action.id,
-    narration: resolved.narration
+    narration: resolved.narration,
+    timeResult: resolved.ruleResult?.timeResult
   });
+  const { timeResult: _rawTimeResult, ...resolvedRuleResult } = resolved.ruleResult ?? {};
   const turnResult = resolved.ruleResult ? {
     ...baseTurnResult,
     ruleResult: {
       ...baseTurnResult.ruleResult,
-      ...resolved.ruleResult
+      ...resolvedRuleResult
     }
   } : baseTurnResult;
 
@@ -639,6 +649,11 @@ function finalizeTurn({ resolved, state, now }) {
     game: state.game,
     turnResult
   };
+}
+
+function rejectIfGameEnded({ requestId, state }) {
+  if (!state.game.ending) return null;
+  return errorResponse(409, requestId, 'GAME_ENDED', '命簿已结，请重开后再行动。');
 }
 
 async function resolveTurnNarrationStream({ resolved, state, emit }) {

@@ -1,11 +1,20 @@
 import { ATTRIBUTE_KEYS, deriveMaxHealth, deriveMaxLifespan } from '../attributes.js';
-import { applyActionCost } from '../progression.js';
 import { calculateDerivedBonuses, grantTechnique, grantTreasure } from '../rewards.js';
+import { applyTimePressure } from '../time/timePressure.js';
 
 export function resolveChoice({ game, event, choice, now }) {
   const outcome = choice.success;
   const withEffects = applyEffects(game, outcome.effects);
-  const next = game.onboarding?.completed === false ? withEffects : applyActionCost(withEffects);
+  const pressure = game.onboarding?.completed === false
+    ? { game: withEffects, timeResult: null }
+    : applyTimePressure({
+      game: withEffects,
+      action: { title: choice.label, command: choice.command, source: 'event' },
+      command: choice.command,
+      category: event.category === 'realm' ? 'explore' : undefined,
+      source: 'event'
+    });
+  const next = pressure.game;
   const turn = game.turn + 1;
   const entry = {
     id: `turn-${turn}`,
@@ -32,7 +41,8 @@ export function resolveChoice({ game, event, choice, now }) {
       eventId: event.id,
       choiceId: choice.id,
       resolvedAt: now.toISOString(),
-      lifespanCost: next.lastActionCost?.lifespan ?? 0
+      lifespanCost: pressure.timeResult?.baseLifespanCost ?? 0,
+      timeResult: pressure.timeResult
     }
   };
 }

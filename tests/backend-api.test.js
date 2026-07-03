@@ -505,9 +505,66 @@ test('POST /api/v1/turns resolves selected event effects deterministically', asy
   assert.equal(turnPayload.ok, true);
   assert.equal(turnPayload.data.game.flags.bronze_bell, true);
   assert.equal(turnPayload.data.turnResult.ruleResult.eventId, 'mist_bronze_bell');
-  assert.equal(turnPayload.data.turnResult.ruleResult.lifespanCost, 1);
-  assert.equal(turnPayload.data.game.player.lifespan, 92);
+  assert.equal(turnPayload.data.turnResult.ruleResult.lifespanCost, 2);
+  assert.equal(turnPayload.data.game.player.lifespan, 91);
   assert.equal(turnPayload.data.game.turn, 1);
+});
+
+test('POST /api/v1/turns advances time and returns public time result for event actions', async () => {
+  const app = createBackendApp({ seed: 31, now: fixedNow });
+  app.getState().game.onboarding = completedOnboardingState();
+  const actionsPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+    viewId: 'realm',
+    gameVersion: 0
+  })));
+  const action = actionsPayload.data.actions.find((candidate) => candidate.title === '靠近铜铃');
+
+  const turnPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/turns', {
+    actionId: action.id,
+    clientTurn: 0
+  })));
+
+  assert.equal(turnPayload.ok, true);
+  assert.equal(turnPayload.data.game.time.elapsedMonths > 0, true);
+  assert.equal(typeof turnPayload.data.game.timePressure.calendarLabel, 'string');
+  assert.equal(typeof turnPayload.data.turnResult.ruleResult.timeResult.label, 'string');
+  assert.equal('deltaMonths' in turnPayload.data.turnResult.ruleResult.timeResult, false);
+  assert.equal('effectHints' in turnPayload.data.turnResult.ruleResult.timeResult, false);
+});
+
+test('POST /api/v1/daily-actions rejects after lifespan ending', async () => {
+  const app = createBackendApp({ seed: 31, now: fixedNow });
+  app.getState().game.onboarding = completedOnboardingState();
+  app.getState().game.ending = { type: 'lifespan_exhausted', title: '命簿终章', body: '命火已熄。' };
+
+  const response = await app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+    viewId: 'home',
+    gameVersion: 0
+  }));
+  const payload = await response.json();
+
+  assert.equal(response.status, 409);
+  assert.equal(payload.error.code, 'GAME_ENDED');
+});
+
+test('POST /api/v1/turns rejects pending actions after lifespan ending', async () => {
+  const app = createBackendApp({ seed: 31, now: fixedNow });
+  app.getState().game.onboarding = completedOnboardingState();
+  const actionsPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+    viewId: 'home',
+    gameVersion: 0
+  })));
+  const [action] = actionsPayload.data.actions;
+  app.getState().game.ending = { type: 'lifespan_exhausted', title: '命簿终章', body: '命火已熄。' };
+
+  const response = await app.handle(makeRequest('POST', '/api/v1/turns', {
+    actionId: action.id,
+    clientTurn: 0
+  }));
+  const payload = await response.json();
+
+  assert.equal(response.status, 409);
+  assert.equal(payload.error.code, 'GAME_ENDED');
 });
 
 test('POST /api/v1/turns routes breakthrough actions through the special resolver', async () => {

@@ -27,7 +27,7 @@ export function applyTimePressure({
     source,
     breakthrough
   });
-  const maxLifespan = Math.max(0, (game.player?.maxLifespan ?? 0) + longevity.maxLifespanDelta);
+  const maxLifespan = Math.max(0, (game.player?.maxLifespan ?? game.player?.lifespan ?? 0) + longevity.maxLifespanDelta);
   const netLifespanDelta = longevity.longevityGain - baseLifespanCost - Math.max(0, extraLifespanDamage);
   const lifespan = clamp((game.player?.lifespan ?? 0) + netLifespanDelta, 0, maxLifespan);
   const warningLevel = buildWarningLevel({ lifespan, maxLifespan });
