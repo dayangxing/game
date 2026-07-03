@@ -2,21 +2,24 @@ const REALM_COSTS = {
   炼气: 1,
   筑基: 2,
   金丹: 4,
-  元婴: 8
+  元婴: 8,
+  化神: 12
 };
 
 const BREAKTHROUGH_BASE_CHANCE = {
   炼气: 55,
   筑基: 40,
   金丹: 28,
-  元婴: 18
+  元婴: 18,
+  化神: 10
 };
 
 const BREAKTHROUGH_FAILURE_COSTS = {
   炼气: { health: 18, lifespan: 1, progressLoss: 40 },
   筑基: { health: 24, lifespan: 2, progressLoss: 45 },
   金丹: { health: 32, lifespan: 4, progressLoss: 50 },
-  元婴: { health: 40, lifespan: 8, progressLoss: 60 }
+  元婴: { health: 40, lifespan: 8, progressLoss: 60 },
+  化神: { health: 52, lifespan: 12, progressLoss: 65 }
 };
 
 const REALM_ADVANCEMENT = {
