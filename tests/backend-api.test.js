@@ -534,6 +534,45 @@ test('POST /api/v1/turns advances one authoritative turn and ignores client stat
   assert.match(turnPayload.data.game.log.at(-1).body, /来自模型/);
 });
 
+test('POST /api/v1/turns records generated narration in story memory for later context', async () => {
+  const app = createBackendApp({
+    seed: 31,
+    now: fixedNow,
+    llm: {
+      async generateNarration({ afterGame, action }) {
+        return {
+          status: 'generated',
+          title: '命火微澜',
+          body: `顾清河在第${afterGame.turn}回合选择${action.title}后，识海里浮现青云宗旧碑与雾隐秘境铜铃的重影。他意识到所谓飞升传闻并非单纯奖赏，而像一道被宗门故意遮掩的门槛，命火也因此轻轻摇动。`,
+          npcLine: '',
+          foreshadow: '飞升传闻与雾隐铜铃出现同源回响。',
+          continuityNotes: ['延续雾隐秘境与飞升骗局伏笔。'],
+          safetyFlags: []
+        };
+      }
+    }
+  });
+  app.getState().game.onboarding = completedOnboardingState();
+  const actionsPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+    viewId: 'cultivation',
+    gameVersion: 0
+  })));
+  const action = actionsPayload.data.actions.find((candidate) => candidate.command.includes('闭关'));
+
+  const turnPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/turns', {
+    actionId: action.id,
+    clientTurn: 0
+  })));
+  const memory = turnPayload.data.game.storyMemory;
+
+  assert.equal(memory.lastUpdatedTurn, 1);
+  assert.equal(memory.recentTurns.at(-1).title, '命火微澜');
+  assert.match(memory.recentTurns.at(-1).outcome, /飞升传闻/);
+  assert.equal(memory.recentTurns.at(-1).npcLine, '');
+  assert.ok(memory.openThreads.some((thread) => thread.detail.includes('飞升') || thread.detail.includes('雾隐')));
+  assert.doesNotMatch(JSON.stringify(memory), /eventId|choiceId|act_|debug|schema/i);
+});
+
 test('POST /api/v1/turns/stream yields narration deltas before final turn result', async () => {
   const streamedChunks = [
     '{"title":"流式闭关","body":"',
@@ -577,6 +616,107 @@ test('POST /api/v1/turns/stream yields narration deltas before final turn result
   assert.equal(donePayload.data.turnResult.narration.status, 'generated');
   assert.equal(donePayload.data.turnResult.narration.title, '流式闭关');
   assert.match(donePayload.data.game.log.at(-1).body, /雷木灵根/);
+});
+
+test('POST /api/v1/turns/stream continues story through director without daily action id', async () => {
+  const streamedChunks = [
+    '{"scene":"顾清河闭目内观，命火忽明忽暗，雾隐秘境的钟声在识海深处响起。',
+    '他没有立刻起身，只把这份异动压入丹田，等待下一次回响。","mode":"continue",',
+    '"npcLines":[],"effectHints":[{"target":"lifespan","direction":"down","intensity":"tiny"}],"choices":[],"memoryHints":["命火异常继续。"]}'
+  ];
+  const app = createBackendApp({
+    seed: 31,
+    now: fixedNow,
+    llm: {
+      async *streamStoryDirector() {
+        for (const chunk of streamedChunks) yield chunk;
+      }
+    }
+  });
+  app.getState().game.onboarding = completedOnboardingState();
+
+  const response = await app.handle(makeRequest('POST', '/api/v1/turns/stream', {
+    type: 'continue',
+    clientTurn: 0
+  }));
+  const body = await response.text();
+  const donePayload = parseSseEvent(body, 'done');
+
+  assert.equal(response.status, 200);
+  assert.ok(body.indexOf('event: story_delta') > -1);
+  assert.ok(body.indexOf('event: story_delta') < body.indexOf('event: done'));
+  assert.equal(donePayload.ok, true);
+  assert.equal(donePayload.data.game.turn, 1);
+  assert.equal(donePayload.data.game.player.lifespan, 92);
+  assert.match(donePayload.data.game.log.at(-1).body, /命火忽明忽暗/);
+  assert.equal(donePayload.data.turnResult.narration.status, 'generated');
+});
+
+test('POST /api/v1/turns/stream stores LLM generated choices and resolves selected choice through backend rules', async () => {
+  const outputs = [
+    {
+      scene: '雾中钟声压近洞府，顾清河意识到今夜必须决定是否追查。',
+      mode: 'choice',
+      npcLines: [],
+      effectHints: [],
+      choices: [
+        {
+          id: 'follow_bell',
+          text: '循着钟声前往后山',
+          tone: 'explore',
+          effectHints: [{ target: 'lifespan', direction: 'down', intensity: 'small' }]
+        },
+        {
+          id: 'ask_elder',
+          text: '先向玄衡长老禀报',
+          tone: 'sect',
+          effectHints: [{ target: 'sect_reputation', direction: 'up', intensity: 'small' }]
+        }
+      ],
+      memoryHints: ['雾中钟声逼近。']
+    },
+    {
+      scene: '顾清河循声入山，草叶上的雾露映出残缺符纹。',
+      mode: 'continue',
+      npcLines: [],
+      effectHints: [{ target: 'foreshadow', direction: 'advance', intensity: 'small', topic: '雾隐秘境' }],
+      choices: [],
+      memoryHints: ['雾隐秘境符纹出现。']
+    }
+  ];
+  const app = createBackendApp({
+    seed: 31,
+    now: fixedNow,
+    llm: {
+      async generateStoryDirector() {
+        return outputs.shift();
+      }
+    }
+  });
+  app.getState().game.onboarding = completedOnboardingState();
+
+  const firstResponse = await app.handle(makeRequest('POST', '/api/v1/turns/stream', {
+    type: 'continue',
+    clientTurn: 0
+  }));
+  const first = parseSseEvent(await firstResponse.text(), 'done');
+  const [choice] = first.data.turnResult.choices;
+
+  assert.equal(first.data.turnResult.mode, 'choice');
+  assert.equal(choice.text, '循着钟声前往后山');
+  assert.equal('effectHints' in choice, false);
+  assert.equal(app.getState().pendingDirectorChoices.size, 2);
+
+  const secondResponse = await app.handle(makeRequest('POST', '/api/v1/turns/stream', {
+    type: 'choice',
+    choiceId: choice.id,
+    clientTurn: 1
+  }));
+  const second = parseSseEvent(await secondResponse.text(), 'done');
+
+  assert.equal(second.data.game.turn, 2);
+  assert.ok(second.data.game.karma.futureEventFlags.includes('director_mist_thread'));
+  assert.equal(app.getState().pendingDirectorChoices.size, 0);
 });
 
 test('POST /api/v1/turns saves rule progress when narration llm is unavailable', async () => {

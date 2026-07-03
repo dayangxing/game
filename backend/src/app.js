@@ -1,7 +1,10 @@
 import { advanceTurn, createGame, exportNovel } from '../../src/engine.js';
+import { normalizeStoryMemory, recordStoryMemoryTurn } from '../../src/storyMemory.js';
+import { buildFallbackDirectorOutput, createStoryDirector } from './agents/storyDirector.js';
 import { buildUnavailableNarration, createStoryGraph, normalizeGeneratedNarration } from './agents/storyGraph.js';
 import { createDailyActions, hasView } from './domain/actions.js';
 import { applyCharacterToGame, rollCharacter } from './domain/characterCreation.js';
+import { resolveDirectorEffectHints } from './domain/director/effectHints.js';
 import { resolveChoice } from './domain/events/effectResolver.js';
 import { selectEventActions } from './domain/events/eventSelector.js';
 import { eventNarrationFallback, stripInternalActionFields } from './domain/events/eventResult.js';
@@ -17,13 +20,15 @@ export function createBackendApp(options = {}) {
   const state = {
     game: normalizeGame(createGame(options.seed ?? Date.now())),
     pendingActions: new Map(),
+    pendingDirectorChoices: new Map(),
     turnSnapshots: new Map(),
     auditLog: [],
     requestSequence: 0,
     actionSequence: 0,
     modelSelection: getModelSelection(options.env ?? process.env),
     llm,
-    storyGraph: options.storyGraph ?? createStoryGraph({ llm })
+    storyGraph: options.storyGraph ?? createStoryGraph({ llm }),
+    storyDirector: options.storyDirector ?? createStoryDirector({ llm })
   };
 
   return {
@@ -207,6 +212,7 @@ function handleNewFormalGame({ body, requestId, state }) {
     const nextGame = normalizeGame(applyCharacterToGame(createGame(seed), character, seed));
     nextGame.onboarding = createCompletedFormalOnboardingState();
     state.pendingActions.clear();
+    state.pendingDirectorChoices.clear();
     state.turnSnapshots.clear();
     state.game = nextGame;
     state.game.mode = 'api';
@@ -250,6 +256,10 @@ async function handleTurn({ body, requestId, state, now }) {
 }
 
 function handleTurnStream({ body, requestId, state, now }) {
+  if (body.type === 'continue' || body.type === 'choice') {
+    return handleDirectorTurnStream({ body, requestId, state, now });
+  }
+
   const resolved = resolveTurnRules({ body, requestId, state, now });
   if (resolved instanceof Response) return resolved;
 
@@ -280,6 +290,195 @@ function handleTurnStream({ body, requestId, state, now }) {
       requestId
     });
   });
+}
+
+function handleDirectorTurnStream({ body, requestId, state, now }) {
+  const validation = validateDirectorTurnRequest({ body, requestId, state });
+  if (validation instanceof Response) return validation;
+
+  return sseResponse(async (emit) => {
+    const before = state.game;
+    const input = buildDirectorInput({ body, pendingChoice: validation.pendingChoice });
+    let directorOutput = null;
+
+    try {
+      for await (const event of state.storyDirector.stream({ game: before, input })) {
+        if (event.type === 'story_delta') emit('story_delta', event.data);
+        if (event.type === 'director_result') directorOutput = event.data;
+      }
+    } catch (error) {
+      directorOutput = buildFallbackDirectorOutput({ game: before, input, error });
+    }
+
+    const resolution = resolveDirectorTurn({
+      before,
+      directorOutput: directorOutput ?? buildFallbackDirectorOutput({ game: before, input }),
+      input,
+      state,
+      now: now()
+    });
+    state.game = normalizeGame(resolution.game);
+    state.turnSnapshots.set(state.game.turn, {
+      beforeGame: before,
+      afterGame: state.game,
+      action: resolution.action,
+      ruleEntry: resolution.entry
+    });
+
+    emit('state_patch', resolution.publicStatePatch);
+    if (resolution.turnResult.choices.length) emit('choices_ready', { choices: resolution.turnResult.choices });
+    emit('done', {
+      ok: true,
+      data: {
+        game: state.game,
+        turnResult: resolution.turnResult
+      },
+      error: null,
+      requestId
+    });
+  });
+}
+
+function validateDirectorTurnRequest({ body, requestId, state }) {
+  if (!state.game.onboarding?.completed) {
+    return errorResponse(409, requestId, 'ONBOARDING_REQUIRED', '完成新手任务后才能进入连续剧情。');
+  }
+  if (body.clientTurn !== state.game.turn) {
+    return errorResponse(409, requestId, 'TURN_MISMATCH', '客户端回合已过期，请刷新游戏状态。');
+  }
+  if (body.type === 'choice') {
+    const pendingChoice = state.pendingDirectorChoices.get(body.choiceId);
+    if (!pendingChoice || pendingChoice.turn !== state.game.turn) {
+      return errorResponse(404, requestId, 'CHOICE_NOT_FOUND', '该选择已失效，请继续推演。');
+    }
+    return { pendingChoice };
+  }
+  return {};
+}
+
+function buildDirectorInput({ body, pendingChoice }) {
+  if (body.type === 'choice') {
+    return {
+      type: 'choice',
+      choiceId: pendingChoice.id,
+      choiceText: pendingChoice.text,
+      previousScene: pendingChoice.scene
+    };
+  }
+  return { type: 'continue' };
+}
+
+function resolveDirectorTurn({ before, directorOutput, input, state, now }) {
+  const pendingChoice = input.type === 'choice' ? state.pendingDirectorChoices.get(input.choiceId) : null;
+  const choiceHints = pendingChoice?.effectHints ?? [];
+  const effectHints = input.type === 'choice'
+    ? [...choiceHints, ...directorOutput.effectHints]
+    : directorOutput.effectHints;
+  const effectResolution = resolveDirectorEffectHints({ game: before, effectHints, now });
+  const turn = before.turn + 1;
+  const entry = {
+    id: `turn-${turn}`,
+    title: directorOutput.mode === 'choice' ? '命途分岔' : '命火微澜',
+    command: input.type === 'choice' ? input.choiceText : '继续',
+    body: directorOutput.scene,
+    npcLine: formatDirectorNpcLines(directorOutput.npcLines),
+    worldEvent: effectResolution.summary
+  };
+  let nextGame = {
+    ...effectResolution.game,
+    turn,
+    version: turn,
+    log: [...effectResolution.game.log, entry],
+    timeline: [
+      ...effectResolution.game.timeline,
+      { type: 'director', title: entry.title, detail: directorOutput.scene }
+    ],
+    worldEvents: [
+      ...effectResolution.game.worldEvents,
+      { title: entry.title, detail: effectResolution.summary, turn }
+    ]
+  };
+
+  nextGame = recordStoryMemoryTurn({
+    before,
+    after: nextGame,
+    action: { title: entry.title, command: entry.command },
+    entry,
+    narration: {
+      status: directorOutput.status,
+      title: entry.title,
+      body: directorOutput.scene,
+      npcLine: entry.npcLine,
+      foreshadow: directorOutput.memoryHints.at(0) ?? ''
+    }
+  });
+
+  const publicChoices = storeDirectorChoices({ state, directorOutput, turn });
+  const action = { id: `director-${turn}`, title: entry.title, command: entry.command, source: 'director' };
+
+  return {
+    game: nextGame,
+    entry,
+    action,
+    publicStatePatch: pickPublicStatePatch(nextGame),
+    turnResult: {
+      turn,
+      actionId: action.id,
+      mode: publicChoices.length ? 'choice' : 'continue',
+      narration: {
+        status: directorOutput.status,
+        title: entry.title,
+        body: directorOutput.scene,
+        npcLine: entry.npcLine,
+        foreshadow: directorOutput.memoryHints.at(0) ?? ''
+      },
+      summary: effectResolution.summary,
+      choices: publicChoices,
+      ruleResult: {
+        success: true,
+        eventId: 'story_director',
+        choiceId: input.type === 'choice' ? input.choiceId : 'continue',
+        resolvedAt: now.toISOString(),
+        rejectedEffectHints: effectResolution.rejected.length
+      }
+    }
+  };
+}
+
+function storeDirectorChoices({ state, directorOutput, turn }) {
+  state.pendingDirectorChoices.clear();
+  if (directorOutput.mode !== 'choice') return [];
+
+  return directorOutput.choices.slice(0, 4).map((choice, index) => {
+    const id = `choice_${turn}_${index}_${choice.id}`;
+    const pending = {
+      ...choice,
+      id,
+      scene: directorOutput.scene,
+      turn,
+      consumed: false
+    };
+    state.pendingDirectorChoices.set(id, pending);
+    return { id, text: choice.text };
+  });
+}
+
+function formatDirectorNpcLines(lines = []) {
+  return lines.map((line) => `${line.speaker}道：“${line.line}”`).join('\n');
+}
+
+function pickPublicStatePatch(game) {
+  return {
+    turn: game.turn,
+    player: {
+      health: game.player.health,
+      lifespan: game.player.lifespan,
+      qi: game.player.qi,
+      mood: game.player.mood,
+      cultivationProgress: game.player.cultivationProgress,
+      sectRelation: game.player.sectRelation
+    }
+  };
 }
 
 function resolveTurnRules({ body, requestId, state, now }) {
@@ -385,6 +584,13 @@ function resolveTurnRules({ body, requestId, state, now }) {
 
 function finalizeTurn({ resolved, state, now }) {
   state.game = applyNarrationToGame(state.game, state.game.turn, resolved.narration);
+  state.game = recordStoryMemoryTurn({
+    before: resolved.before,
+    after: state.game,
+    action: resolved.action,
+    entry: state.game.log.find((entry) => entry.id === `turn-${state.game.turn}`) ?? state.game.log.at(-1),
+    narration: resolved.narration
+  });
   const baseTurnResult = buildTurnResult({
     before: resolved.before,
     after: state.game,
@@ -454,6 +660,13 @@ async function handleRetryNarration({ turn, requestId, state, now }) {
 
   const result = await state.storyGraph.invoke(snapshot);
   state.game = applyNarrationToGame(state.game, turn, result.narration);
+  state.game = recordStoryMemoryTurn({
+    before: snapshot.beforeGame,
+    after: state.game,
+    action: snapshot.action,
+    entry: state.game.log.find((entry) => entry.id === `turn-${turn}`) ?? state.game.log.at(-1),
+    narration: result.narration
+  });
   state.auditLog.push({
     type: 'narration-retry',
     turn,
@@ -508,7 +721,7 @@ function normalizeGame(game) {
     }
   };
 
-  return {
+  const normalized = {
     id: game.id ?? 'game_local',
     version: game.turn,
     ...game,
@@ -531,6 +744,11 @@ function normalizeGame(game) {
     },
     flags: game.flags ?? {},
     cooldowns: game.cooldowns ?? {}
+  };
+
+  return {
+    ...normalized,
+    storyMemory: normalizeStoryMemory(game.storyMemory, normalized)
   };
 }
 

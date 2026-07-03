@@ -12,7 +12,7 @@ export function resolveChoice({ game, event, choice, now }) {
     title: event.title,
     command: choice.command,
     body: outcome.text,
-    npcLine: '林师姐道：“因果既落，后面的路便会变。”',
+    npcLine: '',
     worldEvent: event.title
   };
   return {
@@ -78,11 +78,13 @@ function applyEffect(game, effect) {
     };
   }
   if (effect.type === 'vitality') {
+    const currentHealth = game.player?.health ?? 0;
+    const maxHealth = game.player?.maxHealth ?? currentHealth;
     return {
       ...game,
       player: {
         ...game.player,
-        health: clamp((game.player?.health ?? 0) + effect.delta, 0, game.player?.maxHealth ?? 0)
+        health: clamp(currentHealth + effect.delta, 0, maxHealth)
       }
     };
   }
@@ -98,11 +100,13 @@ function applyEffect(game, effect) {
     };
   }
   if (effect.type === 'lifespan') {
+    const currentLifespan = game.player?.lifespan ?? 0;
+    const maxLifespan = game.player?.maxLifespan ?? currentLifespan;
     return {
       ...game,
       player: {
         ...game.player,
-        lifespan: clamp((game.player?.lifespan ?? 0) + effect.delta, 0, game.player?.maxLifespan ?? 0)
+        lifespan: clamp(currentLifespan + effect.delta, 0, maxLifespan)
       }
     };
   }
