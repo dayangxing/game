@@ -12,6 +12,7 @@ export const viewList = [
   },
   {
     id: 'cultivation',
+    visible: false,
     label: '修炼',
     title: '闭关修炼',
     description: '以吐纳、闭关、破境为核心，推动境界成长并触发天劫伏笔。',
@@ -23,7 +24,7 @@ export const viewList = [
   },
   {
     id: 'skills',
-    label: '个人',
+    label: '命簿',
     title: '个人面板',
     description: '查看人物属性、境界、功法与道友牵绊，梳理当前修行底蕴。',
     cards: [
@@ -34,9 +35,9 @@ export const viewList = [
   },
   {
     id: 'realm',
-    label: '秘境',
-    title: '雾隐秘境',
-    description: '探索后山、灵脉与古修洞府，让世界随机事件持续演化。',
+    label: '天机录',
+    title: '天机录',
+    description: '汇总本局剧情上下文、近期回合、人物记忆、世界记录与未解伏笔。',
     cards: [
       { title: '后山探雾', icon: '山', command: '前往后山探索灵脉', meta: '探索' },
       { title: '石门符纹', icon: '符', command: '推开藤蔓后的石门，查验雾隐秘境符纹', meta: '奇遇' },
@@ -55,6 +56,8 @@ export const viewList = [
     ]
   }
 ];
+
+export const visibleViewList = viewList.filter((view) => view.visible !== false);
 
 export function getView(id) {
   return viewList.find((view) => view.id === id) ?? viewList[0];

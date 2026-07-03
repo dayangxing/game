@@ -12,8 +12,11 @@ const NARRATION_SYSTEM_PROMPT = [
   '2. 必须严格承认输入 afterGame 中已经发生的状态变化。',
   '3. 可以润色 ruleEntry 的表达，但不能推翻、增删或重算规则结果。',
   '4. 必须保持修仙世界观一致：宗门、灵根、境界、灵石、秘境、丹药、功法、NPC 记忆都要前后一致。',
-  '5. 输出必须是合法 JSON object，不能包含 Markdown、解释文字、代码块或额外注释。',
-  `6. ${EVENT_RULE_BOUNDARY}`,
+  '5. 只有本回合事件、行动、ruleEntry、NPC memories 或关系变化与某个现有 NPC 明确相关时，才在 npcLine 输出该 NPC 的一句对白。',
+  '6. 如果本回合不涉及 NPC，npcLine 必须返回空字符串。',
+  '7. 必须参考 narrativeContext 中的剧情摘要、近期回合、未解伏笔与人物记忆，让本回合承接已有因果。',
+  '8. 输出必须是合法 JSON object，不能包含 Markdown、解释文字、代码块或额外注释。',
+  `9. ${EVENT_RULE_BOUNDARY}`,
   '',
   '绝对禁止：',
   '1. 不得新增奖励、道具、境界提升、灵石收入、NPC 好感、关系、flag、futureEvent、世界事件或成功失败判定；afterGame 中不存在的结果一律不得补写。',
@@ -30,14 +33,14 @@ const NARRATION_SYSTEM_PROMPT = [
   '2. 氛围是“暗色水墨修仙”：雨、竹舍、灵雾、符纹、雷木双息、宗门钟声、秘境回响。',
   '3. 主角应显得谨慎、有野心、有身世疑云，不要无脑爽文。',
   '4. 每回合正文 160 到 260 个汉字。',
-  '5. NPC 台词 1 句即可，应符合 NPC 的 tone、affinity、memories。',
+  '5. NPC 台词最多 1 句，应符合 NPC 的 tone、affinity、memories；无 NPC 参与时不要强行安排旁白式对白。',
   '6. 伏笔要轻，不要直接剧透；用物象、传闻、异常感提示长期因果。',
   '',
   '输出 JSON schema：',
   '{',
   '  "title": "string，6到12个汉字，本回合章节标题",',
   '  "body": "string，160到260个汉字，叙事正文",',
-  '  "npcLine": "string，NPC对白一句；没有合适NPC时返回空字符串",',
+  '  "npcLine": "string，只有现有 NPC 与本回合相关时才输出一句对白；不涉及 NPC 时必须为空字符串",',
   '  "foreshadow": "string，长期伏笔一句；没有新伏笔时延续已有伏笔",',
   '  "continuityNotes": ["string，用于后端审计的1到3条连续性说明"],',
   '  "safetyFlags": []',
@@ -51,6 +54,7 @@ const REPAIR_SYSTEM_PROMPT = [
   EVENT_RULE_BOUNDARY,
   '必须保留已结算事实，不得新增奖励、道具、境界、关系、进度、flag、futureEvent、世界事件或成功失败判定。',
   '不得改写 attributes、health、maxHealth、lifespan、maxLifespan、treasures、techniques、突破预览、突破结果或突破成功失败。',
+  'npcLine 只能使用现有 NPC；如果本回合不涉及 NPC，npcLine 必须返回空字符串。',
   '返回值必须是合法 JSON object，不能包含 Markdown、代码块或额外文字。'
 ].join('\n');
 
@@ -68,6 +72,7 @@ export function buildNarrationMessages({ beforeGame, afterGame, action, ruleEntr
         action: pickActionContext(action),
         beforeGame: pickNarrationContext(beforeGame),
         afterGame: pickNarrationContext(afterGame),
+        narrativeContext: pickNarrativeContext(afterGame),
         ruleEntry: pickRuleEntryContext(ruleEntry),
         ruleDelta: diffPlayerStats(beforeGame.player, afterGame.player),
         npcVoiceGuide: afterGame.npcs.map(pickNpcVoiceGuide),
@@ -75,7 +80,9 @@ export function buildNarrationMessages({ beforeGame, afterGame, action, ruleEntr
           '剧情必须匹配 afterGame，不得新增 afterGame 不存在的结果。',
           '必须把 ruleDelta 体现为感受或场景变化，但不要直接报数值。',
           'npcLine 只能使用现有 NPC，不得创造新核心 NPC。',
+          '如果本回合不涉及 NPC，npcLine 必须是空字符串，不要为了热闹强行让林师姐或玄衡长老说话。',
           'foreshadow 必须与已有 foreshadows 或 worldEvents 有关联。',
+          '正文必须承接 narrativeContext 的剧情摘要、近期回合、未解伏笔或人物记忆，不要把每回合写成互不相干的片段。',
           '如果行动上下文提示本回合来自已结算事件，只能承认其结果，不允许借此改写规则效果。',
           '如果行动或规则上下文包含突破信息，只能承认其已结算信息，不得重算概率、骰点或成败。',
           '输出字段必须完整：title、body、npcLine、foreshadow、continuityNotes、safetyFlags。'
@@ -101,7 +108,7 @@ export function buildRepairNarrationMessages({ validationErrors, rawNarration, a
         requiredSchema: {
           title: 'string',
           body: 'string，160到260个汉字',
-          npcLine: 'string',
+          npcLine: 'string，只有现有 NPC 与本回合相关时才输出；不涉及 NPC 时必须为空字符串',
           foreshadow: 'string',
           continuityNotes: ['string'],
           safetyFlags: []
@@ -194,6 +201,59 @@ function pickNpcVoiceGuide(npc) {
   };
 }
 
+function pickNarrativeContext(game) {
+  const storyMemory = game.storyMemory ?? {};
+
+  return {
+    storyMemory: {
+      longSummary: textOrEmpty(storyMemory.longSummary),
+      recentTurns: Array.isArray(storyMemory.recentTurns)
+        ? storyMemory.recentTurns.slice(-8).map(pickRecentTurnMemory)
+        : [],
+      openThreads: Array.isArray(storyMemory.openThreads)
+        ? storyMemory.openThreads.slice(-8).map(pickThreadMemory)
+        : [],
+      resolvedThreads: Array.isArray(storyMemory.resolvedThreads)
+        ? storyMemory.resolvedThreads.slice(-6).map(pickThreadMemory)
+        : [],
+      characterNotes: Array.isArray(storyMemory.characterNotes)
+        ? storyMemory.characterNotes.slice(-6).map(pickCharacterMemory)
+        : game.npcs.map(pickCharacterMemory),
+      lastUpdatedTurn: Number.isFinite(storyMemory.lastUpdatedTurn) ? storyMemory.lastUpdatedTurn : game.turn
+    }
+  };
+}
+
+function pickRecentTurnMemory(entry) {
+  return {
+    turn: Number.isFinite(entry.turn) ? entry.turn : 0,
+    title: textOrEmpty(entry.title),
+    action: textOrEmpty(entry.action),
+    outcome: textOrEmpty(entry.outcome),
+    npcLine: textOrEmpty(entry.npcLine),
+    worldEvent: textOrEmpty(entry.worldEvent),
+    statDelta: pickStatDelta(entry.statDelta)
+  };
+}
+
+function pickThreadMemory(thread) {
+  return {
+    title: textOrEmpty(thread.title),
+    detail: textOrEmpty(thread.detail),
+    status: textOrEmpty(thread.status)
+  };
+}
+
+function pickCharacterMemory(note) {
+  return {
+    name: textOrEmpty(note.name),
+    role: textOrEmpty(note.role),
+    affinity: Number.isFinite(note.affinity) ? note.affinity : 0,
+    tone: textOrEmpty(note.tone),
+    memories: Array.isArray(note.memories) ? note.memories.slice(-4).map(textOrEmpty) : []
+  };
+}
+
 function pickTreasureContext(treasure) {
   return {
     name: treasure.name,
@@ -252,6 +312,37 @@ function pickAttributes(attributes) {
     willpower: attributes.willpower,
     lifeSeed: attributes.lifeSeed
   };
+}
+
+function pickStatDelta(statDelta = {}) {
+  const keys = [
+    'qi',
+    'mood',
+    'cultivationProgress',
+    'spiritStones',
+    'sectRelation',
+    'health',
+    'maxHealth',
+    'lifespan',
+    'maxLifespan'
+  ];
+  const result = {};
+
+  for (const key of keys) {
+    if (typeof statDelta[key] === 'number' && statDelta[key] !== 0) {
+      result[key] = statDelta[key];
+    }
+  }
+
+  if (typeof statDelta.realm === 'string' && statDelta.realm) {
+    result.realm = statDelta.realm;
+  }
+
+  return result;
+}
+
+function textOrEmpty(value) {
+  return value === undefined || value === null ? '' : String(value).trim();
 }
 
 function pickBreakthroughPreview(preview) {

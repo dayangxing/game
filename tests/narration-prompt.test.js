@@ -19,6 +19,8 @@ test('narration prompt contains detailed role, boundaries, style, and json schem
   assert.match(system, /输出 JSON schema/);
   assert.match(system, /continuityNotes/);
   assert.match(system, /safetyFlags/);
+  assert.match(system, /只有.*现有 NPC.*相关.*npcLine/s);
+  assert.match(system, /不涉及.*NPC.*空字符串/s);
 
   assert.equal(user.task, 'narrative_polish');
   assert.match(user.instruction, /只能润色已结算结果/);
@@ -27,6 +29,8 @@ test('narration prompt contains detailed role, boundaries, style, and json schem
   assert.equal(user.ruleDelta.spiritStones, -4);
   assert.equal(user.npcVoiceGuide[0].name, '林师姐');
   assert.ok(user.hardConstraints.some((constraint) => constraint.includes('不得新增')));
+  assert.ok(user.hardConstraints.some((constraint) => constraint.includes('不涉及 NPC') && constraint.includes('空字符串')));
+  assert.match(system, /剧情摘要|近期回合|未解伏笔/);
 });
 
 test('narration prompt includes compact deterministic state for attributes, vitality, collections, and breakthrough context', () => {
@@ -69,6 +73,38 @@ test('narration prompt includes compact deterministic state for attributes, vita
     successChance: 72,
     failureConsequence: { healthLoss: 18, lifespanLoss: 1, progressLoss: 40 }
   });
+  assert.deepEqual(user.narrativeContext.storyMemory, {
+    longSummary: '陆青玄在青云宗外门稳住雷木双息，雾隐秘境与飞升传闻仍未解释。',
+    recentTurns: [
+      {
+        turn: 1,
+        title: '闭关试炼',
+        action: '闭关修炼三月，尝试突破',
+        outcome: '规则已经完成结算。',
+        npcLine: '林师姐提醒他稳住雷息。',
+        worldEvent: '坊市拍卖预告',
+        statDelta: { qi: 11, lifespan: -2 }
+      }
+    ],
+    openThreads: [
+      {
+        title: '飞升骗局伏笔',
+        detail: '宗门典籍对飞升的记载前后矛盾。',
+        status: '未解'
+      }
+    ],
+    resolvedThreads: [],
+    characterNotes: [
+      {
+        name: '林师姐',
+        role: '内门弟子',
+        affinity: 36,
+        tone: '温和而谨慎',
+        memories: ['见证陆青玄闭关后气息更趋凝实。']
+      }
+    ],
+    lastUpdatedTurn: 1
+  });
   assert.deepEqual(user.ruleEntry.breakthrough, {
     succeeded: false,
     targetRealm: '炼气八层',
@@ -100,6 +136,7 @@ test('narration prompt forbids changing event rule effects', () => {
     kind: '突破尝试'
   });
   assert.doesNotMatch(payload, /eventId|choiceId|act_0_cultivation_0|mist_bronze_bell|approach|medium|breakthroughPreview|breakthroughResult/);
+  assert.doesNotMatch(payload, /raw_story_memory_id|internal_thread_id/);
 });
 
 test('repair prompt asks the model to only repair invalid json output', () => {
@@ -124,9 +161,11 @@ test('repair prompt asks the model to only repair invalid json output', () => {
   assert.match(system, /破境预览|突破预览/);
   assert.match(system, /突破结果|突破.*成功失败|成功失败.*突破/);
   assert.match(system, /成功失败/);
+  assert.match(system, /不涉及.*NPC.*空字符串/s);
   assert.deepEqual(user.validationErrors, ['body too short', 'missing npcLine']);
   assert.equal(user.rawNarration.title, '短');
   assert.equal(user.afterGame.turn, 1);
+  assert.match(user.requiredSchema.npcLine, /不涉及.*NPC.*空字符串/s);
 });
 
 function makePromptInput() {
@@ -245,7 +284,41 @@ function makePromptInput() {
         }
       ],
       worldEvents: [{ title: '坊市拍卖预告', detail: '一枚雷纹筑基丹将在月末拍卖。', turn: 1 }],
-      foreshadows: ['若陆青玄强行突破，雷木双息可能产生反噬。']
+      foreshadows: ['若陆青玄强行突破，雷木双息可能产生反噬。'],
+      storyMemory: {
+        longSummary: '陆青玄在青云宗外门稳住雷木双息，雾隐秘境与飞升传闻仍未解释。',
+        recentTurns: [
+          {
+            turn: 1,
+            title: '闭关试炼',
+            action: '闭关修炼三月，尝试突破',
+            outcome: '规则已经完成结算。',
+            npcLine: '林师姐提醒他稳住雷息。',
+            worldEvent: '坊市拍卖预告',
+            statDelta: { qi: 11, lifespan: -2 },
+            rawId: 'raw_story_memory_id'
+          }
+        ],
+        openThreads: [
+          {
+            title: '飞升骗局伏笔',
+            detail: '宗门典籍对飞升的记载前后矛盾。',
+            status: '未解',
+            id: 'internal_thread_id'
+          }
+        ],
+        resolvedThreads: [],
+        characterNotes: [
+          {
+            name: '林师姐',
+            role: '内门弟子',
+            affinity: 36,
+            tone: '温和而谨慎',
+            memories: ['见证陆青玄闭关后气息更趋凝实。']
+          }
+        ],
+        lastUpdatedTurn: 1
+      }
     },
     action: {
       id: 'act_0_cultivation_0',

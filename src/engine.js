@@ -1,3 +1,5 @@
+import { recordStoryMemoryTurn, withInitialStoryMemory } from './storyMemory.js';
+
 const ACTIONS = {
   cultivate: ['修炼', '闭关', '突破', '吐纳', '稳固'],
   explore: ['探索', '前往', '秘境', '后山', '灵脉', '游历'],
@@ -19,7 +21,7 @@ const INITIAL_TIMELINE = [
 ];
 
 export function createGame(seed = Date.now()) {
-  return {
+  const game = {
     seed,
     turn: 0,
     mode: 'mock',
@@ -73,6 +75,8 @@ export function createGame(seed = Date.now()) {
     ],
     suggestions: ['闭关修炼三月，尝试突破', '找林师姐打听雾隐秘境', '前往后山探索灵脉']
   };
+
+  return withInitialStoryMemory(game);
 }
 
 export function advanceTurn(state, command) {
@@ -82,7 +86,7 @@ export function advanceTurn(state, command) {
       title: '心念未定',
       command: '空指令',
       body: '你站在青石道旁，心念散乱，未能聚起可执行的念头。风从竹林穿过，像是在提醒你先定下方向。',
-      npcLine: '玄衡长老的声音从远处传来：“修行最忌心浮。”',
+      npcLine: '',
       worldEvent: ''
     }, ['闭关修炼一日', '去外门执事堂接任务', '找林师姐请教修行']);
   }
@@ -93,7 +97,7 @@ export function advanceTurn(state, command) {
   next.calendar = advanceCalendar(next.calendar);
   next.player = evolvePlayer(next.player, action);
 
-  const targetNpcName = cleanCommand.includes('长老') ? '玄衡长老' : '林师姐';
+  const targetNpcName = involvedNpcName(cleanCommand, action);
   next.npcs = next.npcs.map((npc) => evolveNpc(npc, action, cleanCommand, targetNpcName));
 
   const event = pickWorldEvent(next.seed, next.turn, action);
@@ -112,7 +116,13 @@ export function advanceTurn(state, command) {
   next.suggestions = nextSuggestions(action);
   next.foreshadows = updateForeshadows(next.foreshadows, action, event);
   next.seed = next.seed + 17 + next.turn;
-  return next;
+  return recordStoryMemoryTurn({
+    before: state,
+    after: next,
+    action: { title: entry.title, command: cleanCommand },
+    entry,
+    narration: entry
+  });
 }
 
 export function exportNovel(state) {
@@ -174,7 +184,7 @@ function evolvePlayer(player, action) {
 }
 
 function evolveNpc(npc, action, command, targetNpcName) {
-  if (npc.name !== targetNpcName && action !== 'social') return npc;
+  if (!targetNpcName || npc.name !== targetNpcName) return npc;
 
   const memory = memoryFromCommand(action, command);
   const affinityDelta = action === 'social' ? 6 : 2;
@@ -222,6 +232,7 @@ function narrateTurn(state, command, action, event, targetNpcName) {
 }
 
 function npcLineFor(action, targetNpcName) {
+  if (!targetNpcName) return '';
   if (targetNpcName === '玄衡长老') {
     return `玄衡长老拂袖道：“根骨只是舟，心性才是渡河之人。你今日所行，宗门会记下。”`;
   }
@@ -234,6 +245,13 @@ function npcLineFor(action, targetNpcName) {
     freeform: '林师姐点头：“这条路少有人走，但少有人走并不代表不能走。”'
   };
   return lines[action];
+}
+
+function involvedNpcName(command, action) {
+  if (command.includes('长老') || command.includes('玄衡')) return '玄衡长老';
+  if (command.includes('林师姐')) return '林师姐';
+  if (action === 'social') return '林师姐';
+  return '';
 }
 
 function nextSuggestions(action) {

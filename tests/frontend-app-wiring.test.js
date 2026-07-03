@@ -11,6 +11,14 @@ test('browser app configures the game api for backend-first mode', () => {
   assert.match(source, /preferredMode:\s*initialMode/);
 });
 
+test('browser module entry points use versioned urls to avoid mixed stale module caches', () => {
+  const html = fs.readFileSync('frontend/index.html', 'utf8');
+  const source = fs.readFileSync('frontend/src/app.js', 'utf8');
+
+  assert.match(html, /src="\.\/src\/app\.js\?v=\d+"/);
+  assert.match(source, /from '\.\/ui\/views\.js\?v=\d+'/);
+});
+
 test('app rendering is routed through renderActiveView for active tabs', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
   const render = extractFunction(source, 'render');
@@ -48,7 +56,9 @@ test('shared active-view panel helpers render actions and history without direct
   assert.match(panelHelper, /renderSectionTitle\(title,\s*meta\)/);
   assert.match(titleHelper, /<div class="section-title">/);
   assert.match(actionPanel, /id="actionGrid"/);
-  assert.match(actionPanel, /buildActionCards\(dailyActions\)/);
+  assert.match(actionPanel, /const actions = buildHomeActions\(\);/);
+  assert.match(actionPanel, /buildActionCards\(actions\)/);
+  assert.match(actionPanel, /data-story-action/);
   assert.doesNotMatch(actionPanel, /addEventListener/);
   assert.match(historyPanel, /buildRecentHistory\(limit\)/);
   assert.match(historyPanel, /historyCardClass\(entry\)/);
@@ -60,7 +70,7 @@ test('activeViewId selects overview and tab-specific render routes without colla
   const renderActiveView = extractNamedCallable(source, 'renderActiveView');
   const selectorName = findRouteSelectorName(renderActiveView);
   const routeTargets = Object.fromEntries(
-    ['home', 'cultivation', 'skills', 'realm', 'bag'].map((viewId) => [viewId, findViewRouteTarget(renderActiveView, viewId, selectorName)])
+    ['home', 'skills', 'realm', 'bag'].map((viewId) => [viewId, findViewRouteTarget(renderActiveView, viewId, selectorName)])
   );
 
   assert.ok(renderActiveView, 'renderActiveView should exist');
@@ -72,8 +82,8 @@ test('activeViewId selects overview and tab-specific render routes without colla
 
   assert.equal(
     new Set(Object.values(routeTargets)).size,
-    5,
-    'home, cultivation, skills, realm, and bag should resolve to distinct content routes'
+    4,
+    'home, skills, realm, and bag should resolve to distinct visible content routes'
   );
 });
 
@@ -152,7 +162,32 @@ test('api mode locks provisional immediate actions until backend actions refresh
   assert.ok(refreshHelper, 'refreshDailyActionsForView helper should exist');
   assert.match(refreshHelper, /pendingApiImmediateActions = false;/);
   assert.ok(cardBuilder, 'buildActionCards helper should exist');
-  assert.match(cardBuilder, /disabled:\s*shouldBlockImmediateApiAction\(action\)/);
+  assert.match(cardBuilder, /disabled:\s*storyStepPending\s*\|\|\s*shouldBlockImmediateApiAction\(action\)/);
+});
+
+test('home story flow uses continuous director calls and public choices', () => {
+  const source = fs.readFileSync('frontend/src/app.js', 'utf8');
+  const clickHandler = source.match(/nodes\.activeViewContent\.addEventListener\('click', async \(event\) => \{([\s\S]*?)\n\}\);/)?.[1] ?? '';
+  const submitStoryStep = extractFunction(source, 'submitStoryStep');
+  const buildHomeActions = extractFunction(source, 'buildHomeActions');
+  const normalizeStoryChoices = extractFunction(source, 'normalizeStoryChoices');
+  const loadDailyActionsForGame = extractFunction(source, 'loadDailyActionsForGame');
+
+  assert.match(source, /let storyChoices = \[\];/);
+  assert.match(source, /let storyStepPending = false;/);
+  assert.match(clickHandler, /button\[data-story-action\]/);
+  assert.match(clickHandler, /submitStoryStep\(action\)/);
+  assert.match(submitStoryStep, /api\.continueStoryStream\(game,\s*\{\s*onStoryPreview:\s*updateStreamingNarration\s*\}\)/);
+  assert.match(submitStoryStep, /api\.chooseStoryStream\(game,\s*selectedChoice,\s*\{\s*onStoryPreview:\s*updateStreamingNarration\s*\}\)/);
+  assert.match(submitStoryStep, /storyChoices = normalizeStoryChoices\(result\.turnResult\?\.choices\)/);
+  assert.match(buildHomeActions, /title:\s*'下一步'/);
+  assert.match(buildHomeActions, /source:\s*'story-choice'/);
+  assert.match(buildHomeActions, /source:\s*'story-continue'/);
+  assert.match(normalizeStoryChoices, /id:\s*String\(choice\?\.id/);
+  assert.match(normalizeStoryChoices, /text:\s*String\(choice\?\.text/);
+  assert.doesNotMatch(normalizeStoryChoices, /effectHints|ruleResult|eventId/);
+  assert.match(loadDailyActionsForGame, /if \(shouldUseContinuousStory\(targetGame\)\) return \[\];/);
+  assert.doesNotMatch(source, /choiceId/);
 });
 
 test('daily action refresh is guarded by request, view, and game context', () => {

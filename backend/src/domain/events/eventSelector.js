@@ -8,6 +8,7 @@ const FEATURED_EVENT_PRIORITY_BOOSTS = {
     mist_lantern_path: 95
   }
 };
+const RECENT_EVENT_TURN_WINDOW = 2;
 const RISK_LABELS = {
   low: '低风险',
   medium: '中等风险',
@@ -19,12 +20,12 @@ export function selectEventActions({ game, viewId, now, sequenceStart = 0 }) {
     .map((event, index) => ({ event, index }))
     .filter(({ event }) => isEventEligible(event, game, viewId))
     .filter(({ event }) => !isEventOnCooldown(event, game))
+    .filter(({ event }) => !isEventRecentlyResolved(event, game))
     .sort((left, right) => compareEvents(left, right, viewId, game))
-    .map(({ event }) => event)
-    .slice(0, 6);
+    .map(({ event }) => event);
 
   const expiresAt = new Date(now.getTime() + 30 * 60 * 1000).toISOString();
-  const actions = eligible
+  const actions = pickDiverseEvents(eligible)
     .flatMap((event, eventIndex) => event.choices
       .filter((choice) => canAffordEffects(game, choice.success.effects))
       .map((choice, choiceIndex) => ({
@@ -33,6 +34,7 @@ export function selectEventActions({ game, viewId, now, sequenceStart = 0 }) {
       icon: event.category.slice(0, 1),
       command: choice.command,
       meta: `${event.title} / ${RISK_LABELS[choice.risk] ?? '未知风险'}`,
+      category: event.category,
       source: 'event',
       risk: choice.risk,
       eventId: event.id,
@@ -89,4 +91,39 @@ function scoreEvent(event, viewId, game) {
 function isEventOnCooldown(event, game) {
   const cooldownTurn = game.cooldowns?.[event.id];
   return typeof cooldownTurn === 'number' && cooldownTurn >= game.turn;
+}
+
+function isEventRecentlyResolved(event, game) {
+  const cooldownTurn = game.cooldowns?.[event.id];
+  if (typeof cooldownTurn !== 'number') return false;
+  return game.turn - cooldownTurn <= RECENT_EVENT_TURN_WINDOW;
+}
+
+function pickDiverseEvents(events) {
+  const selected = [];
+  const seen = new Set();
+  const categoryQueues = new Map();
+
+  for (const event of events) {
+    const queue = categoryQueues.get(event.category) ?? [];
+    queue.push(event);
+    categoryQueues.set(event.category, queue);
+  }
+
+  for (const queue of categoryQueues.values()) {
+    addSelectedEvent(selected, seen, queue[0]);
+  }
+
+  for (const event of events) {
+    addSelectedEvent(selected, seen, event);
+    if (selected.length >= 6) break;
+  }
+
+  return selected.slice(0, 6);
+}
+
+function addSelectedEvent(selected, seen, event) {
+  if (!event || seen.has(event.id)) return;
+  seen.add(event.id);
+  selected.push(event);
 }

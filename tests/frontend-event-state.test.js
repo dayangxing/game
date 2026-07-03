@@ -30,11 +30,12 @@ test('洞府 is the overview tab and starts as the fallback active view', () => 
 
   assert.match(html, /data-view="home"[^>]*>\s*洞府\s*<\/button>/);
   assert.match(html, /class="active"[^>]*data-view="home"|data-view="home"[^>]*class="active"/);
-  assert.match(html, /data-view="cultivation"[^>]*>\s*修炼\s*<\/button>/);
-  assert.match(html, /data-view="skills"[^>]*>\s*个人\s*<\/button>/);
-  assert.match(html, /data-view="realm"[^>]*>\s*秘境\s*<\/button>/);
+  assert.doesNotMatch(html, /data-view="cultivation"[^>]*>\s*修炼\s*<\/button>/);
+  assert.match(html, /data-view="skills"[^>]*>\s*命簿\s*<\/button>/);
+  assert.match(html, /data-view="realm"[^>]*>\s*天机录\s*<\/button>/);
   assert.match(html, /data-view="bag"[^>]*>\s*行囊\s*<\/button>/);
   assert.ok(hasHomeFallbackActiveView(source), 'activeViewId should fall back to home when no saved view exists');
+  assert.match(source, /visibleViewList\.some\(\(view\) => view\.id === viewId\) \? viewId : 'home'/);
 });
 
 test('洞府 overview does not render all inventory, all techniques, all foreshadows, or full timeline at once', () => {
@@ -63,7 +64,7 @@ test('only 洞府 renders action choices and places history before compact actio
   }
 });
 
-test('修炼 tab renders cultivation status and focus without action choices', () => {
+test('hidden cultivation view renders cultivation status and focus without action choices', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
   const renderCultivationView = extractNamedCallable(source, 'renderCultivationView');
   const focusPanel = extractCallablePartsOrNull(source, 'renderCultivationFocusPanel')?.source ?? '';
@@ -80,7 +81,7 @@ test('修炼 tab renders cultivation status and focus without action choices', (
   assert.doesNotMatch(cultivationSource, /breakthroughChance|breakthroughRate|successRate/);
 });
 
-test('个人 tab renders a detailed character sheet without bag duplicates or action choices', () => {
+test('命簿 tab renders a detailed character sheet without bag duplicates or action choices', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
   const renderSkillsView = extractNamedCallable(source, 'renderSkillsView');
   const personalPanel = extractCallablePartsOrNull(source, 'renderPersonalPanel')?.source ?? '';
@@ -139,22 +140,42 @@ test('行囊 tab renders treasures, inventory stores, and bag actions', () => {
   assert.match(renderBagView, /syncActiveViewNodes\(\)/);
 });
 
-test('秘境 tab renders clues, timeline, foreshadows, and realm actions', () => {
+test('天机录 tab renders story memory, context records, and no action choices', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
   const renderRealmView = extractNamedCallable(source, 'renderRealmView');
-  const cluePanel = extractCallablePartsOrNull(source, 'renderRealmCluePanel')?.source ?? '';
-  const timelinePanel = extractCallablePartsOrNull(source, 'renderTimelinePanel')?.source ?? '';
-  const foreshadowPanel = extractCallablePartsOrNull(source, 'renderForeshadowPanel')?.source ?? '';
-  const realmSource = `${renderRealmView}\n${cluePanel}\n${timelinePanel}\n${foreshadowPanel}`;
+  const archivePanel = extractCallablePartsOrNull(source, 'renderStoryArchivePanel')?.source ?? '';
+  const overviewSection = extractCallablePartsOrNull(source, 'renderArchiveOverviewSection')?.source ?? '';
+  const recentSection = extractCallablePartsOrNull(source, 'renderArchiveRecentTurnsSection')?.source ?? '';
+  const threadSection = extractCallablePartsOrNull(source, 'renderArchiveThreadSection')?.source ?? '';
+  const npcSection = extractCallablePartsOrNull(source, 'renderArchiveNpcMemorySection')?.source ?? '';
+  const worldSection = extractCallablePartsOrNull(source, 'renderArchiveWorldRecordSection')?.source ?? '';
+  const contextSection = extractCallablePartsOrNull(source, 'renderArchiveModelContextSection')?.source ?? '';
+  const realmSource = [
+    renderRealmView,
+    archivePanel,
+    overviewSection,
+    recentSection,
+    threadSection,
+    npcSection,
+    worldSection,
+    contextSection
+  ].join('\n');
 
   assert.doesNotMatch(renderRealmView, /renderHomeView\(\)/);
   assert.doesNotMatch(renderRealmView, /renderActionPanel\(/);
-  assert.match(realmSource, /秘境线索/);
-  assert.match(realmSource, /game\.timeline\.at\(-1\)|game\.timeline\.slice\(-1\)/);
-  assert.match(realmSource, /天机事件/);
-  assert.match(realmSource, /game\.timeline\.slice\(-6\)\.reverse\(\)/);
-  assert.match(realmSource, /长期伏笔/);
-  assert.match(realmSource, /game\.foreshadows/);
+  assert.match(renderRealmView, /renderStoryArchivePanel\(\)/);
+  assert.match(realmSource, /天机录/);
+  assert.match(realmSource, /本局总纲/);
+  assert.match(realmSource, /近期回合/);
+  assert.match(realmSource, /未解伏笔/);
+  assert.match(realmSource, /人物记忆/);
+  assert.match(realmSource, /世界记录/);
+  assert.match(realmSource, /模型上下文/);
+  assert.match(realmSource, /game\.storyMemory/);
+  assert.match(realmSource, /recentTurns/);
+  assert.match(realmSource, /openThreads/);
+  assert.match(realmSource, /characterNotes/);
+  assert.doesNotMatch(realmSource, /eventId|choiceId|act_|debug|schema/i);
   assert.match(renderRealmView, /syncActiveViewNodes\(\)/);
 });
 
@@ -227,6 +248,10 @@ test('frontend styles include dense center-stage status, collection, and history
   assert.match(css, /\.personal-panel\s*\{/);
   assert.match(css, /\.personal-sheet\s*\{/);
   assert.match(css, /\.personal-attribute-grid\s*\{/);
+  assert.match(css, /\.story-archive-panel\s*\{/);
+  assert.match(css, /\.archive-sheet\s*\{/);
+  assert.match(css, /\.archive-section\s*\{/);
+  assert.match(css, /\.archive-recent-list\s*\{/);
   assert.match(css, /\.action-card\s*\{/);
   assert.match(css, /\.log-card\.is-new\s*\{/);
   assert.match(css, /@keyframes history-card-refresh/);
@@ -280,7 +305,7 @@ test('visible frontend copy avoids api labels and debug parameters', () => {
   assert.doesNotMatch(source, /\/\s*\$\{action\.choiceId\}/);
 });
 
-test('sidebars are removed and character state moves to the 个人 tab', () => {
+test('sidebars are removed and character state moves to the 命簿 tab', () => {
   const html = fs.readFileSync('frontend/index.html', 'utf8');
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
   const render = extractFunction(source, 'render');

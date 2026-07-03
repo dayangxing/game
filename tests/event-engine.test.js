@@ -77,6 +77,7 @@ test('effect resolver applies stat, item, relation, flag and future event effect
   assert.ok(result.game.karma.karma > game.karma.karma);
   assert.equal(result.game.player.lifespan, game.player.lifespan - 1);
   assert.ok(result.entry.body.includes('赠丹'));
+  assert.equal(result.entry.npcLine, '');
   assert.equal(result.ruleResult.success, true);
   assert.equal(result.ruleResult.lifespanCost, 1);
 });
@@ -130,6 +131,50 @@ test('formal selector returns at least three deterministic event actions for eve
     assert.ok(actions.length >= 3, `${viewId} should expose at least three event actions`);
     assert.ok(actions.every((action) => action.source === 'event'));
   }
+});
+
+test('event selector rotates away recently resolved events beyond the current-turn cooldown', () => {
+  const game = {
+    ...formalGame(),
+    turn: 4,
+    cooldowns: {
+      sect_trial_notice: 2,
+      sect_elder_split: 3
+    }
+  };
+  const actions = selectEventActions({
+    game,
+    viewId: 'home',
+    now: new Date('2026-07-01T08:00:00.000Z')
+  });
+  const eventIds = actions.map((action) => action.eventId);
+
+  assert.equal(eventIds.includes('sect_trial_notice'), false);
+  assert.equal(eventIds.includes('sect_elder_split'), false);
+  assert.ok(eventIds.some((eventId) => eventId !== 'sect_trial_notice' && eventId !== 'sect_elder_split'));
+});
+
+test('event selector mixes categories instead of filling the day with one repeated lane', () => {
+  const game = {
+    ...formalGame(),
+    turn: 5,
+    flags: {
+      lifespan_mark: true
+    },
+    karma: {
+      ...formalGame().karma,
+      futureEventFlags: ['old_friend_returns', 'elder_private_warning']
+    }
+  };
+  const actions = selectEventActions({
+    game,
+    viewId: 'home',
+    now: new Date('2026-07-01T08:00:00.000Z')
+  });
+  const categories = new Set(actions.map((action) => action.category));
+
+  assert.ok(actions.length >= 3);
+  assert.ok(categories.size >= 3, `expected mixed categories, got ${[...categories].join(',')}`);
 });
 
 test('bag selector filters out crafting choices that cannot pay their material costs', () => {

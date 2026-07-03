@@ -130,6 +130,7 @@ test('failed breakthroughs cost health and lifespan and roll cultivation progres
   const result = resolveBreakthrough(base, new Date('2026-07-01T08:00:00.000Z'));
 
   assert.equal(result.ruleResult.success, false);
+  assert.equal(result.entry.npcLine, '');
   assert.equal(result.game.player.health, base.player.health - 18);
   assert.equal(result.game.player.lifespan, base.player.lifespan - 2);
   assert.equal(result.game.player.cultivationProgress, 60);

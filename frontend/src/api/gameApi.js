@@ -116,6 +116,59 @@ export function createGameApi(options = {}) {
       return withMode(advanceTurn(game, action.command), 'mock');
     },
 
+    async continueStoryStream(game, handlers = {}) {
+      if (shouldUseBackend(game, canUseBackend)) {
+        const data = await requestEventStream({
+          baseUrl,
+          fetchImpl,
+          path: '/api/v1/turns/stream',
+          method: 'POST',
+          body: {
+            type: 'continue',
+            clientTurn: game.turn
+          },
+          handlers
+        });
+        return withStoryResult(data, 'api');
+      }
+
+      const nextGame = withMode(advanceTurn(game, '继续推演命途'), 'mock');
+      return {
+        game: nextGame,
+        turnResult: {
+          mode: 'continue',
+          choices: []
+        }
+      };
+    },
+
+    async chooseStoryStream(game, choice, handlers = {}) {
+      if (shouldUseBackend(game, canUseBackend)) {
+        const data = await requestEventStream({
+          baseUrl,
+          fetchImpl,
+          path: '/api/v1/turns/stream',
+          method: 'POST',
+          body: {
+            type: 'choice',
+            choiceId: choice.id,
+            clientTurn: game.turn
+          },
+          handlers
+        });
+        return withStoryResult(data, 'api');
+      }
+
+      const nextGame = withMode(advanceTurn(game, choice.text ?? '顺势而行'), 'mock');
+      return {
+        game: nextGame,
+        turnResult: {
+          mode: 'continue',
+          choices: []
+        }
+      };
+    },
+
     async setMode(game, mode) {
       if (mode === 'api' && canUseBackend) {
         return withMode(await requestJson({ baseUrl, fetchImpl, path: '/api/v1/game/state' }), 'api', 'game');
@@ -218,6 +271,7 @@ async function requestEventStream({ baseUrl, fetchImpl, path, method = 'GET', bo
   const decoder = new TextDecoder();
   let buffer = '';
   let rawNarration = '';
+  let rawStory = '';
   let donePayload = null;
 
   while (true) {
@@ -237,6 +291,18 @@ async function requestEventStream({ baseUrl, fetchImpl, path, method = 'GET', bo
         handlers.onNarrationDelta?.(delta, rawNarration);
         const preview = extractJsonStringField(rawNarration, 'body');
         if (preview) handlers.onNarrationPreview?.(preview, rawNarration);
+      }
+
+      if (event.name === 'story_delta') {
+        const delta = String(event.data?.text ?? '');
+        rawStory += delta;
+        handlers.onStoryDelta?.(delta, rawStory);
+        const preview = extractJsonStringField(rawStory, 'scene');
+        if (preview) handlers.onStoryPreview?.(preview, rawStory);
+      }
+
+      if (event.name === 'choices_ready') {
+        handlers.onChoicesReady?.(normalizePublicChoices(event.data?.choices));
       }
 
       if (event.name === 'done') {
@@ -370,6 +436,25 @@ export class BackendApiError extends Error {
 function withMode(data, mode, key) {
   const game = key ? data[key] : data;
   return { ...game, mode };
+}
+
+function withStoryResult(data, mode) {
+  return {
+    ...data,
+    game: withMode(data.game, mode),
+    turnResult: {
+      ...(data.turnResult ?? {}),
+      choices: normalizePublicChoices(data.turnResult?.choices)
+    }
+  };
+}
+
+function normalizePublicChoices(choices = []) {
+  if (!Array.isArray(choices)) return [];
+  return choices.map((choice) => ({
+    id: String(choice?.id ?? ''),
+    text: String(choice?.text ?? '').trim()
+  })).filter((choice) => choice.id && choice.text);
 }
 
 function shouldUseBackend(game, canUseBackend) {

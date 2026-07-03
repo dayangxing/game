@@ -2,11 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-import { getView, viewList } from '../frontend/src/ui/views.js';
+import { getView, viewList, visibleViewList } from '../frontend/src/ui/views.js';
 
-test('top navigation exposes five playable game views', () => {
+test('top navigation exposes four visible game views', () => {
   assert.deepEqual(viewList.map((view) => view.id), ['home', 'cultivation', 'skills', 'realm', 'bag']);
-  assert.deepEqual(viewList.map((view) => view.label), ['洞府', '修炼', '个人', '秘境', '行囊']);
+  assert.deepEqual(visibleViewList.map((view) => view.id), ['home', 'skills', 'realm', 'bag']);
+  assert.deepEqual(visibleViewList.map((view) => view.label), ['洞府', '命簿', '天机录', '行囊']);
+  assert.equal(getView('cultivation').visible, false);
 });
 
 test('each view has a title, description, and cards', () => {
@@ -29,6 +31,14 @@ test('cultivation and realm views include playable commands', () => {
   assert.ok(realm.cards.some((card) => card.command.includes('秘境') || card.command.includes('后山')));
 });
 
+test('realm route is presented as a story context archive', () => {
+  const realm = getView('realm');
+
+  assert.equal(realm.label, '天机录');
+  assert.match(realm.title, /天机录/);
+  assert.match(realm.description, /剧情|上下文|摘要|伏笔/);
+});
+
 test('bag and personal views separate inventory collections from detailed character status', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
   const renderSkillsView = extractFunction(source, 'renderSkillsView');
@@ -40,7 +50,7 @@ test('bag and personal views separate inventory collections from detailed charac
   const renderCollectionCards = extractFunction(source, 'renderCollectionCards');
   const skillsView = getView('skills');
 
-  assert.equal(skillsView.label, '个人');
+  assert.equal(skillsView.label, '命簿');
   assert.match(skillsView.title, /个人面板/);
   assert.match(skillsView.description, /属性|境界|功法|牵绊/);
   assert.ok(renderSkillsView, 'renderSkillsView should exist');

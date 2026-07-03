@@ -1,3 +1,5 @@
+import { recordStoryMemoryTurn, withInitialStoryMemory } from '../../../src/storyMemory.js';
+
 const ACTIONS = {
   cultivate: ['修炼', '闭关', '突破', '吐纳', '稳固'],
   explore: ['探索', '前往', '秘境', '后山', '灵脉', '游历'],
@@ -15,7 +17,7 @@ const EVENT_POOL = [
 ];
 
 export function createGame(seed = Date.now()) {
-  return {
+  const game = {
     seed,
     turn: 0,
     mode: 'mock',
@@ -62,6 +64,8 @@ export function createGame(seed = Date.now()) {
     ],
     suggestions: ['闭关修炼三月，尝试突破', '找林师姐打听雾隐秘境', '前往后山探索灵脉']
   };
+
+  return withInitialStoryMemory(game);
 }
 
 export function advanceTurn(state, command) {
@@ -72,17 +76,24 @@ export function advanceTurn(state, command) {
   next.calendar = advanceCalendar(next.calendar);
   next.player = evolvePlayer(next.player, action);
 
-  const targetNpcName = cleanCommand.includes('长老') ? '玄衡长老' : '林师姐';
+  const targetNpcName = involvedNpcName(cleanCommand, action);
   next.npcs = next.npcs.map((npc) => evolveNpc(npc, action, cleanCommand, targetNpcName));
 
   const event = pickWorldEvent(next.seed, next.turn, action);
   next.worldEvents = [...next.worldEvents, { ...event, turn: next.turn }];
   next.timeline = [...next.timeline, { type: action, title: event.title, detail: `${formatDate(next.calendar)}：${event.detail}` }];
-  next.log = [...next.log, narrateTurn(next, cleanCommand || '静心片刻', action, event, targetNpcName)];
+  const entry = narrateTurn(next, cleanCommand || '静心片刻', action, event, targetNpcName);
+  next.log = [...next.log, entry];
   next.suggestions = nextSuggestions(action);
   next.foreshadows = updateForeshadows(next.foreshadows, action, event);
   next.seed = next.seed + 17 + next.turn;
-  return next;
+  return recordStoryMemoryTurn({
+    before: state,
+    after: next,
+    action: { title: entry.title, command: cleanCommand || '静心片刻' },
+    entry,
+    narration: entry
+  });
 }
 
 export function exportNovel(state) {
@@ -129,7 +140,7 @@ function evolvePlayer(player, action) {
 }
 
 function evolveNpc(npc, action, command, targetNpcName) {
-  if (npc.name !== targetNpcName && action !== 'social') return npc;
+  if (!targetNpcName || npc.name !== targetNpcName) return npc;
   return {
     ...npc,
     affinity: clamp(npc.affinity + (action === 'social' ? 6 : 2), 0, 100),
@@ -152,11 +163,26 @@ function narrateTurn(state, command, action, event, targetNpcName) {
     title: titles[action],
     command,
     body: `${bodies[action]} ${event.detail}`,
-    npcLine: targetNpcName === '玄衡长老'
-      ? '玄衡长老拂袖道：“根骨只是舟，心性才是渡河之人。”'
-      : '林师姐低声道：“雾隐秘境若真开了，见到青铜铃便退三步。”',
+    npcLine: npcLineFor(targetNpcName),
     worldEvent: event.title
   };
+}
+
+function npcLineFor(targetNpcName) {
+  if (targetNpcName === '玄衡长老') {
+    return '玄衡长老拂袖道：“根骨只是舟，心性才是渡河之人。”';
+  }
+  if (targetNpcName === '林师姐') {
+    return '林师姐低声道：“雾隐秘境若真开了，见到青铜铃便退三步。”';
+  }
+  return '';
+}
+
+function involvedNpcName(command, action) {
+  if (command.includes('长老') || command.includes('玄衡')) return '玄衡长老';
+  if (command.includes('林师姐')) return '林师姐';
+  if (action === 'social') return '林师姐';
+  return '';
 }
 
 function nextSuggestions(action) {

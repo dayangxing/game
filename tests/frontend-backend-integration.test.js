@@ -88,6 +88,71 @@ test('frontend api client receives streamed narration before the final game resu
   assert.match(next.log.at(-1).title, /前端流式续写/);
 });
 
+test('frontend api client continues story and submits a generated director choice', async () => {
+  const outputs = [
+    {
+      scene: '雾隐钟声贴着洞府窗棂滑过，顾清河意识到这不是寻常夜风。',
+      mode: 'choice',
+      npcLines: [],
+      effectHints: [],
+      choices: [
+        {
+          id: 'follow_mist',
+          text: '循着钟声去后山',
+          tone: 'explore',
+          effectHints: [{ target: 'lifespan', direction: 'down', intensity: 'small' }]
+        },
+        {
+          id: 'stay',
+          text: '暂且守住洞府',
+          tone: 'cautious',
+          effectHints: [{ target: 'mood', direction: 'up', intensity: 'tiny' }]
+        }
+      ],
+      memoryHints: ['雾隐钟声贴近洞府。']
+    },
+    {
+      scene: '顾清河踏入后山雾线，草叶上的露光显出残缺符纹。',
+      mode: 'continue',
+      npcLines: [],
+      effectHints: [{ target: 'foreshadow', direction: 'advance', intensity: 'small', topic: '雾隐秘境' }],
+      choices: [],
+      memoryHints: ['后山符纹与雾隐秘境相连。']
+    }
+  ];
+  const backend = createBackendApp({
+    seed: 45,
+    now: () => new Date('2026-06-29T08:00:00.000Z'),
+    llm: {
+      async generateStoryDirector() {
+        return outputs.shift();
+      }
+    }
+  });
+  backend.getState().game.onboarding = completedOnboardingState();
+  const api = createGameApi({
+    baseUrl: 'http://backend.test',
+    preferredMode: 'api',
+    fetchImpl: (input, init) => backend.handle(new Request(input, init))
+  });
+
+  const game = await api.createGame();
+  const first = await api.continueStoryStream(game);
+  const [choice] = first.turnResult.choices;
+  const second = await api.chooseStoryStream(first.game, choice);
+
+  assert.equal(first.game.turn, 1);
+  assert.equal(first.turnResult.mode, 'choice');
+  assert.deepEqual(choice, {
+    id: choice.id,
+    text: '循着钟声去后山'
+  });
+  assert.equal('effectHints' in choice, false);
+  assert.equal(second.game.turn, 2);
+  assert.match(second.game.log.at(-1).body, /后山雾线/);
+  assert.ok(second.game.karma.futureEventFlags.includes('director_mist_thread'));
+});
+
 test('frontend api client rejects provisional immediate actions while backend refresh is pending', async () => {
   const backend = createBackendApp({
     seed: 43,

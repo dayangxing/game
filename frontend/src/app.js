@@ -14,7 +14,7 @@ import {
   remainingAllocationPoints,
   updateAllocation
 } from './ui/characterCreation.js';
-import { getView, viewList } from './ui/views.js';
+import { getView, visibleViewList } from './ui/views.js?v=20260703';
 
 const STORAGE_KEY = 'wendao-fusheng-frontend-save-v1';
 const MODE_KEY = 'wendao-fusheng-mode-v1';
@@ -35,6 +35,8 @@ let startupNotice = '';
 let actionRefreshSequence = 0;
 let pendingApiImmediateActions = false;
 let streamingNarration = null;
+let storyChoices = [];
+let storyStepPending = false;
 let highlightedHistoryEntryId = null;
 let suppressNextHashChange = false;
 let pendingCharacterSeed = Number(localStorage.getItem('wendao-fusheng-character-seed') ?? Date.now());
@@ -109,6 +111,14 @@ if (startupNotice) showToast(startupNotice);
 if (!startupNotice && shouldAutoOpenGuide(localStorage)) openGuide();
 
 nodes.activeViewContent.addEventListener('click', async (event) => {
+  const storyButton = event.target.closest('button[data-story-action]');
+  if (storyButton) {
+    const action = buildHomeActions().find((item) => item.id === storyButton.dataset.storyAction);
+    if (!action) return;
+    await submitStoryStep(action);
+    return;
+  }
+
   const button = event.target.closest('button[data-command]');
   if (!button) return;
   const action = dailyActions.find((item) => item.id === button.dataset.actionId);
@@ -167,6 +177,7 @@ nodes.resetBtn.addEventListener('click', async () => {
     pendingApiImmediateActions = false;
     game = nextGame;
     dailyActions = nextActions;
+    storyChoices = [];
     resetPendingCharacterPreview();
     saveGame();
     render();
@@ -177,6 +188,13 @@ nodes.resetBtn.addEventListener('click', async () => {
 });
 
 nodes.sampleBtn.addEventListener('click', async () => {
+  if (shouldUseContinuousStory(game)) {
+    const actions = buildHomeActions();
+    const action = actions[(game.turn + game.seed) % actions.length];
+    await submitStoryStep(action);
+    return;
+  }
+
   if (!dailyActions.length && game.mode === 'api') {
     showToast('行动尚未入册，请切换页签重试');
     return;
@@ -239,6 +257,7 @@ nodes.startFormalGameBtn.addEventListener('click', async () => {
     rotateHistorySummaryScope();
     game = hydrateHistorySummaries(game);
     dailyActions = await loadDailyActionsForGame(game, getView(activeViewId));
+    storyChoices = [];
     actionRefreshSequence += 1;
     pendingApiImmediateActions = false;
     saveGame();
@@ -274,6 +293,48 @@ async function submitDailyAction(action) {
   }
 }
 
+async function submitStoryStep(action) {
+  if (!shouldUseContinuousStory(game)) {
+    await submitDailyAction(action);
+    return;
+  }
+  if (storyStepPending) {
+    showToast('命途正在续写，请稍候');
+    return;
+  }
+
+  const selectedChoice = action.source === 'story-choice'
+    ? storyChoices.find((choice) => choice.id === action.id)
+    : null;
+  storyStepPending = true;
+  beginStreamingNarration({
+    title: selectedChoice ? '命途抉择' : '下一步',
+    command: selectedChoice?.text ?? '继续'
+  });
+
+  try {
+    const previousGame = game;
+    const result = selectedChoice
+      ? await api.chooseStoryStream(game, selectedChoice, { onStoryPreview: updateStreamingNarration })
+      : await api.continueStoryStream(game, { onStoryPreview: updateStreamingNarration });
+    game = hydrateHistorySummaries(result.game);
+    game = enrichGameHistory(game, previousGame);
+    storyChoices = normalizeStoryChoices(result.turnResult?.choices);
+    markHistoryRefreshed(game);
+    persistHistorySummaryCache(game);
+    saveGame();
+    clearStreamingNarration();
+    storyStepPending = false;
+    render();
+    nodes.logList?.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch (error) {
+    storyStepPending = false;
+    clearStreamingNarration();
+    renderStory();
+    handleApiError(error);
+  }
+}
+
 async function setMode(mode) {
   try {
     const modeGame = await api.setMode(game, mode);
@@ -284,6 +345,7 @@ async function setMode(mode) {
     pendingApiImmediateActions = false;
     game = nextGame;
     dailyActions = nextActions;
+    storyChoices = [];
     if (game.character?.attributes) {
       pendingAttributes = { ...game.character.attributes };
     }
@@ -380,7 +442,7 @@ function renderTabs() {
   nodes.viewTitle.textContent = view.title;
   nodes.viewDescription.textContent = view.description;
 
-  nodes.topTabs.innerHTML = viewList.map((item) => `
+  nodes.topTabs.innerHTML = visibleViewList.map((item) => `
     <button class="${item.id === view.id ? 'active' : ''}" type="button" data-view="${item.id}">${item.label}</button>
   `).join('');
 }
@@ -404,7 +466,7 @@ function readInitialActiveViewId() {
 }
 
 function resolveViewId(viewId) {
-  return viewList.some((view) => view.id === viewId) ? viewId : 'home';
+  return visibleViewList.some((view) => view.id === viewId) ? viewId : 'home';
 }
 
 function setActiveView(viewId, { updateHash = true } = {}) {
@@ -541,9 +603,7 @@ function renderSkillsView() {
 
 function renderRealmView() {
   nodes.activeViewContent.innerHTML = [
-    renderRealmCluePanel(),
-    renderTimelinePanel(),
-    renderForeshadowPanel()
+    renderStoryArchivePanel()
   ].join('');
 
   syncActiveViewNodes();
@@ -891,55 +951,283 @@ function renderInventoryCollectionPanel() {
   });
 }
 
-function renderRealmCluePanel() {
-  const latestEvent = game.timeline.at(-1)?.detail ?? '山门今日平静无波。';
-  const foreshadowSummary = (game.foreshadows ?? []).slice(-2).join(' ') || '尚无新的征兆。';
-  return renderPanel({
-    className: 'action-note realm-clues',
-    title: '秘境线索',
-    meta: `${game.foreshadows?.length ?? 0} 条伏笔`,
-    body: [
-      `<article class="focus-card"><strong>最新异动</strong><p>${latestEvent}</p></article>`,
-      `<article class="focus-card"><strong>未明征兆</strong><p>${foreshadowSummary}</p></article>`
-    ].join('')
-  });
+function renderStoryArchivePanel() {
+  const memory = getStoryMemory(game.storyMemory);
+  return `
+    <section class="paper-card story-archive-panel">
+      <div class="archive-sheet">
+        <header class="archive-header">
+          <div>
+            <span>本局档案</span>
+            <h3>天机录</h3>
+          </div>
+          <strong>第 ${memory.lastUpdatedTurn} 回合</strong>
+        </header>
+        <div class="archive-grid">
+          ${renderArchiveOverviewSection(memory)}
+          ${renderArchiveRecentTurnsSection(memory)}
+          ${renderArchiveThreadSection(memory)}
+          ${renderArchiveNpcMemorySection(memory)}
+          ${renderArchiveWorldRecordSection()}
+          ${renderArchiveModelContextSection(memory)}
+        </div>
+      </div>
+    </section>
+  `;
 }
 
-function renderTimelinePanel() {
-  const events = game.timeline.slice(-6).reverse();
-  return renderPanel({
-    className: 'story-section timeline-section',
-    title: '天机事件',
-    meta: '近六件',
-    body: events.length
-      ? `
-        <div class="timeline-list">
-          ${events.map((item) => `
-            <article class="timeline-item">
-              <i></i>
-              <div><strong>${item.title}</strong><p>${item.detail}</p></div>
-            </article>
-          `).join('')}
-        </div>
-      `
-      : '<div class="empty-collection">暂未记下新的天机事件。</div>'
-  });
+function renderArchiveOverviewSection(memory) {
+  return `
+    <section class="archive-section archive-overview-section">
+      <div class="personal-section-title">
+        <h4>本局总纲</h4>
+        <span>剧情摘要</span>
+      </div>
+      <p>${memory.longSummary}</p>
+    </section>
+  `;
 }
 
-function renderForeshadowPanel() {
-  const foreshadows = game.foreshadows ?? [];
-  return renderPanel({
-    className: 'story-section foreshadow-section',
-    title: '长期伏笔',
-    meta: `${foreshadows.length} 条`,
-    body: foreshadows.length
-      ? `
-        <div class="foreshadow-list">
-          ${foreshadows.map((item) => `<article>${item}</article>`).join('')}
-        </div>
-      `
-      : '<div class="empty-collection">命簿尚未浮现新的远兆。</div>'
-  });
+function renderArchiveRecentTurnsSection(memory) {
+  const turns = memory.recentTurns.slice(-8).reverse();
+  return `
+    <section class="archive-section archive-recent-section">
+      <div class="personal-section-title">
+        <h4>近期回合</h4>
+        <span>${turns.length} 条</span>
+      </div>
+      <div class="archive-recent-list">
+        ${turns.length ? turns.map((entry) => `
+          <article>
+            <span>第 ${entry.turn} 回合</span>
+            <strong>${entry.title}</strong>
+            <p>${entry.action}</p>
+            <em>${formatArchiveOutcome(entry)}</em>
+          </article>
+        `).join('') : '<div class="empty-collection">尚无新的回合记录。</div>'}
+      </div>
+    </section>
+  `;
+}
+
+function renderArchiveThreadSection(memory) {
+  const threads = memory.openThreads.length ? memory.openThreads : buildThreadsFromForeshadows();
+  return `
+    <section class="archive-section archive-thread-section">
+      <div class="personal-section-title">
+        <h4>未解伏笔</h4>
+        <span>${threads.length} 条</span>
+      </div>
+      <div class="archive-thread-list">
+        ${threads.map((thread) => `
+          <article>
+            <b>${thread.status}</b>
+            <strong>${thread.title}</strong>
+            <p>${thread.detail}</p>
+          </article>
+        `).join('')}
+      </div>
+    </section>
+  `;
+}
+
+function renderArchiveNpcMemorySection(memory) {
+  const notes = memory.characterNotes.length ? memory.characterNotes : buildNpcMemoryNotes();
+  return `
+    <section class="archive-section archive-npc-section">
+      <div class="personal-section-title">
+        <h4>人物记忆</h4>
+        <span>${notes.length} 人</span>
+      </div>
+      <div class="archive-npc-list">
+        ${notes.map((note) => `
+          <article>
+            <div>
+              <strong>${note.name}</strong>
+              <span>${note.role} · 好感 ${note.affinity}</span>
+            </div>
+            <p>${note.memories.slice(-2).join('；') || note.tone}</p>
+          </article>
+        `).join('')}
+      </div>
+    </section>
+  `;
+}
+
+function renderArchiveWorldRecordSection() {
+  const records = [
+    ...(game.worldEvents ?? []).map((item) => ({
+      title: item.title,
+      detail: item.detail,
+      tag: `第 ${item.turn ?? 0} 回合`
+    })),
+    ...(game.timeline ?? []).slice(-6).map((item) => ({
+      title: item.title,
+      detail: item.detail,
+      tag: item.type ?? '天机'
+    }))
+  ].slice(-8).reverse();
+
+  return `
+    <section class="archive-section archive-world-section">
+      <div class="personal-section-title">
+        <h4>世界记录</h4>
+        <span>${records.length} 条</span>
+      </div>
+      <div class="archive-world-list">
+        ${records.length ? records.map((item) => `
+          <article>
+            <span>${item.tag}</span>
+            <strong>${item.title}</strong>
+            <p>${item.detail}</p>
+          </article>
+        `).join('') : '<div class="empty-collection">天机尚未落笔。</div>'}
+      </div>
+    </section>
+  `;
+}
+
+function renderArchiveModelContextSection(memory) {
+  const preview = buildModelContextPreview(memory);
+  return `
+    <section class="archive-section archive-context-section">
+      <div class="personal-section-title">
+        <h4>模型上下文</h4>
+        <span>续写依据</span>
+      </div>
+      <div class="archive-context-list">
+        ${preview.map((item) => `
+          <article>
+            <strong>${item.label}</strong>
+            <p>${item.value}</p>
+          </article>
+        `).join('')}
+      </div>
+    </section>
+  `;
+}
+
+function getStoryMemory(sourceMemory = game.storyMemory) {
+  const memory = sourceMemory ?? {};
+  return {
+    longSummary: memory.longSummary || buildFallbackStorySummary(),
+    recentTurns: Array.isArray(memory.recentTurns) && memory.recentTurns.length
+      ? memory.recentTurns.map(pickArchiveTurn)
+      : buildRecentTurnsFromLog(),
+    openThreads: Array.isArray(memory.openThreads) && memory.openThreads.length
+      ? memory.openThreads.map(pickArchiveThread)
+      : buildThreadsFromForeshadows(),
+    resolvedThreads: Array.isArray(memory.resolvedThreads) ? memory.resolvedThreads.map(pickArchiveThread) : [],
+    characterNotes: Array.isArray(memory.characterNotes) && memory.characterNotes.length
+      ? memory.characterNotes.map(pickArchiveNpc)
+      : buildNpcMemoryNotes(),
+    lastUpdatedTurn: Number.isFinite(memory.lastUpdatedTurn) ? memory.lastUpdatedTurn : game.turn
+  };
+}
+
+function pickArchiveTurn(entry) {
+  return {
+    turn: Number.isFinite(entry.turn) ? entry.turn : 0,
+    title: entry.title || '无题回合',
+    action: entry.action || '静观其变',
+    outcome: entry.outcome || '',
+    npcLine: entry.npcLine || '',
+    worldEvent: entry.worldEvent || '',
+    statDelta: entry.statDelta ?? {}
+  };
+}
+
+function pickArchiveThread(thread) {
+  return {
+    title: thread.title || '未明天机',
+    detail: thread.detail || '',
+    status: thread.status || '未解'
+  };
+}
+
+function pickArchiveNpc(note) {
+  return {
+    name: note.name || '无名道友',
+    role: note.role || '道友',
+    affinity: Number.isFinite(note.affinity) ? note.affinity : 0,
+    tone: note.tone || '态度未明',
+    memories: Array.isArray(note.memories) ? note.memories.slice(-4) : []
+  };
+}
+
+function buildFallbackStorySummary() {
+  const opening = game.log?.[0]?.body ?? '青云宗山门初醒，求道之路刚刚铺开。';
+  return `${opening} 雾隐秘境、雷木双灵根与飞升传闻仍在暗处牵连。`;
+}
+
+function buildRecentTurnsFromLog() {
+  return (game.log ?? []).slice(-8).map((entry, index) => ({
+    turn: entry.id === 'opening' ? 0 : Number(entry.id?.match(/\d+/)?.[0] ?? index),
+    title: entry.title,
+    action: entry.command,
+    outcome: entry.body,
+    npcLine: entry.npcLine,
+    worldEvent: entry.worldEvent,
+    statDelta: entry.effects ?? {}
+  }));
+}
+
+function buildThreadsFromForeshadows() {
+  const threads = (game.foreshadows ?? []).map((detail) => ({
+    title: detail.includes('雾隐秘境') ? '雾隐秘境疑云' : detail.includes('雷木') ? '雷木双息异兆' : '未明天机',
+    detail,
+    status: '未解'
+  }));
+
+  return threads.length ? threads : [{ title: '飞升骗局伏笔', detail: '飞升真相仍被宗门旧闻遮蔽。', status: '未解' }];
+}
+
+function buildNpcMemoryNotes() {
+  return (game.npcs ?? []).map((npc) => ({
+    name: npc.name,
+    role: npc.role,
+    affinity: npc.affinity,
+    tone: npc.tone,
+    memories: npc.memories ?? []
+  }));
+}
+
+function buildModelContextPreview(memory) {
+  return [
+    { label: '剧情摘要', value: memory.longSummary },
+    { label: '最近行动', value: memory.recentTurns.at(-1)?.action ?? '尚未行动' },
+    { label: '未解伏笔', value: memory.openThreads.slice(0, 3).map((thread) => thread.title).join('、') || '暂无' },
+    { label: '人物牵连', value: memory.characterNotes.slice(0, 3).map((note) => `${note.name}(${note.affinity})`).join('、') || '暂无' }
+  ];
+}
+
+function formatArchiveOutcome(entry) {
+  const pieces = [
+    entry.outcome,
+    entry.npcLine ? `人物：${entry.npcLine}` : '',
+    entry.worldEvent ? `天机：${entry.worldEvent}` : '',
+    formatArchiveStatDelta(entry.statDelta)
+  ].filter(Boolean);
+
+  return pieces.join(' ');
+}
+
+function formatArchiveStatDelta(statDelta = {}) {
+  const labels = {
+    qi: '灵气',
+    mood: '心境',
+    cultivationProgress: '破境',
+    spiritStones: '灵石',
+    sectRelation: '声望',
+    health: '气血',
+    lifespan: '寿元',
+    realm: '境界'
+  };
+  const items = Object.entries(statDelta)
+    .filter(([key, value]) => labels[key] && value !== 0 && value !== '')
+    .map(([key, value]) => `${labels[key]}${typeof value === 'number' && value > 0 ? '+' : ''}${value}`);
+
+  return items.length ? `变化：${items.join('、')}` : '';
 }
 
 function syncActiveViewNodes() {
@@ -972,14 +1260,16 @@ function renderSectionTitle(title, meta) {
 }
 
 function renderActionPanel({ title = '今日修行', meta = '每日行动' } = {}) {
+  const actions = buildHomeActions();
+  const storyMode = shouldUseContinuousStory(game);
   return renderPanel({
     className: 'action-section',
-    title,
-    meta,
+    title: storyMode ? '命途推进' : title,
+    meta: storyMode ? (storyChoices.length ? `${storyChoices.length} 个抉择` : '下一步') : meta,
     body: `
       <div class="action-grid" id="actionGrid">
-        ${buildActionCards(dailyActions).map((card) => `
-          <button class="action-card ${card.kind}" type="button" data-action-id="${escapeAttribute(card.id)}" data-command="${escapeAttribute(card.command)}"${card.disabled ? ' disabled aria-disabled="true"' : ''}>
+        ${buildActionCards(actions).map((card) => `
+          <button class="action-card ${card.kind}" type="button" ${card.storyAction ? `data-story-action="${escapeAttribute(card.id)}"` : `data-action-id="${escapeAttribute(card.id)}" data-command="${escapeAttribute(card.command)}"`}${card.disabled ? ' disabled aria-disabled="true"' : ''}>
             <b>${card.icon}</b>
             <span>${card.title}</span>
             <strong>${card.command}</strong>
@@ -1207,6 +1497,7 @@ async function loadGame() {
 }
 
 async function loadDailyActionsForGame(targetGame, targetView) {
+  if (shouldUseContinuousStory(targetGame)) return [];
   return api.getDailyActions(targetGame, targetView);
 }
 
@@ -1231,6 +1522,13 @@ async function refreshDailyActionsForView(viewId) {
 }
 
 function showImmediateActionsForView(viewId) {
+  if (shouldUseContinuousStory(game)) {
+    pendingApiImmediateActions = false;
+    dailyActions = [];
+    render();
+    return;
+  }
+
   pendingApiImmediateActions = game.mode === 'api';
   dailyActions = createImmediateViewActions(game, getView(viewId));
   render();
@@ -1318,8 +1616,46 @@ function buildActionCards(actions) {
     icon: displayActionIcon(action),
     meta: formatActionMeta(action),
     kind: kindForCommand(action.command),
-    disabled: shouldBlockImmediateApiAction(action)
+    storyAction: action.source === 'story-continue' || action.source === 'story-choice',
+    disabled: storyStepPending || shouldBlockImmediateApiAction(action)
   })).slice(0, 6);
+}
+
+function buildHomeActions() {
+  if (!shouldUseContinuousStory(game)) return dailyActions;
+
+  if (storyChoices.length) {
+    return storyChoices.map((choice, index) => ({
+      id: choice.id,
+      title: `抉择 ${index + 1}`,
+      icon: '择',
+      command: choice.text,
+      meta: '剧情分支',
+      source: 'story-choice'
+    }));
+  }
+
+  return [{
+    id: 'story-continue',
+    title: '下一步',
+    icon: '续',
+    command: storyStepPending ? '命途正在续写' : '让命途继续向前推演',
+    meta: '连续剧情',
+    source: 'story-continue'
+  }];
+}
+
+function normalizeStoryChoices(choices = []) {
+  if (!Array.isArray(choices)) return [];
+  return choices.map((choice) => ({
+    id: String(choice?.id ?? ''),
+    text: String(choice?.text ?? '').trim()
+  })).filter((choice) => choice.id && choice.text);
+}
+
+function shouldUseContinuousStory(targetGame = game) {
+  if (targetGame.onboarding && !targetGame.onboarding.completed) return false;
+  return !shouldShowCharacterCreation(targetGame);
 }
 
 function formatActionMeta(action) {

@@ -123,9 +123,7 @@ export function resolveBreakthrough(game, now) {
     title,
     command: '尝试突破',
     body,
-    npcLine: success
-      ? '玄衡长老微微颔首：“既已破境，更要守住心火。”'
-      : '玄衡长老沉声道：“先稳住命火，再谈下一次冲关。”',
+    npcLine: '',
     worldEvent: title
   };
 
