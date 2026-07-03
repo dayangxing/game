@@ -62,7 +62,10 @@ test('at 100 progress the breakthrough preview includes target realm chance and 
       health: 18,
       lifespan: 1,
       progressLoss: 40
-    }
+    },
+    expectedTimeLabel: '半年',
+    successLongevity: 2,
+    successMaxLifespan: 1
   });
 });
 
@@ -132,6 +135,37 @@ test('failed breakthroughs cost health and lifespan and roll cultivation progres
   assert.equal(result.ruleResult.success, false);
   assert.equal(result.entry.npcLine, '');
   assert.equal(result.game.player.health, base.player.health - 18);
-  assert.equal(result.game.player.lifespan, base.player.lifespan - 2);
+  assert.equal(result.game.player.lifespan, base.player.lifespan - 3);
   assert.equal(result.game.player.cultivationProgress, 60);
+});
+
+test('successful breakthroughs spend time and restore lifespan', () => {
+  const baseGame = createFormalGame({ seed: 52, realm: '炼气九层' });
+  const base = {
+    ...baseGame,
+    time: { elapsedMonths: 24 },
+    player: {
+      ...baseGame.player,
+      realm: '炼气九层',
+      lifespan: 40,
+      maxLifespan: 100,
+      cultivationProgress: 100
+    }
+  };
+  const result = resolveBreakthrough(base, new Date('2026-07-01T08:00:00.000Z'));
+
+  assert.equal(result.ruleResult.success, true);
+  assert.equal(result.game.player.realm, '筑基初期');
+  assert.equal(result.game.player.maxLifespan, 140);
+  assert.equal(result.game.player.lifespan > 40, true);
+  assert.equal(result.ruleResult.timeResult.label, '半年');
+  assert.equal(result.ruleResult.timeResult.maxLifespanDelta, 40);
+});
+
+test('breakthrough preview includes expected time and success lifespan rewards', () => {
+  const preview = calculateBreakthroughChance(createFormalGame({ realm: '炼气九层' }));
+
+  assert.equal(preview.expectedTimeLabel, '半年');
+  assert.equal(preview.successLongevity, 25);
+  assert.equal(preview.successMaxLifespan, 40);
 });

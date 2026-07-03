@@ -1,10 +1,9 @@
-const REALM_COSTS = {
-  炼气: 1,
-  筑基: 2,
-  金丹: 4,
-  元婴: 8,
-  化神: 12
-};
+import { calculateBreakthroughLongevityReward } from './time/longevity.js';
+import { calculateActionTimeCost } from './time/timeCost.js';
+import { applyTimePressure } from './time/timePressure.js';
+import { calculateLifespanCost, getRealmTier } from './realmRules.js';
+
+export { calculateLifespanCost, getRealmTier };
 
 const BREAKTHROUGH_BASE_CHANCE = {
   炼气: 55,
@@ -43,19 +42,6 @@ const REALM_ADVANCEMENT = {
   '元婴后期': '化神初期'
 };
 
-export function getRealmTier(realm = '') {
-  return Object.keys(REALM_COSTS).find((tier) => realm.includes(tier)) ?? '炼气';
-}
-
-export function calculateLifespanCost(game) {
-  const tier = getRealmTier(game.player?.realm);
-  const base = REALM_COSTS[tier];
-  const lifeSeed = game.character?.attributes?.lifeSeed ?? 1;
-  const reduction = Math.floor(lifeSeed / 4) + (game.derivedBonuses?.lifespanCostReduction ?? 0);
-
-  return Math.max(1, base - reduction);
-}
-
 export function applyActionCost(game) {
   const cost = calculateLifespanCost(game);
 
@@ -79,6 +65,7 @@ export function calculateBreakthroughChance(game) {
   const attributes = game.character?.attributes ?? {};
   const bonuses = game.derivedBonuses ?? {};
   const base = realmBaseChance(game.player?.realm);
+  const targetRealm = nextRealm(game.player?.realm);
   const attributeBonus = (attributes.comprehension ?? 0) * 2
     + (attributes.rootBone ?? 0)
     + (attributes.willpower ?? 0)
@@ -87,11 +74,20 @@ export function calculateBreakthroughChance(game) {
     + Math.floor((game.player?.qi ?? 0) / 25);
   const penalty = breakthroughPenalty(game);
   const chance = clamp(base + attributeBonus + stateBonus + (bonuses.breakthroughChance ?? 0) - penalty, 5, 95);
+  const expectedTime = calculateActionTimeCost({ game, category: 'breakthrough', command: '尝试突破' });
+  const successReward = calculateBreakthroughLongevityReward({
+    fromRealm: game.player?.realm,
+    targetRealm,
+    success: true
+  });
 
   return {
-    targetRealm: nextRealm(game.player?.realm),
+    targetRealm,
     chance,
-    failureCost: describeFailureCost(game)
+    failureCost: describeFailureCost(game),
+    expectedTimeLabel: expectedTime.label,
+    successLongevity: successReward.longevityGain,
+    successMaxLifespan: successReward.maxLifespanDelta
   };
 }
 
@@ -101,21 +97,35 @@ export function resolveBreakthrough(game, now) {
   }
 
   const preview = calculateBreakthroughChance(game);
-  const afterActionCost = applyActionCost(game);
   const roll = breakthroughRoll(game);
   const success = roll < preview.chance;
-  const player = success
+  const fromRealm = game.player?.realm;
+  const playerAfterBreakthrough = success
     ? {
-      ...afterActionCost.player,
+      ...game.player,
       realm: preview.targetRealm,
       cultivationProgress: 0
     }
-    : applyBreakthroughFailure(afterActionCost.player, preview.failureCost);
-  const lastActionCost = success
-    ? afterActionCost.lastActionCost
-    : {
-      lifespan: (afterActionCost.lastActionCost?.lifespan ?? 0) + preview.failureCost.lifespan
-    };
+    : applyBreakthroughFailure(game.player, preview.failureCost);
+  const pressure = applyTimePressure({
+    game: { ...game, player: playerAfterBreakthrough },
+    timeGame: game,
+    action: { title: '尝试突破', command: '尝试突破', source: 'breakthrough' },
+    command: '尝试突破',
+    category: 'breakthrough',
+    source: 'breakthrough',
+    extraLifespanDamage: success ? 0 : preview.failureCost.lifespan,
+    breakthrough: {
+      fromRealm,
+      targetRealm: preview.targetRealm,
+      success
+    }
+  });
+  const lastActionCost = {
+    lifespan: Math.max(0, -(pressure.timeResult?.netLifespanDelta ?? 0)),
+    time: pressure.timeResult?.deltaMonths ?? 0,
+    timeLabel: pressure.timeResult?.label ?? ''
+  };
   const turn = game.turn + 1;
   const title = success ? '突破成功' : '突破受挫';
   const body = success
@@ -132,15 +142,14 @@ export function resolveBreakthrough(game, now) {
 
   return {
     game: {
-      ...afterActionCost,
-      player,
+      ...pressure.game,
       turn,
       version: turn,
       lastActionCost,
-      log: [...afterActionCost.log, entry],
-      timeline: [...afterActionCost.timeline, { type: 'cultivation', title, detail: body }],
-      worldEvents: [...afterActionCost.worldEvents, { title, detail: body, turn }],
-      cooldowns: { ...afterActionCost.cooldowns, breakthrough_attempt: turn }
+      log: [...pressure.game.log, entry],
+      timeline: [...pressure.game.timeline, { type: 'cultivation', title, detail: body }],
+      worldEvents: [...pressure.game.worldEvents, { title, detail: body, turn }],
+      cooldowns: { ...pressure.game.cooldowns, breakthrough_attempt: turn }
     },
     entry,
     outcome: {
@@ -155,7 +164,8 @@ export function resolveBreakthrough(game, now) {
       chance: preview.chance,
       roll,
       targetRealm: preview.targetRealm,
-      lifespanCost: lastActionCost.lifespan
+      lifespanCost: lastActionCost.lifespan,
+      timeResult: pressure.timeResult
     }
   };
 }
@@ -192,12 +202,10 @@ function breakthroughRoll(game) {
 
 function applyBreakthroughFailure(player, failureCost) {
   const maxHealth = player?.maxHealth ?? player?.health ?? 0;
-  const maxLifespan = player?.maxLifespan ?? player?.lifespan ?? 0;
 
   return {
     ...player,
     health: clamp((player?.health ?? maxHealth) - failureCost.health, 0, maxHealth),
-    lifespan: clamp((player?.lifespan ?? maxLifespan) - failureCost.lifespan, 0, maxLifespan),
     cultivationProgress: clamp((player?.cultivationProgress ?? 0) - failureCost.progressLoss, 0, 100)
   };
 }

@@ -1,5 +1,5 @@
 import { formatDurationLabel } from './calendar.js';
-import { getRealmTier } from '../progression.js';
+import { getRealmTier } from '../realmRules.js';
 
 export const ACTION_TIME_CATEGORIES = ['story', 'cultivation', 'explore', 'social', 'craft', 'breakthrough'];
 

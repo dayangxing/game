@@ -1,10 +1,11 @@
 import { advanceCalendarByMonths, formatCalendarLabel } from './calendar.js';
 import { calculateActionTimeCost } from './timeCost.js';
 import { applyLongevityState, calculateLongevityChange } from './longevity.js';
-import { calculateLifespanCost } from '../progression.js';
+import { calculateLifespanCost } from '../realmRules.js';
 
 export function applyTimePressure({
   game = {},
+  timeGame,
   action = {},
   command = '',
   category,
@@ -17,9 +18,10 @@ export function applyTimePressure({
     return { game, timeResult: emptyTimeResult(game) };
   }
 
-  const timeCost = calculateActionTimeCost({ game, action, command, category, effectHints });
+  const costContext = timeGame ?? game;
+  const timeCost = calculateActionTimeCost({ game: costContext, action, command, category, effectHints });
   const calendarResult = advanceCalendarByMonths(game, timeCost.deltaMonths);
-  const baseLifespanCost = Math.max(1, Math.ceil(timeCost.deltaMonths / 12) + calculateLifespanCost(game));
+  const baseLifespanCost = Math.max(1, Math.ceil(timeCost.deltaMonths / 12) + calculateLifespanCost(costContext));
   const longevity = calculateLongevityChange({
     game,
     category: timeCost.category,
