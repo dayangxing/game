@@ -85,6 +85,44 @@ test('frontend api streams continuous story scene previews and public choices', 
   assert.equal('effectHints' in result.turnResult.choices[0], false);
 });
 
+test('frontend api stops story preview once the scene text is complete', async () => {
+  const api = createGameApi({
+    baseUrl: 'http://backend.test',
+    preferredMode: 'api',
+    fetchImpl: async () => sseResponse([
+      ['story_delta', { text: '{"scene":"雾声贴近' }],
+      ['story_delta', { text: '，命火回应"' }],
+      ['story_delta', { text: ',"mode":"continue","npcLines":[{"speaker":"林师姐","line":"稳住"}]' }],
+      ['story_delta', { text: ',"effectHints":[{"target":"lifespan","direction":"down"}],"choices":[]}' }],
+      ['done', {
+        ok: true,
+        data: {
+          game: {
+            mode: 'api',
+            turn: 4,
+            version: 4,
+            player: { name: '顾清河' },
+            log: [{ id: 'turn-4', title: '命途续写', command: '继续', body: '雾声贴近，命火回应' }]
+          },
+          turnResult: { mode: 'continue', choices: [] }
+        },
+        error: null,
+        requestId: 'req_story_complete'
+      }]
+    ])
+  });
+  const previews = [];
+
+  await api.continueStoryStream({ mode: 'api', turn: 3, version: 3 }, {
+    onStoryPreview: (preview) => previews.push(preview)
+  });
+
+  assert.deepEqual(previews, [
+    '雾声贴近',
+    '雾声贴近，命火回应'
+  ]);
+});
+
 test('frontend api submits a generated story choice by id without exposing hints', async () => {
   const fetchCalls = [];
   const api = createGameApi({
@@ -126,6 +164,88 @@ test('frontend api submits a generated story choice by id without exposing hints
   assert.deepEqual(result.turnResult.choices, []);
 });
 
+test('frontend api stops narration preview once the generated body text is complete', async () => {
+  const api = createGameApi({
+    baseUrl: 'http://backend.test',
+    preferredMode: 'api',
+    fetchImpl: async () => sseResponse([
+      ['narration_delta', { text: '{"title":"闭关","body":"洞府雨声入帘' }],
+      ['narration_delta', { text: '，命火渐稳"' }],
+      ['narration_delta', { text: ',"npcLine":"林师姐道：\\"稳住。\\""' }],
+      ['narration_delta', { text: ',"foreshadow":"雾隐余响","continuityNotes":[],"safetyFlags":[]}' }],
+      ['done', {
+        ok: true,
+        data: {
+          game: {
+            mode: 'api',
+            turn: 1,
+            version: 1,
+            player: { name: '顾清河' },
+            log: [{ id: 'turn-1', title: '闭关', command: '闭关', body: '洞府雨声入帘，命火渐稳' }]
+          }
+        },
+        error: null,
+        requestId: 'req_narration_complete'
+      }]
+    ])
+  });
+  const previews = [];
+
+  await api.submitDailyActionStream(
+    { mode: 'api', turn: 0, version: 0 },
+    { id: 'act_1', source: 'event', command: '闭关' },
+    { onNarrationPreview: (preview) => previews.push(preview) }
+  );
+
+  assert.deepEqual(previews, [
+    '洞府雨声入帘',
+    '洞府雨声入帘，命火渐稳'
+  ]);
+});
+
+test('frontend api resets an api game to the character creation shell', async () => {
+  const fetchCalls = [];
+  const api = createGameApi({
+    baseUrl: 'http://backend.test',
+    preferredMode: 'api',
+    fetchImpl: async (input, init) => {
+      fetchCalls.push({ input, body: JSON.parse(init.body) });
+      return jsonResponse({
+        game: {
+          mode: 'api',
+          turn: 0,
+          version: 0,
+          player: { name: '陆青玄' },
+          onboarding: { completed: true, unlockedCharacterCreation: true },
+          character: { traits: ['新手序章'] },
+          log: [{ id: 'opening', title: '山门初醒' }]
+        }
+      });
+    }
+  });
+
+  const game = await api.resetForCharacterCreation('api', { rerollSeed: 91 });
+
+  assert.equal(fetchCalls[0].input, 'http://backend.test/api/v1/game/reset');
+  assert.deepEqual(fetchCalls[0].body, { rerollSeed: 91 });
+  assert.equal(game.mode, 'api');
+  assert.equal(game.turn, 0);
+  assert.equal(game.onboarding.completed, true);
+  assert.equal(game.character.traits.includes('新手序章'), true);
+});
+
+test('frontend mock api reset returns a fresh character creation shell', async () => {
+  const api = createGameApi({ seed: 21 });
+  const game = await api.resetForCharacterCreation('mock', { rerollSeed: 91 });
+
+  assert.equal(game.mode, 'mock');
+  assert.equal(game.turn, 0);
+  assert.equal(game.onboarding.completed, true);
+  assert.equal(game.onboarding.unlockedCharacterCreation, true);
+  assert.equal(game.characterSeed, undefined);
+  assert.equal(game.character.traits.includes('新手序章'), true);
+});
+
 test('frontend game api updates mode and exports story text', async () => {
   const api = createGameApi({ seed: 21 });
   const game = await api.setMode(await api.createGame(), 'api');
@@ -148,5 +268,17 @@ function sseResponse(events) {
   }), {
     status: 200,
     headers: { 'content-type': 'text/event-stream; charset=utf-8' }
+  });
+}
+
+function jsonResponse(data) {
+  return new Response(JSON.stringify({
+    ok: true,
+    data,
+    error: null,
+    requestId: 'req_reset'
+  }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' }
   });
 }

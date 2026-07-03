@@ -169,19 +169,26 @@ nodes.exportBtn.addEventListener('click', async () => {
 
 nodes.resetBtn.addEventListener('click', async () => {
   try {
-    const freshGame = await api.createGame(game.mode);
+    pendingCharacterSeed += 1;
+    localStorage.setItem('wendao-fusheng-character-seed', String(pendingCharacterSeed));
+    const freshGame = await api.resetForCharacterCreation(game.mode, {
+      rerollSeed: pendingCharacterSeed
+    });
     rotateHistorySummaryScope();
-    const nextGame = hydrateHistorySummaries(freshGame);
-    const nextActions = await loadDailyActionsForGame(nextGame, getView(activeViewId));
+    const nextGame = freshGame;
+    const nextActions = shouldShowCharacterCreation(nextGame)
+      ? []
+      : await loadDailyActionsForGame(nextGame, getView(activeViewId));
     actionRefreshSequence += 1;
     pendingApiImmediateActions = false;
     game = nextGame;
     dailyActions = nextActions;
     storyChoices = [];
+    clearStreamingNarration();
     resetPendingCharacterPreview();
     saveGame();
     render();
-    showToast(game.mode === 'api' ? '云端命途已重开' : '新的一世已经开启');
+    showToast(game.mode === 'api' ? '旧命簿已封存，请重新创建角色' : '旧命簿已封存，请重新开局');
   } catch (error) {
     handleApiError(error);
   }
@@ -1023,7 +1030,14 @@ function renderArchiveThreadSection(memory) {
           <article>
             <b>${thread.status}</b>
             <strong>${thread.title}</strong>
+            ${Number.isFinite(thread.updatedTurn) ? `<span>第 ${thread.updatedTurn} 回合更新</span>` : ''}
             <p>${thread.detail}</p>
+            ${thread.clues.length ? `
+              <div class="archive-thread-clues">
+                <em>最近线索</em>
+                ${thread.clues.slice(-2).map((clue) => `<small>${clue}</small>`).join('')}
+              </div>
+            ` : ''}
           </article>
         `).join('')}
       </div>
@@ -1139,9 +1153,14 @@ function pickArchiveTurn(entry) {
 
 function pickArchiveThread(thread) {
   return {
+    id: thread.id || '',
     title: thread.title || '未明天机',
     detail: thread.detail || '',
-    status: thread.status || '未解'
+    status: thread.status || '未解',
+    priority: thread.priority || 'minor',
+    introducedTurn: Number.isFinite(thread.introducedTurn) ? thread.introducedTurn : null,
+    updatedTurn: Number.isFinite(thread.updatedTurn) ? thread.updatedTurn : null,
+    clues: Array.isArray(thread.clues) ? thread.clues.filter(Boolean) : []
   };
 }
 
@@ -1289,7 +1308,7 @@ function renderHistoryPanel(limit = 5) {
     body: `
       <div class="log-list" id="logList">
         ${buildRecentHistory(limit).map((entry) => `
-          <article class="${historyCardClass(entry)}">
+          <article class="${historyCardClass(entry)}" ${entry.streaming ? 'data-streaming-narration="true"' : ''}>
             <header><strong>${entry.title}</strong><span>${entry.command}</span></header>
             <p>${entry.body}</p>
             ${entry.effectsSummary ? `<div class="effects-summary">${formatHistoryEffectSummary(entry)}</div>` : ''}
@@ -1308,7 +1327,7 @@ function buildRecentHistory(limit = 5) {
 }
 
 function historyCardClass(entry) {
-  if (entry.streaming) return 'log-card streaming is-new';
+  if (entry.streaming) return 'log-card streaming';
   return entry.id === highlightedHistoryEntryId ? 'log-card is-new' : 'log-card';
 }
 
@@ -1325,12 +1344,18 @@ function beginStreamingNarration(action) {
 
 function updateStreamingNarration(preview) {
   const body = String(preview ?? '').trim();
-  if (!streamingNarration || !body) return;
+  if (!streamingNarration || !body || streamingNarration.body === body) return;
   streamingNarration = {
     ...streamingNarration,
     body
   };
-  renderStory();
+  updateStreamingNarrationDom(body);
+}
+
+function updateStreamingNarrationDom(body) {
+  const bodyNode = nodes.logList?.querySelector('[data-streaming-narration="true"] p');
+  if (!bodyNode) return;
+  bodyNode.textContent = body;
 }
 
 function clearStreamingNarration() {

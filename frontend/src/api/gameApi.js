@@ -17,6 +17,21 @@ export function createGameApi(options = {}) {
       return withMode(createMockGame(seed), 'mock');
     },
 
+    async resetForCharacterCreation(mode = preferredMode, { rerollSeed } = {}) {
+      if (mode === 'api' && canUseBackend) {
+        const data = await requestJson({
+          baseUrl,
+          fetchImpl,
+          path: '/api/v1/game/reset',
+          method: 'POST',
+          body: { rerollSeed }
+        });
+        return withMode(data.game, 'api');
+      }
+
+      return withMode(createMockCharacterCreationShell(createMockGame(rerollSeed ?? seed)), 'mock');
+    },
+
     async createFormalGame({ name, rerollSeed, attributes } = {}) {
       if (canUseBackend) {
         const data = await requestJson({
@@ -273,6 +288,10 @@ async function requestEventStream({ baseUrl, fetchImpl, path, method = 'GET', bo
   let rawNarration = '';
   let rawStory = '';
   let donePayload = null;
+  let lastNarrationPreview = '';
+  let lastStoryPreview = '';
+  let narrationPreviewComplete = false;
+  let storyPreviewComplete = false;
 
   while (true) {
     const { value, done } = await reader.read();
@@ -289,16 +308,24 @@ async function requestEventStream({ baseUrl, fetchImpl, path, method = 'GET', bo
         const delta = String(event.data?.text ?? '');
         rawNarration += delta;
         handlers.onNarrationDelta?.(delta, rawNarration);
-        const preview = extractJsonStringField(rawNarration, 'body');
-        if (preview) handlers.onNarrationPreview?.(preview, rawNarration);
+        const preview = extractJsonStringFieldProgress(rawNarration, 'body');
+        if (!narrationPreviewComplete && preview.value && preview.value !== lastNarrationPreview) {
+          lastNarrationPreview = preview.value;
+          handlers.onNarrationPreview?.(preview.value, rawNarration);
+        }
+        if (preview.complete) narrationPreviewComplete = true;
       }
 
       if (event.name === 'story_delta') {
         const delta = String(event.data?.text ?? '');
         rawStory += delta;
         handlers.onStoryDelta?.(delta, rawStory);
-        const preview = extractJsonStringField(rawStory, 'scene');
-        if (preview) handlers.onStoryPreview?.(preview, rawStory);
+        const preview = extractJsonStringFieldProgress(rawStory, 'scene');
+        if (!storyPreviewComplete && preview.value && preview.value !== lastStoryPreview) {
+          lastStoryPreview = preview.value;
+          handlers.onStoryPreview?.(preview.value, rawStory);
+        }
+        if (preview.complete) storyPreviewComplete = true;
       }
 
       if (event.name === 'choices_ready') {
@@ -378,16 +405,16 @@ function parseSseBlock(block) {
   };
 }
 
-function extractJsonStringField(raw, field) {
+function extractJsonStringFieldProgress(raw, field) {
   const marker = `"${field}"`;
   const keyIndex = raw.indexOf(marker);
-  if (keyIndex === -1) return '';
+  if (keyIndex === -1) return { value: '', complete: false };
 
   const colonIndex = raw.indexOf(':', keyIndex + marker.length);
-  if (colonIndex === -1) return '';
+  if (colonIndex === -1) return { value: '', complete: false };
 
   const startIndex = raw.indexOf('"', colonIndex + 1);
-  if (startIndex === -1) return '';
+  if (startIndex === -1) return { value: '', complete: false };
 
   let value = '';
   let escaping = false;
@@ -405,11 +432,11 @@ function extractJsonStringField(raw, field) {
       continue;
     }
 
-    if (character === '"') return value;
+    if (character === '"') return { value, complete: true };
     value += character;
   }
 
-  return value;
+  return { value, complete: false };
 }
 
 function decodeJsonEscape(character) {
@@ -492,6 +519,30 @@ function buildStoryHook(card, view) {
     `行动指令：${card.command}`,
     `生成要求：结合角色状态、NPC记忆和世界事件，生成本日剧情。`
   ].join('\n');
+}
+
+function createMockCharacterCreationShell(game) {
+  return {
+    ...game,
+    onboarding: {
+      completed: true,
+      stepId: 'formal_life',
+      completedStepIds: ['opening', 'first_action', 'sect_trial', 'secret_hint', 'formal_life'],
+      unlockedCharacterCreation: true
+    },
+    characterSeed: undefined,
+    character: {
+      name: game.player.name,
+      origin: game.player.origin,
+      spiritualRoot: game.player.spiritualRoot,
+      traits: ['新手序章'],
+      startingResources: {
+        spiritStones: game.player.spiritStones ?? 0,
+        materials: {},
+        pills: {}
+      }
+    }
+  };
 }
 
 function createMockFormalCharacter(game, { name, rerollSeed, attributes }) {

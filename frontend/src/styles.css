@@ -591,11 +591,20 @@ button {
 }
 
 .active-view-content[data-active-view="home"] .summary-card {
-  min-height: 66px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 42px;
 }
 
 .active-view-content[data-active-view="home"] .summary-card p {
   display: none;
+}
+
+.active-view-content[data-active-view="home"] .summary-card span,
+.active-view-content[data-active-view="home"] .summary-card strong {
+  white-space: nowrap;
 }
 
 .active-view-content[data-active-view="home"] .action-grid {
@@ -1060,13 +1069,20 @@ button {
   background: rgba(255, 252, 240, 0.48);
 }
 
-.log-card.is-new {
+.log-card.is-new:not(.streaming) {
   animation: history-card-refresh 780ms ease-out;
 }
 
 .log-card.streaming {
+  min-height: 124px;
   border-color: rgba(47, 143, 112, 0.28);
   background: rgba(236, 248, 239, 0.56);
+}
+
+.log-card.streaming p {
+  max-height: 7.2em;
+  overflow: auto;
+  scrollbar-gutter: stable;
 }
 
 .log-card.streaming p::after {
@@ -1647,6 +1663,29 @@ blockquote {
 .archive-thread-list strong,
 .archive-thread-list p {
   grid-column: 2;
+}
+
+.archive-thread-list article > span,
+.archive-thread-clues {
+  grid-column: 2;
+}
+
+.archive-thread-clues {
+  display: grid;
+  gap: 5px;
+  margin-top: 2px;
+}
+
+.archive-thread-clues em,
+.archive-thread-clues small {
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.archive-thread-clues small {
+  padding-left: 8px;
+  border-left: 2px solid rgba(181, 139, 63, 0.22);
 }
 
 .archive-npc-list article {

@@ -62,6 +62,11 @@ export function createBackendApp(options = {}) {
           return handleNewFormalGame({ body, requestId, state });
         }
 
+        if (route === 'POST /api/v1/game/reset') {
+          const body = await readJson(request);
+          return handleResetGame({ body, requestId, state });
+        }
+
         if (route === 'POST /api/v1/daily-actions') {
           const body = await readJson(request);
           return handleDailyActions({ body, requestId, state, now });
@@ -229,6 +234,22 @@ function handleNewFormalGame({ body, requestId, state }) {
     }
     throw error;
   }
+}
+
+function handleResetGame({ body, requestId, state }) {
+  const seed = Number.isInteger(body.rerollSeed) ? body.rerollSeed : state.game.seed + state.requestSequence + 101;
+  const nextGame = normalizeGame(createGame(seed));
+  nextGame.onboarding = createCompletedFormalOnboardingState();
+  delete nextGame.characterSeed;
+  nextGame.mode = 'api';
+  state.pendingActions.clear();
+  state.pendingDirectorChoices.clear();
+  state.turnSnapshots.clear();
+  state.auditLog.length = 0;
+  state.game = nextGame;
+  return jsonResponse(200, requestId, {
+    game: state.game
+  });
 }
 
 async function handleTurn({ body, requestId, state, now }) {

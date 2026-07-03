@@ -21,6 +21,7 @@ test('narration prompt contains detailed role, boundaries, style, and json schem
   assert.match(system, /safetyFlags/);
   assert.match(system, /只有.*现有 NPC.*相关.*npcLine/s);
   assert.match(system, /不涉及.*NPC.*空字符串/s);
+  assert.match(system, /没有关键事件.*foreshadow.*空字符串/s);
 
   assert.equal(user.task, 'narrative_polish');
   assert.match(user.instruction, /只能润色已结算结果/);
@@ -30,6 +31,7 @@ test('narration prompt contains detailed role, boundaries, style, and json schem
   assert.equal(user.npcVoiceGuide[0].name, '林师姐');
   assert.ok(user.hardConstraints.some((constraint) => constraint.includes('不得新增')));
   assert.ok(user.hardConstraints.some((constraint) => constraint.includes('不涉及 NPC') && constraint.includes('空字符串')));
+  assert.ok(user.hardConstraints.some((constraint) => constraint.includes('没有关键事件') && constraint.includes('foreshadow')));
   assert.match(system, /剧情摘要|近期回合|未解伏笔/);
 });
 

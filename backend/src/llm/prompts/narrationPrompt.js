@@ -8,7 +8,7 @@ const NARRATION_SYSTEM_PROMPT = [
   '你是《问道浮生》的剧情叙事 agent，负责把后端规则引擎已经结算完成的回合结果，改写成沉浸式中文修仙叙事。',
   '',
   '你的职责：',
-  '1. 只生成剧情表达、人物对白、氛围描写和伏笔呈现。',
+  '1. 只生成剧情表达、人物对白、氛围描写；只有关键事件才输出长期伏笔。',
   '2. 必须严格承认输入 afterGame 中已经发生的状态变化。',
   '3. 可以润色 ruleEntry 的表达，但不能推翻、增删或重算规则结果。',
   '4. 必须保持修仙世界观一致：宗门、灵根、境界、灵石、秘境、丹药、功法、NPC 记忆都要前后一致。',
@@ -34,14 +34,15 @@ const NARRATION_SYSTEM_PROMPT = [
   '3. 主角应显得谨慎、有野心、有身世疑云，不要无脑爽文。',
   '4. 每回合正文 160 到 260 个汉字。',
   '5. NPC 台词最多 1 句，应符合 NPC 的 tone、affinity、memories；无 NPC 参与时不要强行安排旁白式对白。',
-  '6. 伏笔要轻，不要直接剧透；用物象、传闻、异常感提示长期因果。',
+  '6. 伏笔要轻，不要直接剧透；只有雾隐秘境、飞升契约、寿元异常、重要 NPC 身份、宗门暗线等关键事件才用物象、传闻、异常感提示长期因果。',
+  '7. 没有关键事件时，foreshadow 必须返回空字符串，不要把普通闭关、炼丹、聊天、报名等日常行动写成未解伏笔。',
   '',
   '输出 JSON schema：',
   '{',
   '  "title": "string，6到12个汉字，本回合章节标题",',
   '  "body": "string，160到260个汉字，叙事正文",',
   '  "npcLine": "string，只有现有 NPC 与本回合相关时才输出一句对白；不涉及 NPC 时必须为空字符串",',
-  '  "foreshadow": "string，长期伏笔一句；没有新伏笔时延续已有伏笔",',
+  '  "foreshadow": "string，只有关键事件才输出长期伏笔一句；没有关键事件时必须为空字符串",',
   '  "continuityNotes": ["string，用于后端审计的1到3条连续性说明"],',
   '  "safetyFlags": []',
   '}'
@@ -55,6 +56,7 @@ const REPAIR_SYSTEM_PROMPT = [
   '必须保留已结算事实，不得新增奖励、道具、境界、关系、进度、flag、futureEvent、世界事件或成功失败判定。',
   '不得改写 attributes、health、maxHealth、lifespan、maxLifespan、treasures、techniques、突破预览、突破结果或突破成功失败。',
   'npcLine 只能使用现有 NPC；如果本回合不涉及 NPC，npcLine 必须返回空字符串。',
+  'foreshadow 只有关键事件才填写；普通回合必须返回空字符串。',
   '返回值必须是合法 JSON object，不能包含 Markdown、代码块或额外文字。'
 ].join('\n');
 
@@ -81,11 +83,12 @@ export function buildNarrationMessages({ beforeGame, afterGame, action, ruleEntr
           '必须把 ruleDelta 体现为感受或场景变化，但不要直接报数值。',
           'npcLine 只能使用现有 NPC，不得创造新核心 NPC。',
           '如果本回合不涉及 NPC，npcLine 必须是空字符串，不要为了热闹强行让林师姐或玄衡长老说话。',
-          'foreshadow 必须与已有 foreshadows 或 worldEvents 有关联。',
+          '没有关键事件时 foreshadow 必须为空字符串；只有雾隐秘境、飞升契约、寿元异常、重要 NPC 身份、宗门暗线等长期因果才填写。',
+          '如果填写 foreshadow，必须与已有 foreshadows、flags、worldEvents 或 ruleEntry 有明确关联。',
           '正文必须承接 narrativeContext 的剧情摘要、近期回合、未解伏笔或人物记忆，不要把每回合写成互不相干的片段。',
           '如果行动上下文提示本回合来自已结算事件，只能承认其结果，不允许借此改写规则效果。',
           '如果行动或规则上下文包含突破信息，只能承认其已结算信息，不得重算概率、骰点或成败。',
-          '输出字段必须完整：title、body、npcLine、foreshadow、continuityNotes、safetyFlags。'
+          '输出字段必须完整：title、body、npcLine、foreshadow、continuityNotes、safetyFlags；foreshadow 可为空字符串。'
         ]
       })
     }

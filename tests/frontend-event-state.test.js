@@ -174,6 +174,9 @@ test('天机录 tab renders story memory, context records, and no action choices
   assert.match(realmSource, /game\.storyMemory/);
   assert.match(realmSource, /recentTurns/);
   assert.match(realmSource, /openThreads/);
+  assert.match(realmSource, /thread\.clues/);
+  assert.match(realmSource, /最近线索/);
+  assert.match(realmSource, /updatedTurn/);
   assert.match(realmSource, /characterNotes/);
   assert.doesNotMatch(realmSource, /eventId|choiceId|act_|debug|schema/i);
   assert.match(renderRealmView, /syncActiveViewNodes\(\)/);
@@ -215,13 +218,25 @@ test('history cards and action cards stay player-facing without backend identifi
   assert.match(source, /function updateStreamingNarration/);
   assert.match(source, /历史行为/);
   assert.match(source, /effects-summary/);
-  assert.match(source, /log-card streaming is-new/);
+  assert.match(source, /data-streaming-narration/);
+  assert.match(source, /function updateStreamingNarrationDom/);
+  assert.match(source, /log-card streaming/);
+  assert.doesNotMatch(source, /log-card streaming is-new/);
   assert.match(source, /function formatActionMeta\(action\)/);
   assert.match(source, /function displayActionIcon\(action\)/);
   assert.match(source, /meta:\s*formatActionMeta\(action\)/);
   assert.match(source, /icon:\s*displayActionIcon\(action\)/);
   assert.doesNotMatch(source, /<div class="event-meta">\$\{action\.eventId\} \/ \$\{action\.choiceId\}<\/div>/);
   assert.doesNotMatch(source, /ruleResult|statChanges|choiceId|eventId|derivedBonuses/);
+});
+
+test('streaming history preview patches only the active log body', () => {
+  const source = fs.readFileSync('frontend/src/app.js', 'utf8');
+  const helper = extractFunction(source, 'updateStreamingNarration');
+
+  assert.match(helper, /streamingNarration\.body === body/);
+  assert.match(helper, /updateStreamingNarrationDom\(body\)/);
+  assert.doesNotMatch(helper, /renderStory\(\);/);
 });
 
 test('status overview renders sect reputation as a normal metric card', () => {
@@ -253,9 +268,10 @@ test('frontend styles include dense center-stage status, collection, and history
   assert.match(css, /\.archive-section\s*\{/);
   assert.match(css, /\.archive-recent-list\s*\{/);
   assert.match(css, /\.action-card\s*\{/);
-  assert.match(css, /\.log-card\.is-new\s*\{/);
+  assert.match(css, /\.log-card\.is-new:not\(\.streaming\)\s*\{/);
   assert.match(css, /@keyframes history-card-refresh/);
   assert.match(css, /\.log-card\.streaming\s*\{/);
+  assert.match(css, /\.log-card\.streaming\s+p\s*\{[\s\S]*max-height:/);
 });
 
 test('status cards keep a stable wide card ratio instead of stretching tall', () => {
@@ -273,6 +289,9 @@ test('status cards keep a stable wide card ratio instead of stretching tall', ()
   assert.match(css, /\.action-card\s*\{[\s\S]*min-height:\s*var\(--action-card-min-height\)/);
   assert.match(css, /\.status-card\s*\{[\s\S]*grid-template-rows:\s*auto\s+8px\s+1fr/);
   assert.match(css, /\.status-card-head\s+strong\s*\{[\s\S]*overflow-wrap:\s*anywhere/);
+  assert.match(css, /\.active-view-content\[data-active-view="home"\]\s+\.summary-card\s*\{[^}]*display:\s*flex/);
+  assert.match(css, /\.active-view-content\[data-active-view="home"\]\s+\.summary-card\s*\{[^}]*align-items:\s*baseline/);
+  assert.match(css, /\.active-view-content\[data-active-view="home"\]\s+\.summary-card\s*\{[^}]*justify-content:\s*space-between/);
 });
 
 test('tab screens use full-width readable grids without losing tuning hooks', () => {

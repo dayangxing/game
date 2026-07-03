@@ -117,9 +117,6 @@ function validateNarration(narration) {
   if (narration?.npcLine === undefined) {
     errors.push('npcLine is required');
   }
-  if (!isMeaningfulText(narration?.foreshadow)) {
-    errors.push('foreshadow is required');
-  }
   if (!Array.isArray(narration?.continuityNotes)) {
     errors.push('continuityNotes must be an array');
   }
@@ -136,7 +133,7 @@ export function normalizeGeneratedNarration(narration, afterGame) {
     title: requiredText(narration?.title, `第${afterGame.turn}回合`),
     body: requiredText(narration?.body, '模型已生成本回合剧情。'),
     npcLine: requiredText(narration?.npcLine, ''),
-    foreshadow: requiredText(narration?.foreshadow, afterGame.foreshadows?.at(-1) ?? ''),
+    foreshadow: requiredText(narration?.foreshadow, ''),
     continuityNotes: Array.isArray(narration?.continuityNotes) ? narration.continuityNotes : [],
     safetyFlags: Array.isArray(narration?.safetyFlags) ? narration.safetyFlags : []
   };

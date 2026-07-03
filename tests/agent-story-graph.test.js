@@ -27,6 +27,30 @@ test('story graph uses langgraph to generate narration from an injected llm', as
   assert.match(result.narration.body, /模型根据/);
 });
 
+test('story graph allows ordinary turns without a new foreshadow', async () => {
+  const graph = createStoryGraph({
+    llm: {
+      async generateNarration({ afterGame }) {
+        return {
+          title: '闭关稳息',
+          body: `第${afterGame.turn}回合的闭关只是一次寻常吐纳。竹舍外雨声渐缓，陆青玄把雷木双息压回丹田，谨慎地沿着青云宗入门心法行过一个周天，确认今日没有新的异象，也没有牵出更深因果。`,
+          npcLine: '',
+          continuityNotes: ['普通闭关回合，没有新增长期伏笔。'],
+          safetyFlags: []
+        };
+      },
+      async repairNarration() {
+        assert.fail('ordinary narration without foreshadow should not need repair');
+      }
+    }
+  });
+
+  const result = await graph.invoke(makeGraphInput());
+
+  assert.equal(result.narration.status, 'generated');
+  assert.equal(result.narration.foreshadow, '');
+});
+
 test('story graph repairs invalid narration output before returning it', async () => {
   let repairInput;
   const graph = createStoryGraph({

@@ -1,4 +1,5 @@
 const RECENT_TURN_LIMIT = 8;
+const THREAD_LIMIT = 8;
 
 const STAT_KEYS = [
   'qi',
@@ -11,6 +12,50 @@ const STAT_KEYS = [
   'lifespan',
   'maxLifespan'
 ];
+
+const CORE_THREAD_DEFINITIONS = [
+  {
+    id: 'ascension_contract',
+    title: '飞升骗局伏笔',
+    priority: 'major',
+    keywords: ['飞升', '天门', '残契', '旧契', '命格签契', '命格为注', '契影']
+  },
+  {
+    id: 'mist_secret',
+    title: '雾隐秘境疑云',
+    priority: 'major',
+    keywords: ['雾隐', '秘境', '雾中', '铜铃', '钟声']
+  },
+  {
+    id: 'lifespan_anomaly',
+    title: '寿元异常',
+    priority: 'major',
+    keywords: ['命火异常', '命火微暗', '寿元异常', '寿元流失', '灰痕', '契印']
+  },
+  {
+    id: 'thunderwood_omen',
+    title: '雷木双息异兆',
+    priority: 'minor',
+    keywords: ['雷木双灵根', '雷木双息', '异常天劫', '雷木反噬']
+  },
+  {
+    id: 'qingyun_shadow',
+    title: '青云宗暗线',
+    priority: 'minor',
+    keywords: ['青云宗暗线', '宗门遮掩', '长老争执', '封门', '开门']
+  }
+];
+
+const DEFAULT_ASCENSION_THREAD = {
+  id: 'ascension_contract',
+  title: '飞升骗局伏笔',
+  detail: '宗门典籍与长老传闻中对飞升的说法仍有缺口。',
+  status: '未解',
+  priority: 'major',
+  introducedTurn: 0,
+  updatedTurn: 0,
+  clues: ['宗门典籍与长老传闻中对飞升的说法仍有缺口。']
+};
 
 export function normalizeStoryMemory(memory, game) {
   const recentTurns = sanitizeRecentTurns(memory?.recentTurns);
@@ -51,8 +96,7 @@ export function recordStoryMemoryTurn({ before, after, action, entry, narration 
       recentTurns,
       openThreads: mergeThreads(
         baseMemory.openThreads,
-        threadsFromForeshadows(after.foreshadows),
-        narrationForeshadow ? [threadFromText(narrationForeshadow)] : []
+        admittedThreadsFromTurn({ before, after, action, entry, narration, narrationForeshadow })
       ),
       resolvedThreads: baseMemory.resolvedThreads,
       characterNotes: notesFromNpcs(after.npcs),
@@ -116,26 +160,73 @@ function appendOverflowSummary(summary, overflow) {
 }
 
 function threadsFromForeshadows(foreshadows = []) {
-  const threads = foreshadows.map((text) => threadFromText(text));
-  const hasAscensionThread = threads.some((thread) => thread.detail.includes('飞升'));
+  const threads = foreshadows
+    .map((text) => threadFromText(text, { turn: 0, allowGeneric: true }))
+    .filter(Boolean);
+  const hasAscensionThread = threads.some((thread) => thread.id === 'ascension_contract' || thread.detail.includes('飞升'));
 
   if (!hasAscensionThread) {
-    threads.push({
-      title: '飞升骗局伏笔',
-      detail: '宗门典籍与长老传闻中对飞升的说法仍有缺口。',
-      status: '未解'
-    });
+    threads.push({ ...DEFAULT_ASCENSION_THREAD });
   }
 
   return threads;
 }
 
-function threadFromText(text) {
+function admittedThreadsFromTurn({ before, after, entry, narrationForeshadow }) {
+  const turn = after?.turn ?? entry?.turn ?? 0;
+  const candidates = [
+    narrationForeshadow,
+    entry?.worldEvent,
+    ...(after?.foreshadows ?? []).slice(-1),
+    ...futureEventFlagDetails(after?.karma?.futureEventFlags, before?.karma?.futureEventFlags)
+  ];
+
+  return candidates
+    .map((text) => threadFromText(text, { turn, allowGeneric: false }))
+    .filter(Boolean);
+}
+
+function futureEventFlagDetails(afterFlags = [], beforeFlags = []) {
+  const previous = new Set(Array.isArray(beforeFlags) ? beforeFlags : []);
+  return (Array.isArray(afterFlags) ? afterFlags : [])
+    .filter((flag) => !previous.has(flag))
+    .map((flag) => {
+      if (flag === 'director_ascension_thread') return '天门残契与飞升传闻出现新的矛盾。';
+      if (flag === 'director_mist_thread') return '雾隐秘境的线索被进一步推进。';
+      return '';
+    })
+    .filter(Boolean);
+}
+
+function threadFromText(text, { turn = 0, allowGeneric = false } = {}) {
   const detail = meaningfulText(text, '天机尚未显形。');
+  const definition = resolveThreadDefinition(detail, { allowGeneric });
+  if (!definition) return null;
+
   return {
-    title: inferThreadTitle(detail),
+    id: definition.id,
+    title: definition.title,
     detail,
-    status: '未解'
+    status: '未解',
+    priority: definition.priority,
+    introducedTurn: turn,
+    updatedTurn: turn,
+    clues: [detail]
+  };
+}
+
+function resolveThreadDefinition(detail, { allowGeneric = false } = {}) {
+  const matched = CORE_THREAD_DEFINITIONS.find((definition) => (
+    definition.keywords.some((keyword) => detail.includes(keyword))
+  ));
+
+  if (matched) return matched;
+  if (!allowGeneric) return null;
+  return {
+    id: `thread_${hashText(detail)}`,
+    title: inferThreadTitle(detail),
+    priority: 'minor',
+    keywords: []
   };
 }
 
@@ -174,11 +265,27 @@ function sanitizeRecentTurns(turns = []) {
 function sanitizeThreads(threads = []) {
   if (!Array.isArray(threads)) return [];
 
-  return threads.map((thread) => ({
-    title: meaningfulText(thread.title, '未明天机'),
-    detail: meaningfulText(thread.detail, ''),
-    status: meaningfulText(thread.status, '未解')
-  }));
+  return threads.map((thread, index) => {
+    const detail = meaningfulText(thread.detail, '');
+    const definition = thread.id
+      ? CORE_THREAD_DEFINITIONS.find((item) => item.id === thread.id)
+      : resolveThreadDefinition(`${thread.title ?? ''} ${detail}`, { allowGeneric: true });
+    const clues = Array.isArray(thread.clues) && thread.clues.length
+      ? thread.clues.map((item) => meaningfulText(item, '')).filter(Boolean)
+      : [detail].filter(Boolean);
+    const introducedTurn = Number.isFinite(thread.introducedTurn) ? thread.introducedTurn : 0;
+
+    return {
+      id: meaningfulText(thread.id, definition?.id ?? `legacy_${index}_${hashText(detail)}`),
+      title: meaningfulText(thread.title, definition?.title ?? '未明天机'),
+      detail,
+      status: meaningfulText(thread.status, '未解'),
+      priority: meaningfulText(thread.priority, definition?.priority ?? 'minor'),
+      introducedTurn,
+      updatedTurn: Number.isFinite(thread.updatedTurn) ? thread.updatedTurn : introducedTurn,
+      clues: dedupeTexts(clues).slice(-4)
+    };
+  });
 }
 
 function sanitizeCharacterNotes(notes = []) {
@@ -195,18 +302,48 @@ function sanitizeCharacterNotes(notes = []) {
 
 function mergeThreads(...groups) {
   const merged = [];
-  const seen = new Set();
+  const byKey = new Map();
 
   for (const group of groups) {
     for (const thread of sanitizeThreads(group)) {
-      const key = `${thread.title}:${thread.detail}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      merged.push(thread);
+      const key = thread.id || `${thread.title}:${thread.detail}`;
+      const existing = byKey.get(key);
+      if (!existing) {
+        byKey.set(key, thread);
+        merged.push(thread);
+        continue;
+      }
+
+      existing.detail = thread.detail || existing.detail;
+      existing.status = thread.status || existing.status;
+      existing.priority = thread.priority || existing.priority;
+      existing.introducedTurn = Math.min(existing.introducedTurn ?? 0, thread.introducedTurn ?? 0);
+      existing.updatedTurn = Math.max(existing.updatedTurn ?? 0, thread.updatedTurn ?? 0);
+      existing.clues = dedupeTexts([...(existing.clues ?? []), ...(thread.clues ?? [])]).slice(-4);
     }
   }
 
-  return merged.slice(-8);
+  return merged.slice(-THREAD_LIMIT);
+}
+
+function dedupeTexts(values = []) {
+  const seen = new Set();
+  const result = [];
+  for (const value of values) {
+    const text = meaningfulText(value, '');
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    result.push(text);
+  }
+  return result;
+}
+
+function hashText(text) {
+  let hash = 0;
+  for (const char of String(text)) {
+    hash = ((hash << 5) - hash + char.charCodeAt(0)) | 0;
+  }
+  return Math.abs(hash).toString(36);
 }
 
 function diffPlayerStats(beforePlayer = {}, afterPlayer = {}) {

@@ -196,6 +196,55 @@ test('POST /api/v1/game/new invalidates stale pending actions and saved turn sna
   assert.equal(staleNarrationPayload.error.code, 'TURN_SNAPSHOT_NOT_FOUND');
 });
 
+test('POST /api/v1/game/reset clears records and returns to formal character creation', async () => {
+  const app = createBackendApp({
+    seed: 31,
+    now: fixedNow,
+    llm: {
+      async generateNarration({ afterGame, action }) {
+        return {
+          status: 'generated',
+          title: '旧世余声',
+          body: `旧世第${afterGame.turn}回合曾执行${action.title}，这段记录应在重开后清空。`,
+          npcLine: '',
+          foreshadow: '旧世记录应被封存。'
+        };
+      }
+    }
+  });
+  app.getState().game.onboarding = completedOnboardingState();
+  await jsonResponse(app.handle(makeRequest('POST', '/api/v1/game/new', {
+    name: '顾清河',
+    rerollSeed: 52
+  })));
+  const actionsPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+    viewId: 'home',
+    gameVersion: app.getState().game.version
+  })));
+  const [usedAction] = actionsPayload.data.actions;
+  await jsonResponse(app.handle(makeRequest('POST', '/api/v1/turns', {
+    actionId: usedAction.id,
+    clientTurn: app.getState().game.turn
+  })));
+
+  const resetPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/game/reset', {
+    rerollSeed: 77
+  })));
+
+  assert.equal(resetPayload.ok, true);
+  assert.equal(resetPayload.data.game.mode, 'api');
+  assert.equal(resetPayload.data.game.turn, 0);
+  assert.equal(resetPayload.data.game.log.length, 1);
+  assert.equal(resetPayload.data.game.player.name, '陆青玄');
+  assert.equal(resetPayload.data.game.onboarding.completed, true);
+  assert.equal(resetPayload.data.game.onboarding.unlockedCharacterCreation, true);
+  assert.equal(resetPayload.data.game.characterSeed, undefined);
+  assert.equal(resetPayload.data.game.character.traits.includes('新手序章'), true);
+  assert.equal(app.getState().pendingActions.size, 0);
+  assert.equal(app.getState().pendingDirectorChoices.size, 0);
+  assert.equal(app.getState().turnSnapshots.size, 0);
+});
+
 test('prologue actions complete onboarding through daily-actions and turns', async () => {
   const app = createBackendApp({ seed: 31, now: fixedNow });
   const startingLifespan = app.getState().game.player.lifespan;

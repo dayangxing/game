@@ -47,6 +47,102 @@ http://127.0.0.1:5173/frontend/
 
 如果 `5173` 被占用，可以临时换端口运行静态服务，但 `file:` 自动跳转默认仍指向 `5173`。
 
+## 本地调试命令
+
+所有命令默认在项目根目录执行：
+
+```bash
+cd /Users/ruilifeng/Documents/game
+```
+
+### 后端调试
+
+启动后端：
+
+```bash
+npm run start:backend
+```
+
+检查后端是否监听 `8787`：
+
+```bash
+lsof -nP -iTCP:8787 -sTCP:LISTEN
+```
+
+检查当前后端存档状态：
+
+```bash
+curl -s http://127.0.0.1:8787/api/v1/game/state
+```
+
+检查模型配置状态：
+
+```bash
+curl -s http://127.0.0.1:8787/api/v1/model-health
+```
+
+重启后端前，先备份当前内存状态：
+
+```bash
+curl -s http://127.0.0.1:8787/api/v1/game/state -o /private/tmp/wendao-backend-state-before-restart.json
+```
+
+再查 PID 并停止旧后端，把 `<PID>` 换成 `lsof` 查出来的数字：
+
+```bash
+lsof -nP -iTCP:8787 -sTCP:LISTEN
+kill <PID>
+npm run start:backend
+```
+
+如果 `8787` 被占用，可以临时换端口：
+
+```bash
+PORT=8788 npm run start:backend
+```
+
+注意：`/api/v1/game/reset` 会清当前后端记录并回到重新建角，只在确认要重开时调用：
+
+```bash
+curl -s -X POST http://127.0.0.1:8787/api/v1/game/reset \
+  -H 'content-type: application/json' \
+  --data '{"rerollSeed":1}'
+```
+
+### 前端调试
+
+启动前端静态服务：
+
+```bash
+npm run start:frontend
+```
+
+浏览器访问：
+
+```text
+http://127.0.0.1:5173/frontend/
+```
+
+检查前端服务是否监听 `5173`：
+
+```bash
+lsof -nP -iTCP:5173 -sTCP:LISTEN
+```
+
+如果 `5173` 被占用，可以临时换端口启动静态服务：
+
+```bash
+python3 -m http.server 5174
+```
+
+然后访问：
+
+```text
+http://127.0.0.1:5174/frontend/
+```
+
+前端默认连接 `http://127.0.0.1:8787`。如果换了后端端口，需要在页面加载前覆盖 `window.WENDAO_API_BASE_URL`，或直接把后端仍跑在 `8787`。修改前端代码后，Chrome 建议用 `Cmd + Shift + R` 强刷新。
+
 ## 当前上线版本
 
 - 页面入口：`http://127.0.0.1:5173/frontend/`
@@ -55,14 +151,14 @@ http://127.0.0.1:5173/frontend/
 - 顶部页签：`洞府`、`命簿`、`天机录`、`行囊`
 - `洞府`：展示命途状态、历史行为和命途推进，是唯一提供“下一步/剧情选择”的主页。
 - `命簿`：详细属性面板，集中展示人物、五维、生命与修行、宗门、道友牵绊和已修功法，不重复行囊里的宝物/丹药材料列表。
-- `天机录`：展示本局总纲、近期回合、未解伏笔、人物记忆、世界记录和模型上下文摘要。
+- `天机录`：展示本局总纲、近期回合、未解伏笔、人物记忆、世界记录和模型上下文摘要；未解伏笔只收录雾隐秘境、飞升契约、寿元异常、重要 NPC 身份、宗门暗线等关键事件，普通行动只进入近期回合。
 - `行囊`：专门展示奇珍法器、丹药与材料。
 
 ## 前后端职责
 
 前端只负责：
 
-- 展示洞府、命簿、秘境、行囊四个顶层界面。
+- 展示洞府、命簿、天机录、行囊四个顶层界面。
 - 读取后端 game state 并渲染角色、资源、NPC、事件、伏笔和日志。
 - 在洞府渲染“下一步”或后端返回的剧情选择。
 - 提交继续/选择请求，流式展示剧情正文，最终展示后端返回的回合结果。
