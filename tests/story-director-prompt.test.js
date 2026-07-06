@@ -9,9 +9,29 @@ test('story director prompt sends compact context and forbids numeric authority'
   const game = {
     ...createGame(31),
     onboarding: { completed: true },
+    timePressure: {
+      calendarLabel: '玄历3年 秋 第7月',
+      elapsedYears: 3,
+      remainingLifespan: 70,
+      maxLifespan: 116,
+      lastDeltaTime: '半年',
+      lastLifespanCost: 3,
+      lastLongevityGain: 0,
+      lastNetLifespanDelta: -3,
+      recentRecoveryFatigue: 1,
+      warningLevel: 'strained'
+    },
     storyMemory: {
       longSummary: '顾清河在青云宗追查雾隐秘境与飞升骗局。',
-      recentTurns: [{ turn: 1, title: '命火微澜', action: '继续', outcome: '命火异常。' }],
+      recentTurns: [{
+        turn: 1,
+        title: '命火微澜',
+        action: '继续',
+        outcome: '命火异常。',
+        timeLabel: '半年',
+        netLifespanDelta: -3,
+        warningLevel: 'strained'
+      }],
       openThreads: [{ title: '飞升骗局伏笔', detail: '飞升传闻前后矛盾。', status: '未解' }],
       characterNotes: [{ name: '林师姐', role: '内门弟子', affinity: 34, tone: '谨慎', memories: ['提醒过命火异常。'] }],
       resolvedThreads: [],
@@ -28,10 +48,16 @@ test('story director prompt sends compact context and forbids numeric authority'
   assert.match(system, /target/);
   assert.match(system, /direction/);
   assert.match(system, /intensity/);
+  assert.match(system, /必须承认时间流逝|不要让连续剧情都像同一天/);
+  assert.match(system, /不得输出具体数值/);
   assert.equal(user.task, 'continuous_story_director');
   assert.equal(user.input.type, 'continue');
+  assert.equal(user.context.timePressure.warningLevel, 'strained');
+  assert.match(JSON.stringify(user.context.timePressure), /remainingLifespan|maxLifespan|lastDeltaTime/);
   assert.equal(user.context.storyMemory.longSummary.includes('飞升骗局'), true);
   assert.equal(user.context.recentTurns.length, 1);
+  assert.equal(user.context.recentTurns[0].timeLabel, '半年');
+  assert.equal(user.context.recentTurns[0].warningLevel, 'strained');
   assert.doesNotMatch(JSON.stringify(user), /apiKey|baseUrl|prompt|debug/i);
 });
 

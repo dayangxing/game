@@ -91,3 +91,48 @@ test('key foreshadow advances one structured unresolved story thread', () => {
     1
   );
 });
+
+test('recent turns remember time pressure for future story context', () => {
+  const before = createGame(31);
+  const after = {
+    ...before,
+    turn: 1,
+    timePressure: {
+      lastDeltaTime: '半年',
+      lastNetLifespanDelta: -3,
+      warningLevel: 'strained'
+    },
+    log: [
+      ...before.log,
+      {
+        id: 'turn-1',
+        title: '命火微澜',
+        command: '继续',
+        body: '顾清河压住命火波动，洞府外已换了一场秋雨。',
+        npcLine: '',
+        worldEvent: '寿元承压'
+      }
+    ]
+  };
+
+  const remembered = recordStoryMemoryTurn({
+    before,
+    after,
+    action: { title: '命火微澜', command: '继续' },
+    entry: after.log.at(-1),
+    narration: {
+      status: 'generated',
+      title: '命火微澜',
+      body: '顾清河压住命火波动，洞府外已换了一场秋雨。',
+      npcLine: '',
+      foreshadow: '',
+      continuityNotes: [],
+      safetyFlags: []
+    }
+  });
+  const latest = remembered.storyMemory.recentTurns.at(-1);
+
+  assert.equal(latest.timeLabel, '半年');
+  assert.equal(latest.netLifespanDelta, -3);
+  assert.equal(latest.warningLevel, 'strained');
+});

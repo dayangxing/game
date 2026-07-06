@@ -753,7 +753,11 @@ test('POST /api/v1/turns/stream continues story through director without daily a
   assert.ok(body.indexOf('event: story_delta') < body.indexOf('event: done'));
   assert.equal(donePayload.ok, true);
   assert.equal(donePayload.data.game.turn, 1);
-  assert.equal(donePayload.data.game.player.lifespan, 92);
+  assert.equal(donePayload.data.game.player.lifespan, 91);
+  assert.equal(donePayload.data.game.timePressure.lastDeltaTime, '一月');
+  assert.equal(donePayload.data.turnResult.ruleResult.timeResult.label, '一月');
+  assert.equal(donePayload.data.turnResult.ruleResult.timeResult.netLifespanDelta, -2);
+  assert.equal('deltaMonths' in donePayload.data.turnResult.ruleResult.timeResult, false);
   assert.match(donePayload.data.game.log.at(-1).body, /命火忽明忽暗/);
   assert.equal(donePayload.data.turnResult.narration.status, 'generated');
 });

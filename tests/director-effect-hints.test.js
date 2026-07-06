@@ -79,11 +79,11 @@ test('resolves vague hints into bounded backend state changes', () => {
     now: new Date('2026-07-03T08:00:00.000Z')
   });
 
-  assert.equal(result.game.player.lifespan, 88);
+  assert.equal(result.game.player.lifespan, 93);
   assert.equal(result.game.player.cultivationProgress, 44);
   assert.equal(result.game.npcs.find((npc) => npc.name === '林师姐').affinity, 37);
   assert.match(result.summary, /寿元|修行|林师姐/);
-  assert.deepEqual(result.appliedEffects.map((effect) => effect.type), ['lifespan', 'stat', 'relation']);
+  assert.deepEqual(result.appliedEffects.map((effect) => effect.type), ['stat', 'relation']);
 });
 
 test('does not allow model hints to grant unauthorized item or technique rewards', () => {
@@ -100,4 +100,19 @@ test('does not allow model hints to grant unauthorized item or technique rewards
   assert.equal(result.appliedEffects.length, 0);
   assert.deepEqual(result.game.inventory, game.inventory);
   assert.equal(result.game.techniques, game.techniques);
+});
+
+test('accepts time and lifespan hints without converting them into direct stat effects', () => {
+  const game = formalGame();
+  const result = resolveDirectorEffectHints({
+    game,
+    effectHints: [
+      { target: 'time', direction: 'up', intensity: 'small' },
+      { target: 'lifespan', direction: 'up', intensity: 'small' }
+    ],
+    now: new Date('2026-07-01T08:00:00.000Z')
+  });
+
+  assert.deepEqual(result.accepted.map((hint) => hint.target), ['time', 'lifespan']);
+  assert.equal(result.appliedEffects.some((effect) => effect.type === 'lifespan'), false);
 });

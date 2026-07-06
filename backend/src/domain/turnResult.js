@@ -18,7 +18,7 @@ export function buildTurnResult({ before, after, actionId, narration, timeResult
   };
 }
 
-function publicTimeResult(timeResult = {}) {
+export function publicTimeResult(timeResult = {}) {
   return {
     label: timeResult.label,
     netLifespanDelta: timeResult.netLifespanDelta,

@@ -10,7 +10,8 @@ import { selectEventActions } from './domain/events/eventSelector.js';
 import { eventNarrationFallback, stripInternalActionFields } from './domain/events/eventResult.js';
 import { ONBOARDING_STEPS, canCreateFormalCharacter, createOnboardingState, createTutorialAction, resolveTutorialAction } from './domain/onboarding.js';
 import { resolveBreakthrough } from './domain/progression.js';
-import { buildTurnResult } from './domain/turnResult.js';
+import { applyTimePressure } from './domain/time/timePressure.js';
+import { buildTurnResult, publicTimeResult } from './domain/turnResult.js';
 import { createBailianClient } from './llm/bailianClient.js';
 import { getModelSelection } from './llm/modelSelection.js';
 
@@ -401,26 +402,36 @@ function resolveDirectorTurn({ before, directorOutput, input, state, now }) {
     ? [...choiceHints, ...directorOutput.effectHints]
     : directorOutput.effectHints;
   const effectResolution = resolveDirectorEffectHints({ game: before, effectHints, now });
+  const command = input.type === 'choice' ? input.choiceText : '继续';
+  const title = directorOutput.mode === 'choice' ? '命途分岔' : '命火微澜';
+  const pressure = applyTimePressure({
+    game: effectResolution.game,
+    action: { title, command, source: 'director' },
+    command,
+    category: 'story',
+    effectHints: effectResolution.accepted,
+    source: 'director'
+  });
   const turn = before.turn + 1;
   const entry = {
     id: `turn-${turn}`,
-    title: directorOutput.mode === 'choice' ? '命途分岔' : '命火微澜',
-    command: input.type === 'choice' ? input.choiceText : '继续',
+    title,
+    command,
     body: directorOutput.scene,
     npcLine: formatDirectorNpcLines(directorOutput.npcLines),
     worldEvent: effectResolution.summary
   };
   let nextGame = {
-    ...effectResolution.game,
+    ...pressure.game,
     turn,
     version: turn,
-    log: [...effectResolution.game.log, entry],
+    log: [...pressure.game.log, entry],
     timeline: [
-      ...effectResolution.game.timeline,
+      ...pressure.game.timeline,
       { type: 'director', title: entry.title, detail: directorOutput.scene }
     ],
     worldEvents: [
-      ...effectResolution.game.worldEvents,
+      ...pressure.game.worldEvents,
       { title: entry.title, detail: effectResolution.summary, turn }
     ]
   };
@@ -465,7 +476,8 @@ function resolveDirectorTurn({ before, directorOutput, input, state, now }) {
         eventId: 'story_director',
         choiceId: input.type === 'choice' ? input.choiceId : 'continue',
         resolvedAt: now.toISOString(),
-        rejectedEffectHints: effectResolution.rejected.length
+        rejectedEffectHints: effectResolution.rejected.length,
+        timeResult: publicTimeResult(pressure.timeResult)
       }
     }
   };
@@ -503,7 +515,9 @@ function pickPublicStatePatch(game) {
       mood: game.player.mood,
       cultivationProgress: game.player.cultivationProgress,
       sectRelation: game.player.sectRelation
-    }
+    },
+    timePressure: game.timePressure,
+    ending: game.ending
   };
 }
 

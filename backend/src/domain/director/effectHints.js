@@ -11,6 +11,7 @@ export const ALLOWED_EFFECT_TARGETS = [
   'willpower',
   'lifeSeed',
   'mind',
+  'time',
   'fate',
   'npc_affinity',
   'item',
@@ -71,6 +72,7 @@ const SUMMARY_LABELS = {
   willpower: '心性',
   lifeSeed: '命元',
   mind: '心境',
+  time: '时间',
   fate: '命途',
   npc_affinity: '林师姐',
   foreshadow: '伏笔',
@@ -126,6 +128,7 @@ export function resolveDirectorEffectHints({ game, effectHints = [], now = new D
   return {
     game: nextGame,
     summary: summarizeEffects(normalized.accepted),
+    accepted: normalized.accepted,
     appliedEffects: effects,
     rejected: normalized.rejected,
     resolvedAt: now.toISOString()
@@ -133,10 +136,11 @@ export function resolveDirectorEffectHints({ game, effectHints = [], now = new D
 }
 
 function hintToRuleEffect(game, hint) {
+  if (hint.target === 'time' || hint.target === 'lifespan') return null;
+
   const magnitude = signedMagnitude(game, hint);
 
   if (magnitude === 0 && !['foreshadow'].includes(hint.target)) return null;
-  if (hint.target === 'lifespan') return { type: 'lifespan', delta: magnitude };
   if (hint.target === 'health') return { type: 'vitality', delta: magnitude };
   if (hint.target === 'karma') return { type: 'karma', delta: magnitude };
   if (hint.target === 'npc_affinity' && hint.npcId) return { type: 'relation', npcId: hint.npcId, delta: magnitude };

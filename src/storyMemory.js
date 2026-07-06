@@ -116,6 +116,9 @@ function buildRecentTurn({ before, after, action, entry, narration }) {
     outcome,
     npcLine: meaningfulText(narration?.npcLine, entry?.npcLine ?? ''),
     worldEvent: meaningfulText(entry?.worldEvent, ''),
+    timeLabel: meaningfulText(after?.timePressure?.lastDeltaTime, ''),
+    netLifespanDelta: Number.isFinite(after?.timePressure?.lastNetLifespanDelta) ? after.timePressure.lastNetLifespanDelta : 0,
+    warningLevel: meaningfulText(after?.timePressure?.warningLevel, ''),
     statDelta: diffPlayerStats(before?.player, after?.player)
   };
 }
@@ -144,6 +147,9 @@ function openingRecentTurns(game) {
       outcome: meaningfulText(opening.body, ''),
       npcLine: meaningfulText(opening.npcLine, ''),
       worldEvent: meaningfulText(opening.worldEvent, ''),
+      timeLabel: meaningfulText(game?.timePressure?.lastDeltaTime, ''),
+      netLifespanDelta: Number.isFinite(game?.timePressure?.lastNetLifespanDelta) ? game.timePressure.lastNetLifespanDelta : 0,
+      warningLevel: meaningfulText(game?.timePressure?.warningLevel, ''),
       statDelta: {}
     }
   ];
@@ -258,6 +264,9 @@ function sanitizeRecentTurns(turns = []) {
     outcome: meaningfulText(entry.outcome, ''),
     npcLine: meaningfulText(entry.npcLine, ''),
     worldEvent: meaningfulText(entry.worldEvent, ''),
+    timeLabel: meaningfulText(entry.timeLabel, ''),
+    netLifespanDelta: Number.isFinite(entry.netLifespanDelta) ? entry.netLifespanDelta : 0,
+    warningLevel: meaningfulText(entry.warningLevel, ''),
     statDelta: sanitizeStatDelta(entry.statDelta)
   }));
 }
