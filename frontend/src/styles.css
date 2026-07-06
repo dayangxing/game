@@ -556,6 +556,10 @@ button {
   grid-column: 1 / -1;
 }
 
+.active-view-content > .ending-section {
+  grid-column: 1 / -1;
+}
+
 .active-view-content > .action-note {
   grid-column: 1 / -1;
 }
@@ -563,6 +567,10 @@ button {
 .active-view-content[data-active-view="home"] > .story-section,
 .active-view-content[data-active-view="home"] > .action-section {
   grid-column: auto;
+}
+
+.active-view-content[data-active-view="home"] > .ending-section {
+  grid-column: 1 / -1;
 }
 
 .active-view-content[data-active-view="home"] > .action-note {
@@ -1069,6 +1077,33 @@ button {
   background: rgba(255, 252, 240, 0.48);
 }
 
+.ending-section {
+  border-color: rgba(168, 69, 55, 0.34);
+  background: rgba(255, 248, 238, 0.92);
+}
+
+.ending-section p {
+  margin: 0;
+  color: #5c342f;
+  line-height: 1.8;
+}
+
+.ending-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.ending-actions button {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid rgba(181, 139, 63, 0.34);
+  border-radius: 8px;
+  color: var(--ink);
+  background: rgba(255, 252, 240, 0.72);
+}
+
 .log-card.is-new:not(.streaming) {
   animation: history-card-refresh 780ms ease-out;
 }
@@ -1153,6 +1188,8 @@ button {
 
 .effects-summary span {
   display: inline-flex;
+  align-items: center;
+  min-height: 26px;
   padding: 4px 8px;
   border: 1px solid rgba(47, 143, 112, 0.18);
   border-radius: 8px;

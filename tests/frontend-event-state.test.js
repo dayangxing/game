@@ -222,6 +222,10 @@ test('history cards and action cards stay player-facing without backend identifi
   assert.match(source, /function updateStreamingNarrationDom/);
   assert.match(source, /log-card streaming/);
   assert.doesNotMatch(source, /log-card streaming is-new/);
+  assert.match(source, /function formatTimePressureSummary/);
+  assert.match(source, /function renderEndingPanel/);
+  assert.match(source, /命簿终章/);
+  assert.doesNotMatch(source, /deltaMonths|timeCost|effectHints/);
   assert.match(source, /function formatActionMeta\(action\)/);
   assert.match(source, /function displayActionIcon\(action\)/);
   assert.match(source, /meta:\s*formatActionMeta\(action\)/);

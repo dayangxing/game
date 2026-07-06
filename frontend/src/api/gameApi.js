@@ -462,17 +462,68 @@ export class BackendApiError extends Error {
 
 function withMode(data, mode, key) {
   const game = key ? data[key] : data;
-  return { ...game, mode };
+  return { ...normalizePublicGame(game), mode };
 }
 
 function withStoryResult(data, mode) {
+  const publicRuleResult = normalizePublicRuleResult(data.turnResult?.ruleResult);
   return {
     ...data,
     game: withMode(data.game, mode),
     turnResult: {
       ...(data.turnResult ?? {}),
+      ...(publicRuleResult ? { ruleResult: publicRuleResult } : {}),
       choices: normalizePublicChoices(data.turnResult?.choices)
     }
+  };
+}
+
+function normalizePublicGame(sourceGame = {}) {
+  const { lastTimeResult, ...game } = sourceGame ?? {};
+  return {
+    ...game,
+    ...(game.timePressure ? { timePressure: normalizePublicTimePressure(game.timePressure) } : {}),
+    ...(game.ending ? { ending: normalizePublicEnding(game.ending) } : {})
+  };
+}
+
+function normalizePublicRuleResult(ruleResult = {}) {
+  const timeResult = normalizePublicTimeResult(ruleResult.timeResult);
+  return timeResult ? { timeResult } : undefined;
+}
+
+function normalizePublicTimeResult(timeResult = {}) {
+  if (!timeResult || typeof timeResult !== 'object') return undefined;
+  return {
+    label: String(timeResult.label ?? ''),
+    netLifespanDelta: Number.isFinite(timeResult.netLifespanDelta) ? timeResult.netLifespanDelta : 0,
+    maxLifespanDelta: Number.isFinite(timeResult.maxLifespanDelta) ? timeResult.maxLifespanDelta : 0,
+    warningLevel: String(timeResult.warningLevel ?? ''),
+    note: String(timeResult.note ?? '')
+  };
+}
+
+function normalizePublicTimePressure(timePressure = {}) {
+  return {
+    calendarLabel: String(timePressure.calendarLabel ?? ''),
+    elapsedYears: Number.isFinite(timePressure.elapsedYears) ? timePressure.elapsedYears : 0,
+    remainingLifespan: Number.isFinite(timePressure.remainingLifespan) ? timePressure.remainingLifespan : 0,
+    maxLifespan: Number.isFinite(timePressure.maxLifespan) ? timePressure.maxLifespan : 0,
+    lifespanRatio: Number.isFinite(timePressure.lifespanRatio) ? timePressure.lifespanRatio : 0,
+    warningLevel: String(timePressure.warningLevel ?? ''),
+    lastDeltaTime: String(timePressure.lastDeltaTime ?? ''),
+    lastLifespanCost: Number.isFinite(timePressure.lastLifespanCost) ? timePressure.lastLifespanCost : 0,
+    lastLongevityGain: Number.isFinite(timePressure.lastLongevityGain) ? timePressure.lastLongevityGain : 0,
+    lastNetLifespanDelta: Number.isFinite(timePressure.lastNetLifespanDelta) ? timePressure.lastNetLifespanDelta : 0,
+    recentRecoveryFatigue: Number.isFinite(timePressure.recentRecoveryFatigue) ? timePressure.recentRecoveryFatigue : 0
+  };
+}
+
+function normalizePublicEnding(ending = {}) {
+  return {
+    type: String(ending.type ?? ''),
+    title: String(ending.title ?? '命簿终章'),
+    body: String(ending.body ?? '命火已尽。')
   };
 }
 

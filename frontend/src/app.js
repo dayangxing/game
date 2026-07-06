@@ -111,6 +111,18 @@ if (startupNotice) showToast(startupNotice);
 if (!startupNotice && shouldAutoOpenGuide(localStorage)) openGuide();
 
 nodes.activeViewContent.addEventListener('click', async (event) => {
+  const exportButton = event.target.closest('button[data-export-story]');
+  if (exportButton) {
+    await exportCurrentStory();
+    return;
+  }
+
+  const resetButton = event.target.closest('button[data-reset-game]');
+  if (resetButton) {
+    await resetGameForCharacterCreation();
+    return;
+  }
+
   const storyButton = event.target.closest('button[data-story-action]');
   if (storyButton) {
     const action = buildHomeActions().find((item) => item.id === storyButton.dataset.storyAction);
@@ -159,15 +171,23 @@ nodes.saveBtn.addEventListener('click', () => {
 });
 
 nodes.exportBtn.addEventListener('click', async () => {
+  await exportCurrentStory();
+});
+
+nodes.resetBtn.addEventListener('click', async () => {
+  await resetGameForCharacterCreation();
+});
+
+async function exportCurrentStory() {
   try {
     downloadText(await api.exportStory(game), `问道浮生-${game.player.name}-第${game.turn}回合.txt`);
     showToast('传记已导出');
   } catch (error) {
     handleApiError(error);
   }
-});
+}
 
-nodes.resetBtn.addEventListener('click', async () => {
+async function resetGameForCharacterCreation() {
   try {
     pendingCharacterSeed += 1;
     localStorage.setItem('wendao-fusheng-character-seed', String(pendingCharacterSeed));
@@ -192,7 +212,7 @@ nodes.resetBtn.addEventListener('click', async () => {
   } catch (error) {
     handleApiError(error);
   }
-});
+}
 
 nodes.sampleBtn.addEventListener('click', async () => {
   if (shouldUseContinuousStory(game)) {
@@ -510,7 +530,7 @@ function renderStatusOverview() {
       value: `${lifespanNow}/${lifespanMax}`,
       percent: Math.round((lifespanNow / Math.max(1, lifespanMax)) * 100),
       tone: 'lifespan',
-      note: lifespanNow <= Math.floor(lifespanMax * 0.45) ? '命火渐弱，行事务必克制。' : '命火尚盛，仍有余地布局。'
+      note: formatTimePressureSummary(game)
     },
     {
       label: '境界',
@@ -552,7 +572,7 @@ function renderAttributeSummary() {
 }
 
 function renderStory({ refreshActiveView = true } = {}) {
-  nodes.gameDate.textContent = formatDate(game.calendar);
+  nodes.gameDate.textContent = formatTopTimeLabel(game);
   nodes.turnPill.textContent = `第 ${game.turn} 回合`;
   if (refreshActiveView) renderActiveView(activeViewId);
 }
@@ -578,8 +598,9 @@ function renderActiveView(viewId = activeViewId) {
 function renderHomeView() {
   nodes.activeViewContent.innerHTML = [
     renderStatusPanel(),
+    game.ending ? renderEndingPanel() : '',
     renderHistoryPanel(3),
-    renderActionPanel(),
+    game.ending ? '' : renderActionPanel(),
     renderFocusPanel()
   ].join('');
 
@@ -647,6 +668,21 @@ function renderFocusPanel() {
       <div id="viewFocusBody"></div>
     </section>
   `;
+}
+
+function renderEndingPanel() {
+  return renderPanel({
+    className: 'ending-section',
+    title: game.ending?.title ?? '命簿终章',
+    meta: '本局已结',
+    body: `
+      <p>${game.ending?.body ?? '命火已尽。'}</p>
+      <div class="ending-actions">
+        <button type="button" data-export-story="true">查看传记</button>
+        <button type="button" data-reset-game="true">重开</button>
+      </div>
+    `
+  });
 }
 
 function renderCultivationFocusPanel() {
@@ -1147,6 +1183,9 @@ function pickArchiveTurn(entry) {
     outcome: entry.outcome || '',
     npcLine: entry.npcLine || '',
     worldEvent: entry.worldEvent || '',
+    timeLabel: entry.timeLabel || '',
+    netLifespanDelta: Number.isFinite(entry.netLifespanDelta) ? entry.netLifespanDelta : 0,
+    warningLevel: entry.warningLevel || '',
     statDelta: entry.statDelta ?? {}
   };
 }
@@ -1187,6 +1226,9 @@ function buildRecentTurnsFromLog() {
     outcome: entry.body,
     npcLine: entry.npcLine,
     worldEvent: entry.worldEvent,
+    timeLabel: '',
+    netLifespanDelta: 0,
+    warningLevel: '',
     statDelta: entry.effects ?? {}
   }));
 }
@@ -1222,6 +1264,9 @@ function buildModelContextPreview(memory) {
 
 function formatArchiveOutcome(entry) {
   const pieces = [
+    entry.timeLabel ? `历时${entry.timeLabel}` : '',
+    entry.netLifespanDelta ? `寿元${entry.netLifespanDelta > 0 ? '+' : ''}${entry.netLifespanDelta}` : '',
+    entry.warningLevel ? `气象：${warningLevelText(entry.warningLevel)}` : '',
     entry.outcome,
     entry.npcLine ? `人物：${entry.npcLine}` : '',
     entry.worldEvent ? `天机：${entry.worldEvent}` : '',
@@ -1247,6 +1292,16 @@ function formatArchiveStatDelta(statDelta = {}) {
     .map(([key, value]) => `${labels[key]}${typeof value === 'number' && value > 0 ? '+' : ''}${value}`);
 
   return items.length ? `变化：${items.join('、')}` : '';
+}
+
+function warningLevelText(level) {
+  return {
+    steady: '平稳',
+    strained: '承压',
+    danger: '危急',
+    critical: '将尽',
+    ended: '终章'
+  }[String(level ?? '')] ?? String(level ?? '');
 }
 
 function syncActiveViewNodes() {
@@ -1592,6 +1647,28 @@ function formatDate(calendar) {
   return `玄历${calendar.year}年 ${calendar.season} 第${calendar.month}月`;
 }
 
+function formatTopTimeLabel(targetGame = game) {
+  const calendar = targetGame.timePressure?.calendarLabel || formatDate(targetGame.calendar);
+  const lifespanNow = targetGame.player?.lifespan ?? targetGame.player?.maxLifespan ?? 0;
+  const lifespanMax = targetGame.player?.maxLifespan ?? lifespanNow;
+  return `${calendar} | 余寿 ${lifespanNow}年 / 大限 ${lifespanMax}年`;
+}
+
+function formatTimePressureSummary(targetGame = game) {
+  const pressure = targetGame.timePressure ?? {};
+  if (targetGame.ending) return targetGame.ending.body;
+  const level = pressure.warningLevel ?? 'steady';
+  const prefix = pressure.lastDeltaTime ? `本回合历时${pressure.lastDeltaTime}。` : '';
+  const textByLevel = {
+    steady: '命火尚盛，仍有余地布局。',
+    strained: '命火渐弱，行事务必克制。',
+    danger: '大限逼近，需尽快破局。',
+    critical: '命火将熄，每一步都在折损余寿。',
+    ended: '命火已尽。'
+  };
+  return `${prefix}${textByLevel[level] ?? textByLevel.steady}`;
+}
+
 function escapeAttribute(value) {
   return String(value ?? '').replaceAll('"', '&quot;');
 }
@@ -1810,7 +1887,10 @@ function enrichGameHistory(currentGame, previousGame) {
   if (!currentGame?.log?.length) return currentGame;
 
   const latestEntry = currentGame.log.at(-1);
-  const effectsSummary = summarizeHistoryChanges(previousGame, currentGame);
+  const effectsSummary = [
+    ...buildTimeResultSummary(currentGame.timePressure),
+    ...summarizeHistoryChanges(previousGame, currentGame)
+  ].slice(0, 5);
   if (!effectsSummary.length) return currentGame;
 
   return {
@@ -1823,6 +1903,28 @@ function enrichGameHistory(currentGame, previousGame) {
       }
     ]
   };
+}
+
+function buildTimeResultSummary(source = {}) {
+  const label = source.label || source.lastDeltaTime || '';
+  const netLifespanDelta = Number.isFinite(source.netLifespanDelta)
+    ? source.netLifespanDelta
+    : Number.isFinite(source.lastNetLifespanDelta)
+      ? source.lastNetLifespanDelta
+      : 0;
+  const maxLifespanDelta = Number.isFinite(source.maxLifespanDelta) ? source.maxLifespanDelta : 0;
+  const parts = [];
+
+  if (label) parts.push(`历时${label}`);
+  if (netLifespanDelta) {
+    parts.push(`寿元 ${netLifespanDelta > 0 ? '+' : ''}${netLifespanDelta}`);
+  }
+  if (maxLifespanDelta) {
+    parts.push(`大限 ${maxLifespanDelta > 0 ? '+' : ''}${maxLifespanDelta}`);
+  }
+  if (source.note) parts.push(source.note);
+
+  return parts.length ? [parts.join(' · ')] : [];
 }
 
 function summarizeHistoryChanges(previousGame, currentGame) {

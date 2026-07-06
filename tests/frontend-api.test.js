@@ -164,6 +164,55 @@ test('frontend api submits a generated story choice by id without exposing hints
   assert.deepEqual(result.turnResult.choices, []);
 });
 
+test('frontend api preserves public time result without raw backend fields', async () => {
+  const api = createGameApi({
+    baseUrl: 'http://backend.test',
+    preferredMode: 'api',
+    fetchImpl: async () => sseResponse([
+      ['done', {
+        ok: true,
+        data: {
+          game: {
+            mode: 'api',
+            turn: 4,
+            version: 4,
+            player: { name: '顾清河', lifespan: 42, maxLifespan: 116 },
+            timePressure: { lastDeltaTime: '半年', warningLevel: 'strained' },
+            lastTimeResult: { deltaMonths: 6 },
+            log: [{ id: 'turn-4', title: '调息养命', command: '继续', body: '命火回稳。' }]
+          },
+          turnResult: {
+            ruleResult: {
+              eventId: 'story_director',
+              choiceId: 'continue',
+              timeResult: {
+                label: '半年',
+                netLifespanDelta: 2,
+                maxLifespanDelta: 0,
+                warningLevel: 'strained',
+                note: '命火回稳。',
+                deltaMonths: 6
+              }
+            },
+            choices: []
+          }
+        },
+        error: null,
+        requestId: 'req_time'
+      }]
+    ])
+  });
+
+  const result = await api.continueStoryStream({ mode: 'api', turn: 3, version: 3 });
+
+  assert.equal(result.turnResult.ruleResult.timeResult.label, '半年');
+  assert.equal(result.turnResult.ruleResult.timeResult.netLifespanDelta, 2);
+  assert.equal('deltaMonths' in result.turnResult.ruleResult.timeResult, false);
+  assert.equal('eventId' in result.turnResult.ruleResult, false);
+  assert.equal('choiceId' in result.turnResult.ruleResult, false);
+  assert.equal('lastTimeResult' in result.game, false);
+});
+
 test('frontend api stops narration preview once the generated body text is complete', async () => {
   const api = createGameApi({
     baseUrl: 'http://backend.test',
