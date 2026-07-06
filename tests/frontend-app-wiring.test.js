@@ -207,23 +207,26 @@ test('daily action refresh is guarded by request, view, and game context', () =>
 test('mode and reset transitions load next actions before replacing current state', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
   const [, resetHandler] = source.match(/nodes\.resetBtn\.addEventListener\('click', async \(\) => \{([\s\S]*?)\n\}\);/) ?? [];
+  const resetHelper = extractFunction(source, 'resetGameForCharacterCreation');
   const [, startFormalHandler] = source.match(/nodes\.startFormalGameBtn\.addEventListener\('click', async \(\) => \{([\s\S]*?)\n\}\);/) ?? [];
   const setModeBody = extractFunction(source, 'setMode');
 
   assert.ok(resetHandler, 'reset handler should exist');
+  assert.ok(resetHelper, 'reset helper should exist');
   assert.ok(startFormalHandler, 'formal game handler should exist');
   assert.ok(setModeBody, 'setMode helper should exist');
 
+  assert.match(resetHandler, /await resetGameForCharacterCreation\(\);/);
   assert.doesNotMatch(resetHandler, /game = await api\.createGame/);
-  assert.match(resetHandler, /const freshGame = await api\.resetForCharacterCreation\(game\.mode/);
-  assert.match(resetHandler, /rotateHistorySummaryScope\(\);/);
-  assert.match(resetHandler, /const nextGame = freshGame;/);
-  assert.match(resetHandler, /const nextActions = shouldShowCharacterCreation\(nextGame\)\s*\?\s*\[\]\s*:\s*await loadDailyActionsForGame\(nextGame,\s*getView\(activeViewId\)\);/);
-  assert.ok(resetHandler.indexOf('const nextActions') < resetHandler.indexOf('game = nextGame;'));
-  assert.ok(resetHandler.indexOf('const nextActions') < resetHandler.indexOf('dailyActions = nextActions;'));
-  assert.ok(resetHandler.indexOf('rotateHistorySummaryScope();') < resetHandler.indexOf('const nextGame = freshGame;'));
-  assert.match(resetHandler, /clearStreamingNarration\(\);/);
-  assert.match(resetHandler, /showToast\(game\.mode === 'api' \? '旧命簿已封存，请重新创建角色' : '旧命簿已封存，请重新开局'\);/);
+  assert.match(resetHelper, /const freshGame = await api\.resetForCharacterCreation\(game\.mode/);
+  assert.match(resetHelper, /rotateHistorySummaryScope\(\);/);
+  assert.match(resetHelper, /const nextGame = freshGame;/);
+  assert.match(resetHelper, /const nextActions = shouldShowCharacterCreation\(nextGame\)\s*\?\s*\[\]\s*:\s*await loadDailyActionsForGame\(nextGame,\s*getView\(activeViewId\)\);/);
+  assert.ok(resetHelper.indexOf('const nextActions') < resetHelper.indexOf('game = nextGame;'));
+  assert.ok(resetHelper.indexOf('const nextActions') < resetHelper.indexOf('dailyActions = nextActions;'));
+  assert.ok(resetHelper.indexOf('rotateHistorySummaryScope();') < resetHelper.indexOf('const nextGame = freshGame;'));
+  assert.match(resetHelper, /clearStreamingNarration\(\);/);
+  assert.match(resetHelper, /showToast\(game\.mode === 'api' \? '旧命簿已封存，请重新创建角色' : '旧命簿已封存，请重新开局'\);/);
 
   assert.doesNotMatch(setModeBody, /game = await api\.setMode/);
   assert.match(setModeBody, /const modeGame = await api\.setMode\(game,\s*mode\);/);

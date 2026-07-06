@@ -75,11 +75,12 @@ test('effect resolver applies stat, item, relation, flag and future event effect
   assert.equal(result.game.flags.saved_injured_cultivator, true);
   assert.equal(result.game.karma.futureEventFlags.includes('old_friend_returns'), true);
   assert.ok(result.game.karma.karma > game.karma.karma);
-  assert.equal(result.game.player.lifespan, game.player.lifespan - 1);
+  assert.equal(result.game.player.lifespan, game.player.lifespan - 2);
   assert.ok(result.entry.body.includes('赠丹'));
   assert.equal(result.entry.npcLine, '');
   assert.equal(result.ruleResult.success, true);
-  assert.equal(result.ruleResult.lifespanCost, 1);
+  assert.equal(result.ruleResult.lifespanCost, 2);
+  assert.equal(result.ruleResult.timeResult.label, '一月');
 });
 
 test('unsupported effects fail closed before mutating game state', () => {
