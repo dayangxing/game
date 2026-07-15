@@ -4,6 +4,7 @@ import { buildFallbackDirectorOutput, createStoryDirector } from './agents/story
 import { buildUnavailableNarration, createStoryGraph, normalizeGeneratedNarration } from './agents/storyGraph.js';
 import { createDailyActions, hasView } from './domain/actions.js';
 import { applyCharacterToGame, rollCharacter } from './domain/characterCreation.js';
+import { getPublicChapterSnapshot, normalizeStoryProgress } from './domain/chapters/storyProgress.js';
 import { resolveDirectorEffectHints } from './domain/director/effectHints.js';
 import { resolveChoice } from './domain/events/effectResolver.js';
 import { selectEventActions } from './domain/events/eventSelector.js';
@@ -796,9 +797,17 @@ function normalizeGame(game) {
     cooldowns: game.cooldowns ?? {}
   };
 
-  return {
+  const storyProgress = normalizeStoryProgress(normalized);
+  const withStoryProgress = {
     ...normalized,
-    storyMemory: normalizeStoryMemory(game.storyMemory, normalized)
+    storyProgress,
+    chapterHistory: storyProgress ? (game.chapterHistory ?? []) : []
+  };
+
+  return {
+    ...withStoryProgress,
+    chapter: getPublicChapterSnapshot(withStoryProgress),
+    storyMemory: normalizeStoryMemory(game.storyMemory, withStoryProgress)
   };
 }
 

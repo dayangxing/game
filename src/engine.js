@@ -73,7 +73,9 @@ export function createGame(seed = Date.now()) {
         worldEvent: '青云宗春试将近'
       }
     ],
-    suggestions: ['闭关修炼三月，尝试突破', '找林师姐打听雾隐秘境', '前往后山探索灵脉']
+    suggestions: ['闭关修炼三月，尝试突破', '找林师姐打听雾隐秘境', '前往后山探索灵脉'],
+    storyProgress: null,
+    chapterHistory: []
   };
 
   return withInitialStoryMemory(game);
