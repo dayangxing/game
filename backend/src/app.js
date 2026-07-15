@@ -5,6 +5,7 @@ import { buildUnavailableNarration, createStoryGraph, normalizeGeneratedNarratio
 import { createDailyActions, hasView } from './domain/actions.js';
 import { resolveChapterProgress } from './domain/chapters/chapterProgression.js';
 import { applyCharacterToGame, rollCharacter } from './domain/characterCreation.js';
+import { applyEnding, resolveEnding } from './domain/endings/endingResolver.js';
 import { getPublicChapterSnapshot, normalizeStoryProgress } from './domain/chapters/storyProgress.js';
 import { resolveDirectorEffectHints } from './domain/director/effectHints.js';
 import { resolveChoice } from './domain/events/effectResolver.js';
@@ -452,7 +453,7 @@ function resolveDirectorTurn({ before, directorOutput, input, state, now }) {
     }
   });
 
-  const chapterResolution = applyChapterResolution({ before, after: nextGame, turn });
+  const chapterResolution = applyTerminalResolution({ before, after: nextGame, turn });
   nextGame = chapterResolution.game;
 
   const publicChoices = storeDirectorChoices({ state, directorOutput, turn });
@@ -574,7 +575,7 @@ function resolveTurnRules({ body, requestId, state, now }) {
   const before = state.game;
   if (action.source === 'breakthrough') {
     const resolution = resolveBreakthrough(before, now());
-    const chapterResolution = applyChapterResolution({ before, after: resolution.game, turn: resolution.game.turn });
+    const chapterResolution = applyTerminalResolution({ before, after: resolution.game, turn: resolution.game.turn });
 
     action.consumed = true;
     state.game = chapterResolution.game;
@@ -604,7 +605,7 @@ function resolveTurnRules({ body, requestId, state, now }) {
       choice: action.choice,
       now: now()
     });
-    const chapterResolution = applyChapterResolution({ before, after: resolution.game, turn: resolution.game.turn });
+    const chapterResolution = applyTerminalResolution({ before, after: resolution.game, turn: resolution.game.turn });
 
     action.consumed = true;
     state.game = chapterResolution.game;
@@ -627,7 +628,7 @@ function resolveTurnRules({ body, requestId, state, now }) {
     };
   }
 
-  const after = applyChapterResolution({
+  const after = applyTerminalResolution({
     before,
     after: advanceTurn(before, action.command),
     turn: before.turn + 1
@@ -652,9 +653,15 @@ function resolveTurnRules({ body, requestId, state, now }) {
   };
 }
 
-function applyChapterResolution({ before, after, turn }) {
-  const resolution = resolveChapterProgress({ before, after: normalizeGame(after), turn });
-  return { ...resolution, game: normalizeGame(resolution.game) };
+function applyTerminalResolution({ before, after, turn }) {
+  const chapterResolution = resolveChapterProgress({ before, after: normalizeGame(after), turn });
+  const candidate = resolveEnding(chapterResolution.game);
+  const game = candidate ? applyEnding(chapterResolution.game, candidate, turn) : chapterResolution.game;
+  return {
+    ...chapterResolution,
+    game: normalizeGame(game),
+    ending: game.ending ?? null
+  };
 }
 
 function finalizeTurn({ resolved, state, now }) {
@@ -700,7 +707,7 @@ function finalizeTurn({ resolved, state, now }) {
 }
 
 function rejectIfGameEnded({ requestId, state }) {
-  if (!state.game.ending) return null;
+  if (!state.game.ending && state.game.storyProgress?.status !== 'ended') return null;
   return errorResponse(409, requestId, 'GAME_ENDED', '命簿已结，请重开后再行动。');
 }
 
