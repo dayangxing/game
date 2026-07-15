@@ -50,6 +50,9 @@ test('story director prompt sends compact context and forbids numeric authority'
   assert.match(system, /intensity/);
   assert.match(system, /必须承认时间流逝|不要让连续剧情都像同一天/);
   assert.match(system, /不得输出具体数值/);
+  assert.match(system, /章节由后端规则层决定/);
+  assert.match(system, /不得创建章节、完成章节目标、修改真相旗标、修改契约立场或宣布结局 id/);
+  assert.match(system, /如果当前状态已经结束，不得生成新的行动或继续推进剧情/);
   assert.equal(user.task, 'continuous_story_director');
   assert.equal(user.input.type, 'continue');
   assert.equal(user.context.timePressure.warningLevel, 'strained');
@@ -58,6 +61,10 @@ test('story director prompt sends compact context and forbids numeric authority'
   assert.equal(user.context.recentTurns.length, 1);
   assert.equal(user.context.recentTurns[0].timeLabel, '半年');
   assert.equal(user.context.recentTurns[0].warningLevel, 'strained');
+  const hardConstraints = user.hardConstraints.join('\n');
+  assert.match(hardConstraints, /章节由后端规则层决定/);
+  assert.match(hardConstraints, /不得创建章节、完成章节目标、修改真相旗标、修改契约立场或宣布结局 id/);
+  assert.match(hardConstraints, /如果当前状态已经结束，不得生成新的行动或继续推进剧情/);
   assert.doesNotMatch(JSON.stringify(user), /apiKey|baseUrl|prompt|debug/i);
 });
 

@@ -15,6 +15,9 @@ const SYSTEM_PROMPT = [
   '可以暗示耗时更久、风险更高、可能养命，但不得输出具体数值。',
   '不得让玩家获得未授权高阶功法、宝物、境界或主线真相。',
   'NPC 没有剧情必要时不要出场；出场时只能使用已知 NPC。',
+  '章节由后端规则层决定。你只能描写当前章节和后端已经提供的章节转场。',
+  '不得创建章节、完成章节目标、修改真相旗标、修改契约立场或宣布结局 id。',
+  '如果当前状态已经结束，不得生成新的行动或继续推进剧情。',
   '输出必须是合法 JSON object，不要 Markdown、代码块、解释文字或系统提示。',
   '',
   '允许的 effectHints target：',
@@ -49,6 +52,9 @@ export function buildStoryDirectorMessages({ game, input }) {
           '不得输出具体数值。',
           '不得生成与近期剧情无关的选项。',
           '不得暴露 JSON 字段给玩家。',
+          '章节由后端规则层决定。你只能描写当前章节和后端已经提供的章节转场。',
+          '不得创建章节、完成章节目标、修改真相旗标、修改契约立场或宣布结局 id。',
+          '如果当前状态已经结束，不得生成新的行动或继续推进剧情。',
           '没有 NPC 参与时 npcLines 必须为空数组。',
           'mode 为 choice 时 choices 必须有 2 到 4 项。',
           'mode 为 continue 时 choices 必须为空数组。'
@@ -71,6 +77,7 @@ function pickContext(game) {
   return {
     turn: game.turn,
     calendar: game.calendar,
+    chapter: pickChapter(game),
     player: {
       name: game.player?.name,
       realm: game.player?.realm,
@@ -105,6 +112,20 @@ function pickContext(game) {
     },
     timePressure: pickTimePressure(game.timePressure, game),
     recentTurns: (memory.recentTurns ?? []).slice(-10).map(pickRecentTurn)
+  };
+}
+
+function pickChapter(game) {
+  const chapter = game.chapter;
+  if (!chapter) return null;
+  return {
+    title: text(chapter.title),
+    progress: Number.isFinite(chapter.progress) ? chapter.progress : 0,
+    objectives: (chapter.objectives ?? []).map((objective) => ({
+      text: text(objective?.text),
+      completed: objective?.completed === true,
+      required: objective?.required === true
+    }))
   };
 }
 
