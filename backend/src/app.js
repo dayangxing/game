@@ -3,6 +3,7 @@ import { normalizeStoryMemory, recordStoryMemoryTurn } from '../../src/storyMemo
 import { buildFallbackDirectorOutput, createStoryDirector } from './agents/storyDirector.js';
 import { buildUnavailableNarration, createStoryGraph, normalizeGeneratedNarration } from './agents/storyGraph.js';
 import { createDailyActions, hasView } from './domain/actions.js';
+import { resolveChapterProgress } from './domain/chapters/chapterProgression.js';
 import { applyCharacterToGame, rollCharacter } from './domain/characterCreation.js';
 import { getPublicChapterSnapshot, normalizeStoryProgress } from './domain/chapters/storyProgress.js';
 import { resolveDirectorEffectHints } from './domain/director/effectHints.js';
@@ -451,6 +452,9 @@ function resolveDirectorTurn({ before, directorOutput, input, state, now }) {
     }
   });
 
+  const chapterResolution = applyChapterResolution({ before, after: nextGame, turn });
+  nextGame = chapterResolution.game;
+
   const publicChoices = storeDirectorChoices({ state, directorOutput, turn });
   const action = { id: `director-${turn}`, title: entry.title, command: entry.command, source: 'director' };
 
@@ -459,9 +463,15 @@ function resolveDirectorTurn({ before, directorOutput, input, state, now }) {
     entry,
     action,
     publicStatePatch: pickPublicStatePatch(nextGame),
+    chapterTransition: chapterResolution.transition,
+    chapterMilestone: chapterResolution.milestone,
+    ending: chapterResolution.ending,
     turnResult: {
       turn,
       actionId: action.id,
+      chapter: nextGame.chapter ?? null,
+      chapterTransition: chapterResolution.transition,
+      ending: chapterResolution.ending,
       mode: publicChoices.length ? 'choice' : 'continue',
       narration: {
         status: directorOutput.status,
@@ -518,6 +528,7 @@ function pickPublicStatePatch(game) {
       sectRelation: game.player.sectRelation
     },
     timePressure: game.timePressure,
+    chapter: game.chapter,
     ending: game.ending
   };
 }
@@ -563,9 +574,10 @@ function resolveTurnRules({ body, requestId, state, now }) {
   const before = state.game;
   if (action.source === 'breakthrough') {
     const resolution = resolveBreakthrough(before, now());
+    const chapterResolution = applyChapterResolution({ before, after: resolution.game, turn: resolution.game.turn });
 
     action.consumed = true;
-    state.game = normalizeGame(resolution.game);
+    state.game = chapterResolution.game;
     state.turnSnapshots.set(state.game.turn, {
       beforeGame: before,
       afterGame: state.game,
@@ -578,6 +590,9 @@ function resolveTurnRules({ body, requestId, state, now }) {
       action,
       ruleEntry: resolution.entry,
       ruleResult: resolution.ruleResult,
+      chapterTransition: chapterResolution.transition,
+      chapterMilestone: chapterResolution.milestone,
+      ending: chapterResolution.ending,
       fallbackNarration: eventNarrationFallback(resolution)
     };
   }
@@ -589,9 +604,10 @@ function resolveTurnRules({ body, requestId, state, now }) {
       choice: action.choice,
       now: now()
     });
+    const chapterResolution = applyChapterResolution({ before, after: resolution.game, turn: resolution.game.turn });
 
     action.consumed = true;
-    state.game = normalizeGame(resolution.game);
+    state.game = chapterResolution.game;
     state.turnSnapshots.set(state.game.turn, {
       beforeGame: before,
       afterGame: state.game,
@@ -604,26 +620,41 @@ function resolveTurnRules({ body, requestId, state, now }) {
       action,
       ruleEntry: resolution.entry,
       ruleResult: resolution.ruleResult,
+      chapterTransition: chapterResolution.transition,
+      chapterMilestone: chapterResolution.milestone,
+      ending: chapterResolution.ending,
       fallbackNarration: eventNarrationFallback(resolution)
     };
   }
 
-  const after = normalizeGame(advanceTurn(before, action.command));
+  const after = applyChapterResolution({
+    before,
+    after: advanceTurn(before, action.command),
+    turn: before.turn + 1
+  });
 
   action.consumed = true;
-  state.game = after;
-  state.turnSnapshots.set(after.turn, {
+  state.game = after.game;
+  state.turnSnapshots.set(after.game.turn, {
     beforeGame: before,
-    afterGame: after,
+    afterGame: after.game,
     action: { ...action },
-    ruleEntry: after.log.at(-1)
+    ruleEntry: after.game.log.at(-1)
   });
 
   return {
     before,
     action,
-    ruleEntry: after.log.at(-1)
+    ruleEntry: after.game.log.at(-1),
+    chapterTransition: after.transition,
+    chapterMilestone: after.milestone,
+    ending: after.ending
   };
+}
+
+function applyChapterResolution({ before, after, turn }) {
+  const resolution = resolveChapterProgress({ before, after: normalizeGame(after), turn });
+  return { ...resolution, game: normalizeGame(resolution.game) };
 }
 
 function finalizeTurn({ resolved, state, now }) {
@@ -640,7 +671,9 @@ function finalizeTurn({ resolved, state, now }) {
     after: state.game,
     actionId: resolved.action.id,
     narration: resolved.narration,
-    timeResult: resolved.ruleResult?.timeResult
+    timeResult: resolved.ruleResult?.timeResult,
+    chapterTransition: resolved.chapterTransition ?? null,
+    ending: resolved.ending ?? state.game.ending ?? null
   });
   const { timeResult: _rawTimeResult, ...resolvedRuleResult } = resolved.ruleResult ?? {};
   const turnResult = resolved.ruleResult ? {
