@@ -387,6 +387,70 @@ button {
   background: rgba(255, 252, 240, 0.58);
 }
 
+.chapter-progress-panel {
+  display: grid;
+  gap: 12px;
+  grid-column: 1 / -1;
+}
+
+.chapter-progress-panel .section-title {
+  margin-bottom: 0;
+}
+
+.chapter-progress-bar {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(58, 65, 55, 0.13);
+}
+
+.chapter-progress-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--gold), #d8b45f 52%, var(--jade));
+}
+
+.chapter-objective-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chapter-objective {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+
+.chapter-objective > span:first-child {
+  color: var(--gold);
+  font-size: 16px;
+}
+
+.chapter-objective.is-complete {
+  color: var(--ink);
+}
+
+.chapter-objective.is-complete > span:first-child {
+  color: var(--jade);
+}
+
+.chapter-transition-panel {
+  border-color: rgba(47, 143, 112, 0.34);
+  background: rgba(236, 248, 239, 0.68);
+}
+
+.chapter-transition-panel p {
+  margin: 0;
+  color: #2e765f;
+  line-height: 1.8;
+}
+
 .quest-stack,
 .npc-list,
 .timeline,
@@ -1086,6 +1150,33 @@ button {
   margin: 0;
   color: #5c342f;
   line-height: 1.8;
+}
+
+.ending-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 16px 0 0;
+}
+
+.ending-summary > div {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid rgba(168, 69, 55, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 252, 240, 0.54);
+}
+
+.ending-summary dt {
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.ending-summary dd {
+  margin: 0;
+  color: #5c342f;
+  font-weight: 700;
 }
 
 .ending-actions {

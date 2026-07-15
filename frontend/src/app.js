@@ -14,6 +14,7 @@ import {
   remainingAllocationPoints,
   updateAllocation
 } from './ui/characterCreation.js';
+import { formatChapterTransition, renderChapterProgress } from './ui/chapterProgress.js';
 import { getView, visibleViewList } from './ui/views.js?v=20260703';
 
 const STORAGE_KEY = 'wendao-fusheng-frontend-save-v1';
@@ -37,6 +38,7 @@ let pendingApiImmediateActions = false;
 let streamingNarration = null;
 let storyChoices = [];
 let storyStepPending = false;
+let chapterTransitionNotice = '';
 let highlightedHistoryEntryId = null;
 let suppressNextHashChange = false;
 let pendingCharacterSeed = Number(localStorage.getItem('wendao-fusheng-character-seed') ?? Date.now());
@@ -204,6 +206,7 @@ async function resetGameForCharacterCreation() {
     game = nextGame;
     dailyActions = nextActions;
     storyChoices = [];
+    chapterTransitionNotice = '';
     clearStreamingNarration();
     resetPendingCharacterPreview();
     saveGame();
@@ -285,6 +288,7 @@ nodes.startFormalGameBtn.addEventListener('click', async () => {
     game = hydrateHistorySummaries(game);
     dailyActions = await loadDailyActionsForGame(game, getView(activeViewId));
     storyChoices = [];
+    chapterTransitionNotice = '';
     actionRefreshSequence += 1;
     pendingApiImmediateActions = false;
     saveGame();
@@ -302,9 +306,14 @@ async function submitDailyAction(action) {
   beginStreamingNarration(action);
   try {
     const previousGame = game;
-    game = hydrateHistorySummaries(await api.submitDailyActionStream(game, action, {
+    const result = await api.submitDailyActionStream(game, action, {
       onNarrationPreview: updateStreamingNarration
-    }));
+    });
+    const nextGame = result?.game ?? result;
+    chapterTransitionNotice = formatChapterTransition(
+      result?.turnResult?.chapterTransition ?? inferChapterTransition(previousGame.chapter, nextGame.chapter)
+    );
+    game = hydrateHistorySummaries(nextGame);
     game = enrichGameHistory(game, previousGame);
     markHistoryRefreshed(game);
     persistHistorySummaryCache(game);
@@ -347,6 +356,7 @@ async function submitStoryStep(action) {
     game = hydrateHistorySummaries(result.game);
     game = enrichGameHistory(game, previousGame);
     storyChoices = normalizeStoryChoices(result.turnResult?.choices);
+    chapterTransitionNotice = formatChapterTransition(result.turnResult?.chapterTransition);
     markHistoryRefreshed(game);
     persistHistorySummaryCache(game);
     saveGame();
@@ -373,6 +383,7 @@ async function setMode(mode) {
     game = nextGame;
     dailyActions = nextActions;
     storyChoices = [];
+    chapterTransitionNotice = '';
     if (game.character?.attributes) {
       pendingAttributes = { ...game.character.attributes };
     }
@@ -598,6 +609,13 @@ function renderActiveView(viewId = activeViewId) {
 function renderHomeView() {
   nodes.activeViewContent.innerHTML = [
     renderStatusPanel(),
+    renderChapterProgress(game.chapter),
+    chapterTransitionNotice ? renderPanel({
+      className: 'chapter-transition-panel',
+      title: '篇章转折',
+      meta: '主线推进',
+      body: `<p>${escapeHtml(chapterTransitionNotice)}</p>`
+    }) : '',
     game.ending ? renderEndingPanel() : '',
     renderHistoryPanel(3),
     game.ending ? '' : renderActionPanel(),
@@ -671,12 +689,27 @@ function renderFocusPanel() {
 }
 
 function renderEndingPanel() {
+  const summary = game.ending?.summary ?? {};
+  const chapterIndex = Number(game.chapter?.index);
+  const historyCount = Array.isArray(game.chapterHistory) ? game.chapterHistory.length : 0;
+  const chapterCount = Math.max(
+    Number.isInteger(chapterIndex) ? chapterIndex + 1 : 0,
+    historyCount + (game.chapter ? 1 : 0)
+  );
+  const finalRealm = summary.finalRealm ?? game.player?.realm ?? '未知境界';
+  const truthClueCount = Number.isFinite(summary.truthFlags) ? summary.truthFlags : 0;
+
   return renderPanel({
     className: 'ending-section',
     title: game.ending?.title ?? '命簿终章',
     meta: '本局已结',
     body: `
-      <p>${game.ending?.body ?? '命火已尽。'}</p>
+      <p>${escapeHtml(game.ending?.body ?? '命火已尽。')}</p>
+      <dl class="ending-summary">
+        <div><dt>最终境界</dt><dd>${escapeHtml(finalRealm)}</dd></div>
+        <div><dt>章节数</dt><dd>${chapterCount || '暂无记录'}</dd></div>
+        <div><dt>真相线索</dt><dd>${truthClueCount}</dd></div>
+      </dl>
       <div class="ending-actions">
         <button type="button" data-export-story="true">查看传记</button>
         <button type="button" data-reset-game="true">重开</button>
@@ -1324,6 +1357,14 @@ function renderPanel({ className = '', title, meta, body }) {
   `;
 }
 
+function inferChapterTransition(previousChapter, nextChapter) {
+  if (!previousChapter?.title || !nextChapter?.title || previousChapter.title === nextChapter.title) return null;
+  return {
+    fromTitle: previousChapter.title,
+    toTitle: nextChapter.title
+  };
+}
+
 function renderSectionTitle(title, meta) {
   return `
     <div class="section-title">
@@ -1671,6 +1712,15 @@ function formatTimePressureSummary(targetGame = game) {
 
 function escapeAttribute(value) {
   return String(value ?? '').replaceAll('"', '&quot;');
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 }
 
 function renderHealthState() {

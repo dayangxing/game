@@ -75,6 +75,24 @@ test('bag and personal views separate inventory collections from detailed charac
   assert.doesNotMatch(renderCollectionCards, /\$\{item\.id\}/);
 });
 
+test('home view renders chapter progress before history and keeps ending details readable', () => {
+  const source = fs.readFileSync('frontend/src/app.js', 'utf8');
+  const renderHomeView = extractFunction(source, 'renderHomeView');
+  const endingPanel = extractFunction(source, 'renderEndingPanel');
+
+  assert.match(renderHomeView, /renderChapterProgress\(game\.chapter\)/);
+  assert.ok(
+    renderHomeView.indexOf('renderChapterProgress(game.chapter)') < renderHomeView.indexOf('renderHistoryPanel(3)'),
+    'chapter progress should render before history on the home screen'
+  );
+  assert.match(endingPanel, /最终境界/);
+  assert.match(endingPanel, /章节数/);
+  assert.match(endingPanel, /真相线索/);
+  assert.doesNotMatch(endingPanel, /ending\.type|endingId|chapterId|eventId|choiceId|effectHints/);
+  assert.doesNotMatch(endingPanel, /<dd>\$\{[^}]*truthFlags[^}]*\}<\/dd>/);
+  assert.doesNotMatch(endingPanel, /game\.storyProgress/);
+});
+
 function extractFunction(source, name) {
   const start = source.indexOf(`async function ${name}`) !== -1
     ? source.indexOf(`async function ${name}`)
