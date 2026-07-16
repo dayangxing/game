@@ -451,7 +451,8 @@ test('POST /api/v1/daily-actions keeps routing fields server-side while returnin
 
   assertPublicActionShape(publicEvent);
   assert.equal('source' in publicEvent, false);
-  assert.equal('risk' in publicEvent, false);
+  assert.equal(publicEvent.category, pendingEvent.event.category);
+  assert.equal(publicEvent.risk, pendingEvent.choice.risk);
   assert.equal('eventId' in publicEvent, false);
   assert.equal('choiceId' in publicEvent, false);
   assert.equal('event' in publicEvent, false);
@@ -1007,7 +1008,7 @@ function assertPublicActionShape(action) {
 }
 
 function hasOnlyPublicActionFields(action) {
-  return JSON.stringify(Object.keys(action).sort()) === JSON.stringify([
+  const expected = [
     'command',
     'expiresAt',
     'icon',
@@ -1015,5 +1016,9 @@ function hasOnlyPublicActionFields(action) {
     'meta',
     'storyHook',
     'title'
-  ]);
+  ];
+  for (const key of ['category', 'risk', 'cadence']) {
+    if (key in action) expected.push(key);
+  }
+  return JSON.stringify(Object.keys(action).sort()) === JSON.stringify(expected.sort());
 }

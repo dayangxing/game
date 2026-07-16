@@ -1,6 +1,7 @@
 import { calculateBreakthroughChance, canAttemptBreakthrough } from '../progression.js';
 import { BREAKTHROUGH_EVENT, EVENT_CATALOG } from './eventCatalog.js';
 import { canAffordEffects } from './effectResolver.js';
+import { hasResolvedEvent } from './eventHistory.js';
 import { isEventEligible } from './triggerMatcher.js';
 
 const FEATURED_EVENT_PRIORITY_BOOSTS = {
@@ -19,6 +20,7 @@ export function selectEventActions({ game, viewId, now, sequenceStart = 0 }) {
   const eligible = EVENT_CATALOG
     .map((event, index) => ({ event, index }))
     .filter(({ event }) => isEventEligible(event, game, viewId))
+    .filter(({ event }) => !isEventCompleted(event, game))
     .filter(({ event }) => !isEventOnCooldown(event, game))
     .filter(({ event }) => !isEventRecentlyResolved(event, game))
     .sort((left, right) => compareEvents(left, right, viewId, game))
@@ -37,6 +39,7 @@ export function selectEventActions({ game, viewId, now, sequenceStart = 0 }) {
       category: event.category,
       source: 'event',
       risk: choice.risk,
+      cadence: event.cadence,
       eventId: event.id,
       choiceId: choice.id,
       storyHook: [
@@ -93,8 +96,16 @@ function isEventOnCooldown(event, game) {
   return typeof cooldownTurn === 'number' && cooldownTurn >= game.turn;
 }
 
+function isEventCompleted(event, game) {
+  return event.oneShot === true && hasResolvedEvent(game, event.id);
+}
+
 function isEventRecentlyResolved(event, game) {
   const cooldownTurn = game.cooldowns?.[event.id];
+  const lastResolvedTurn = game.eventHistory?.lastResolvedTurn?.[event.id];
+  if (typeof lastResolvedTurn === 'number') {
+    return game.turn - lastResolvedTurn <= RECENT_EVENT_TURN_WINDOW;
+  }
   if (typeof cooldownTurn !== 'number') return false;
   return game.turn - cooldownTurn <= RECENT_EVENT_TURN_WINDOW;
 }

@@ -387,3 +387,52 @@ test('side event repeat rewards decay while costs and persistent flags remain in
   assert.equal(result.game.flags.helped, true);
   assert.equal(result.game.eventHistory.repeatCounts.side, 2);
 });
+
+test('resolved mainline events are never selected again in the same chapter', () => {
+  const base = formalGame();
+  const target = EVENT_CATALOG.find((event) => event.id === 'cultivation_breathing');
+  const previousOneShot = target.oneShot;
+  target.oneShot = true;
+  const game = {
+    ...base,
+    storyProgress: { ...base.storyProgress, chapterId: 'prologue' },
+    turn: 10,
+    eventHistory: {
+      resolved: ['cultivation_breathing'],
+      repeatCounts: { cultivation_breathing: 1 },
+      lastResolvedTurn: { cultivation_breathing: 0 }
+    }
+  };
+  try {
+    const actions = selectEventActions({
+      game,
+      viewId: 'home',
+      now: new Date('2026-07-03T00:00:00.000Z')
+    });
+    assert.equal(actions.some((action) => action.eventId === 'cultivation_breathing'), false);
+  } finally {
+    if (previousOneShot === undefined) delete target.oneShot;
+    else target.oneShot = previousOneShot;
+  }
+});
+
+test('side events respect event history recent-resolution protection', () => {
+  const base = formalGame();
+  const game = {
+    ...base,
+    storyProgress: { ...base.storyProgress, chapterId: 'prologue' },
+    turn: 5,
+    eventHistory: {
+      resolved: ['master_guidance'],
+      repeatCounts: { master_guidance: 1 },
+      lastResolvedTurn: { master_guidance: 4 }
+    }
+  };
+  const actions = selectEventActions({
+    game,
+    viewId: 'skills',
+    now: new Date('2026-07-03T00:00:00.000Z')
+  });
+
+  assert.equal(actions.some((action) => action.eventId === 'master_guidance'), false);
+});
