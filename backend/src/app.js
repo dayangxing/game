@@ -22,8 +22,9 @@ import { getModelSelection } from './llm/modelSelection.js';
 export function createBackendApp(options = {}) {
   const now = options.now ?? (() => new Date());
   const llm = options.llm ?? createBailianClient({ env: options.env ?? process.env, fetchImpl: options.fetchImpl });
+  const persistGame = options.persistGame ?? null;
   const state = {
-    game: normalizeGame(createGame(options.seed ?? Date.now())),
+    game: normalizeGame(options.initialGame ?? createGame(options.seed ?? Date.now())),
     pendingActions: new Map(),
     pendingDirectorChoices: new Map(),
     turnSnapshots: new Map(),
@@ -33,80 +34,95 @@ export function createBackendApp(options = {}) {
     modelSelection: getModelSelection(options.env ?? process.env),
     llm,
     storyGraph: options.storyGraph ?? createStoryGraph({ llm }),
-    storyDirector: options.storyDirector ?? createStoryDirector({ llm })
+    storyDirector: options.storyDirector ?? createStoryDirector({ llm }),
+    persistGame
+  };
+
+  const handleRequest = async (request) => {
+    const requestId = nextRequestId(state);
+
+    try {
+      if (request.method === 'OPTIONS') {
+        return emptyResponse(204);
+      }
+
+      const url = new URL(request.url);
+      const route = `${request.method} ${url.pathname}`;
+
+      if (route === 'GET /api/v1/game/state') {
+        return jsonResponse(200, requestId, { game: state.game });
+      }
+
+      if (route === 'GET /api/v1/model-selection') {
+        return jsonResponse(200, requestId, { modelSelection: state.modelSelection });
+      }
+
+      if (route === 'GET /api/v1/model-health') {
+        return jsonResponse(200, requestId, {
+          modelHealth: createModelHealth(state.modelSelection)
+        });
+      }
+
+      if (route === 'POST /api/v1/game/new') {
+        const body = await readJson(request);
+        return handleNewFormalGame({ body, requestId, state });
+      }
+
+      if (route === 'POST /api/v1/game/reset') {
+        const body = await readJson(request);
+        return handleResetGame({ body, requestId, state });
+      }
+
+      if (route === 'POST /api/v1/daily-actions') {
+        const body = await readJson(request);
+        return handleDailyActions({ body, requestId, state, now });
+      }
+
+      if (route === 'POST /api/v1/turns') {
+        const body = await readJson(request);
+        return handleTurn({ body, requestId, state, now });
+      }
+
+      if (route === 'POST /api/v1/turns/stream') {
+        const body = await readJson(request);
+        return handleTurnStream({ body, requestId, state, now });
+      }
+
+      const retryNarrationTurn = matchRetryNarrationRoute(request.method, url.pathname);
+      if (retryNarrationTurn !== null) {
+        return handleRetryNarration({ turn: retryNarrationTurn, requestId, state, now });
+      }
+
+      if (route === 'POST /api/v1/export-story') {
+        const body = await readJson(request);
+        return handleExportStory({ body, requestId, state });
+      }
+
+      return errorResponse(404, requestId, 'NOT_FOUND', '接口不存在。');
+    } catch (error) {
+      state.auditLog.push({
+        type: 'error',
+        requestId,
+        message: error.message,
+        at: now().toISOString()
+      });
+      return errorResponse(500, requestId, 'INTERNAL_ERROR', '后端处理请求时出现异常。');
+    }
   };
 
   return {
     async handle(request) {
-      const requestId = nextRequestId(state);
-
-      try {
-        if (request.method === 'OPTIONS') {
-          return emptyResponse(204);
-        }
-
-        const url = new URL(request.url);
-        const route = `${request.method} ${url.pathname}`;
-
-        if (route === 'GET /api/v1/game/state') {
-          return jsonResponse(200, requestId, { game: state.game });
-        }
-
-        if (route === 'GET /api/v1/model-selection') {
-          return jsonResponse(200, requestId, { modelSelection: state.modelSelection });
-        }
-
-        if (route === 'GET /api/v1/model-health') {
-          return jsonResponse(200, requestId, {
-            modelHealth: createModelHealth(state.modelSelection)
-          });
-        }
-
-        if (route === 'POST /api/v1/game/new') {
-          const body = await readJson(request);
-          return handleNewFormalGame({ body, requestId, state });
-        }
-
-        if (route === 'POST /api/v1/game/reset') {
-          const body = await readJson(request);
-          return handleResetGame({ body, requestId, state });
-        }
-
-        if (route === 'POST /api/v1/daily-actions') {
-          const body = await readJson(request);
-          return handleDailyActions({ body, requestId, state, now });
-        }
-
-        if (route === 'POST /api/v1/turns') {
-          const body = await readJson(request);
-          return handleTurn({ body, requestId, state, now });
-        }
-
-        if (route === 'POST /api/v1/turns/stream') {
-          const body = await readJson(request);
-          return handleTurnStream({ body, requestId, state, now });
-        }
-
-        const retryNarrationTurn = matchRetryNarrationRoute(request.method, url.pathname);
-        if (retryNarrationTurn !== null) {
-          return handleRetryNarration({ turn: retryNarrationTurn, requestId, state, now });
-        }
-
-        if (route === 'POST /api/v1/export-story') {
-          const body = await readJson(request);
-          return handleExportStory({ body, requestId, state });
-        }
-
-        return errorResponse(404, requestId, 'NOT_FOUND', '接口不存在。');
-      } catch (error) {
-        state.auditLog.push({
-          type: 'error',
-          requestId,
-          message: error.message,
-          at: now().toISOString()
-        });
-        return errorResponse(500, requestId, 'INTERNAL_ERROR', '后端处理请求时出现异常。');
+      const response = await handleRequest(request);
+      if (!persistGame || request.method !== 'POST' || response.status < 200 || response.status >= 300) {
+        return response;
       }
+
+      if (response.headers.get('content-type')?.startsWith('text/event-stream')) {
+        return withCompletionPersistence(response, persistGame, state);
+      }
+
+      await persistGame(state.game);
+      return response;
     },
 
     getState() {
@@ -780,6 +796,36 @@ async function resolveTurnNarration({ before, after, action, ruleEntry, state })
     ruleEntry: ruleEntry ?? after.log.at(-1)
   });
   return result.narration;
+}
+
+function withCompletionPersistence(response, persistGame, state) {
+  const reader = response.body?.getReader();
+  if (!reader) return response;
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (value) controller.enqueue(value);
+        }
+        await persistGame(state.game);
+        controller.close();
+      } catch (error) {
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      await reader.cancel(reason);
+    }
+  });
+
+  return new Response(stream, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers
+  });
 }
 
 function handleExportStory({ body, requestId, state }) {

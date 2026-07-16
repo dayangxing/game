@@ -59,6 +59,25 @@ http://127.0.0.1:5173/frontend/
 
 如果 `5173` 被占用，可以临时换端口运行静态服务，但 `file:` 自动跳转默认仍指向 `5173`。
 
+## macOS / Windows 单机 App
+
+桌面版使用 Electron 内置前端窗口和 Node 后端，不需要另外启动 Python 静态服务或数据库：
+
+```bash
+# 开发运行桌面窗口
+npm run desktop:dev
+
+# 生成当前操作系统的未签名可运行包
+npm run desktop:package
+
+# 生成分发产物
+npm run desktop:make
+```
+
+桌面版后端只绑定本机随机端口，游戏权威状态保存到 Electron 的用户数据目录中的 `wendao-fusheng-save.json`，不会写入安装目录。首次启动没有存档时会自动创建新局；存档损坏时会保留 `.corrupt` 备份并从新局启动。
+
+本地 Mock 模式可以离线运行；需要正式模型时，仍需在启动桌面 App 前配置本机 `.env.local`，API Key 不会被打包进安装资源。最终的 macOS 和 Windows 安装包应分别在对应平台或对应 CI runner 上构建，并按发布要求补充代码签名与公证。
+
 ## 本地调试命令
 
 所有命令默认在项目根目录执行：

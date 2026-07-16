@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>问道浮生</title>
     <script>
-      if (location.protocol === 'file:') {
+      if (location.protocol === 'file:' && !window.WENDAO_DESKTOP_APP) {
         location.replace('http://127.0.0.1:5173/frontend/');
       }
     </script>

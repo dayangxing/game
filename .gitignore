@@ -3,5 +3,6 @@ node_modules/
 *.log
 .superpowers/
 .runtime/
+out/
 .env
 .env.*
