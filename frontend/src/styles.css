@@ -1947,6 +1947,113 @@ blockquote {
   background: linear-gradient(180deg, #3f9b7c, #2e765f);
 }
 
+.model-config-overlay {
+  position: fixed;
+  z-index: 21;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(24, 33, 30, 0.38);
+  backdrop-filter: blur(6px);
+}
+
+.model-config-overlay[hidden] {
+  display: none;
+}
+
+.model-config-dialog {
+  width: min(560px, 100%);
+  padding: 28px;
+  border: 1px solid var(--line-dark);
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at 86% 18%, rgba(47, 143, 112, 0.1), transparent 28%),
+    linear-gradient(135deg, rgba(255, 252, 240, 0.98), rgba(237, 229, 201, 0.96));
+  box-shadow: 0 32px 90px rgba(24, 33, 30, 0.3);
+}
+
+.model-config-kicker {
+  width: fit-content;
+  margin-bottom: 10px;
+  padding: 5px 9px;
+  border: 1px solid rgba(47, 143, 112, 0.28);
+  border-radius: 8px;
+  color: var(--jade);
+  background: rgba(255, 252, 240, 0.55);
+  font-size: 13px;
+}
+
+.model-config-dialog h2 {
+  margin: 0;
+  font-size: 28px;
+}
+
+.model-config-intro {
+  margin: 12px 0 18px;
+  color: var(--ink-soft);
+  line-height: 1.7;
+}
+
+.model-config-fields {
+  display: grid;
+  gap: 12px;
+}
+
+.model-config-field {
+  display: grid;
+  gap: 6px;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.model-config-field input {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: rgba(255, 252, 240, 0.8);
+  font: inherit;
+}
+
+.model-config-field input:focus {
+  outline: 2px solid rgba(47, 143, 112, 0.26);
+  outline-offset: 1px;
+  border-color: rgba(47, 143, 112, 0.52);
+}
+
+.model-config-status {
+  min-height: 24px;
+  margin: 12px 0 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.model-config-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.model-config-actions button {
+  min-height: 40px;
+  padding: 0 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: rgba(255, 252, 240, 0.68);
+}
+
+.model-config-actions button:last-child {
+  border-color: rgba(47, 143, 112, 0.46);
+  color: #fffdf2;
+  background: linear-gradient(180deg, #3f9b7c, #2e765f);
+}
+
 .toast {
   position: fixed;
   right: 22px;
@@ -2158,6 +2265,19 @@ blockquote {
   .guide-dialog {
     width: min(520px, calc(100vw - 24px));
     padding: 22px;
+  }
+
+  .model-config-dialog {
+    padding: 22px;
+  }
+
+  .model-config-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .model-config-actions button {
+    width: 100%;
   }
 
   .toast {

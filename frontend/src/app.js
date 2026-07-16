@@ -16,12 +16,22 @@ import {
 } from './ui/characterCreation.js';
 import { formatChapterTransition, renderChapterProgress } from './ui/chapterProgress.js';
 import { getView, visibleViewList } from './ui/views.js?v=20260703';
+import {
+  clearModelConfigSkip,
+  clearStoredModelConfig,
+  readStoredModelConfig,
+  shouldPromptModelConfig,
+  skipModelConfig,
+  writeStoredModelConfig
+} from './ui/modelConfig.js';
 
 const STORAGE_KEY = 'wendao-fusheng-frontend-save-v1';
 const MODE_KEY = 'wendao-fusheng-mode-v1';
 const HISTORY_SUMMARY_KEY = 'wendao-fusheng-history-summary-v1';
 const HISTORY_SUMMARY_SCOPE_KEY = 'wendao-fusheng-history-summary-scope-v1';
 const BACKEND_BASE_URL = window.WENDAO_API_BASE_URL ?? 'http://127.0.0.1:8787';
+const DEFAULT_MODEL_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+const DEFAULT_MODEL_NAME = 'qwen3.7-plus';
 const RANDOM_COMMANDS = [
   '闭关修炼三月，尝试突破',
   '前往后山探索灵脉',
@@ -49,6 +59,17 @@ const api = createGameApi({
   preferredMode: initialMode
 });
 const layoutMode = getLayoutMode();
+const isDesktopApp = Boolean(window.WENDAO_DESKTOP_APP);
+const storedModelConfig = isDesktopApp ? null : readStoredModelConfig(localStorage);
+if (storedModelConfig) {
+  await api.saveModelConfig(storedModelConfig).catch(() => {});
+}
+let modelConfig = await api.getModelConfig().catch(() => ({
+  baseUrl: DEFAULT_MODEL_BASE_URL,
+  chatModel: DEFAULT_MODEL_NAME,
+  configured: false,
+  apiKeyMasked: ''
+}));
 let game = await loadGame();
 let activeViewId = readInitialActiveViewId();
 let dailyActions = await loadDailyActionsForGame(game, getView(activeViewId)).catch((error) => {
@@ -79,6 +100,15 @@ const nodes = {
   guideProgress: document.querySelector('#guideProgress'),
   guideNextBtn: document.querySelector('#guideNextBtn'),
   guideSkipBtn: document.querySelector('#guideSkipBtn'),
+  modelConfigBtn: document.querySelector('#modelConfigBtn'),
+  modelConfigOverlay: document.querySelector('#modelConfigOverlay'),
+  modelBaseUrlInput: document.querySelector('#modelBaseUrlInput'),
+  modelApiKeyInput: document.querySelector('#modelApiKeyInput'),
+  modelNameInput: document.querySelector('#modelNameInput'),
+  modelConfigStatus: document.querySelector('#modelConfigStatus'),
+  saveModelConfigBtn: document.querySelector('#saveModelConfigBtn'),
+  clearModelConfigBtn: document.querySelector('#clearModelConfigBtn'),
+  skipModelConfigBtn: document.querySelector('#skipModelConfigBtn'),
   saveBtn: document.querySelector('#saveBtn'),
   exportBtn: document.querySelector('#exportBtn'),
   resetBtn: document.querySelector('#resetBtn'),
@@ -113,7 +143,11 @@ if (game.character?.attributes) {
 
 render();
 if (startupNotice) showToast(startupNotice);
-if (!startupNotice && shouldAutoOpenGuide(localStorage)) openGuide();
+if (modelConfig && shouldPromptModelConfig(modelConfig, sessionStorage)) {
+  openModelConfig();
+} else {
+  if (!startupNotice && shouldAutoOpenGuide(localStorage)) openGuide();
+}
 
 nodes.activeViewContent.addEventListener('click', async (event) => {
   const exportButton = event.target.closest('button[data-export-story]');
@@ -195,7 +229,10 @@ document.addEventListener('click', (event) => {
 });
 
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') closeUtilityMenu();
+  if (event.key === 'Escape') {
+    closeUtilityMenu();
+    if (!nodes.modelConfigOverlay.hidden) closeModelConfig();
+  }
 });
 
 window.addEventListener('hashchange', () => {
@@ -218,6 +255,51 @@ nodes.guideNextBtn.addEventListener('click', () => {
 });
 
 nodes.guideSkipBtn.addEventListener('click', () => completeGuide());
+
+nodes.modelConfigBtn.addEventListener('click', () => openModelConfig());
+
+nodes.saveModelConfigBtn.addEventListener('click', async () => {
+  const apiKey = nodes.modelApiKeyInput.value.trim();
+  const previousBrowserConfig = isDesktopApp ? null : readStoredModelConfig(localStorage);
+  try {
+    const nextConfig = await api.saveModelConfig({
+      baseUrl: nodes.modelBaseUrlInput.value.trim(),
+      chatModel: nodes.modelNameInput.value.trim(),
+      ...(apiKey ? { apiKey } : {})
+    });
+    if (!isDesktopApp) {
+      writeStoredModelConfig({
+        baseUrl: nodes.modelBaseUrlInput.value.trim(),
+        chatModel: nodes.modelNameInput.value.trim(),
+        apiKey: apiKey || previousBrowserConfig?.apiKey || ''
+      }, localStorage);
+    }
+    modelConfig = nextConfig;
+    clearModelConfigSkip(sessionStorage);
+    closeModelConfig();
+    showToast('模型配置已保存并生效');
+  } catch (error) {
+    nodes.modelConfigStatus.textContent = apiErrorMessage(error);
+  }
+});
+
+nodes.clearModelConfigBtn.addEventListener('click', async () => {
+  try {
+    modelConfig = await api.clearModelConfig();
+    if (!isDesktopApp) clearStoredModelConfig(localStorage);
+    nodes.modelApiKeyInput.value = '';
+    nodes.modelConfigStatus.textContent = 'API Key 已清除；下次打开仍会提示配置。';
+    showToast('模型配置已清除');
+  } catch (error) {
+    nodes.modelConfigStatus.textContent = apiErrorMessage(error);
+  }
+});
+
+nodes.skipModelConfigBtn.addEventListener('click', () => {
+  skipModelConfig(sessionStorage);
+  closeModelConfig();
+  showToast('本次先跳过模型配置');
+});
 
 nodes.saveBtn.addEventListener('click', () => {
   saveGame();
@@ -1626,6 +1708,20 @@ function renderMode() {
   nodes.apiMode.classList.toggle('active', isApi);
   nodes.apiBanner.hidden = !isApi;
   nodes.worldMode.textContent = isApi ? '云端存档' : '本地存档';
+}
+
+function openModelConfig() {
+  nodes.modelConfigOverlay.hidden = false;
+  nodes.modelBaseUrlInput.value = modelConfig?.baseUrl || DEFAULT_MODEL_BASE_URL;
+  nodes.modelNameInput.value = modelConfig?.chatModel || DEFAULT_MODEL_NAME;
+  nodes.modelApiKeyInput.value = '';
+  nodes.modelConfigStatus.textContent = modelConfig?.configured
+    ? '已配置 API Key；API Key 留空会保留当前 Key。'
+    : '首次进入建议先配置 API Key，也可以暂时跳过。';
+}
+
+function closeModelConfig() {
+  nodes.modelConfigOverlay.hidden = true;
 }
 
 function openGuide() {

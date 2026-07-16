@@ -17,6 +17,48 @@ export function createGameApi(options = {}) {
       return withMode(createMockGame(seed), 'mock');
     },
 
+    async getModelConfig() {
+      if (!canUseBackend) {
+        return {
+          baseUrl: '',
+          chatModel: 'qwen3.7-plus',
+          configured: false,
+          apiKeyMasked: ''
+        };
+      }
+      return (await requestJson({ baseUrl, fetchImpl, path: '/api/v1/model-config' })).modelConfig;
+    },
+
+    async saveModelConfig(config) {
+      if (!canUseBackend) {
+        throw new BackendApiError('本地服务未启动，暂时无法保存模型配置。', {
+          code: 'BACKEND_UNAVAILABLE'
+        });
+      }
+      return (await requestJson({
+        baseUrl,
+        fetchImpl,
+        path: '/api/v1/model-config',
+        method: 'POST',
+        body: config
+      })).modelConfig;
+    },
+
+    async clearModelConfig() {
+      if (!canUseBackend) {
+        throw new BackendApiError('本地服务未启动，暂时无法清除模型配置。', {
+          code: 'BACKEND_UNAVAILABLE'
+        });
+      }
+      return (await requestJson({
+        baseUrl,
+        fetchImpl,
+        path: '/api/v1/model-config',
+        method: 'POST',
+        body: { clearApiKey: true }
+      })).modelConfig;
+    },
+
     async resetForCharacterCreation(mode = preferredMode, { rerollSeed } = {}) {
       if (mode === 'api' && canUseBackend) {
         const data = await requestJson({

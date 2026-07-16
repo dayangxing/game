@@ -17,7 +17,9 @@ AI 文字修仙 Web 原型。当前调试版已经进入连续剧情导演模式
 
 需要 Node.js。当前项目脚本如下：
 
-首次接入正式模型时，在项目根目录创建本地配置文件 `.env.local`：
+首次接入正式模型时，推荐直接在游戏菜单的“模型配置”中填写 API 地址、API Key 和主模型。首次打开且尚未配置 API Key 时，配置界面会自动弹出；保存后无需重启即可生效。
+
+服务启动前也可以使用项目根目录的本地配置文件 `.env.local` 作为默认值：
 
 ```bash
 BAILIAN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
@@ -76,7 +78,9 @@ npm run desktop:make
 
 桌面版后端只绑定本机随机端口，游戏权威状态保存到 Electron 的用户数据目录中的 `wendao-fusheng-save.json`，不会写入安装目录。首次启动没有存档时会自动创建新局；存档损坏时会保留 `.corrupt` 备份并从新局启动。
 
-本地 Mock 模式可以离线运行；需要正式模型时，仍需在启动桌面 App 前配置本机 `.env.local`，API Key 不会被打包进安装资源。最终的 macOS 和 Windows 安装包应分别在对应平台或对应 CI runner 上构建，并按发布要求补充代码签名与公证。
+模型配置会单独保存为 Electron 用户数据目录中的 `model-config.json`，与游戏存档分离；清除配置后下次启动会再次提示。API Key 不会进入游戏存档、传记导出、模型健康响应或安装包资源。浏览器开发模式会把配置副本保存在当前浏览器的 `localStorage` 中，请不要在共用电脑上保存个人 Key。
+
+本地 Mock 模式可以离线运行；需要正式模型时，可在界面中填写任何兼容 OpenAI Chat Completions 的 `http(s)` 接口和模型名。最终的 macOS 和 Windows 安装包应分别在对应平台或对应 CI runner 上构建，并按发布要求补充代码签名与公证。
 
 ## 本地调试命令
 
@@ -225,7 +229,7 @@ http://127.0.0.1:5174/frontend/
 - 模型可以生成选择和模糊效果提示，但前端只展示选择文字；`effectHints`、内部 choice id、规则结果和调试字段不会出现在 UI。
 - 每日行动刷新带有 request、view、turn/version 防护，旧请求不会覆盖当前页签或新回合状态。
 - 模式切换和重置会先拿到下一份 game/actions，再替换当前状态，避免半切换。
-- 首次打开会出现新手指引；如果启动时 API 失败，错误 toast 优先展示，指引不会遮住错误信息。
+- 首次打开且没有模型配置时会先出现模型配置界面；已配置或本次跳过后才进入新手指引。如果启动时 API 失败，错误 toast 优先展示，指引不会遮住错误信息。
 - 新手指引只介绍玩法与界面，不推进剧情。完成指引后进入 12 章序章：青云宗门规、寿元压力、雾隐秘境、天门残契和飞升骗局伏笔会在序章中逐步展开。
 - 角色创建阶段只有点击 `开始修行` 才会调用 `POST /api/v1/game/new` 创建正式后端存档；`重掷` 仅更新本地预览 seed。正式角色既支持随机五维，也支持手动分配固定 25 点。
 - 产品不做开放世界、大地图、多人联机或离线挂机收益。
@@ -243,7 +247,9 @@ http://127.0.0.1:5174/frontend/
 
 ```http
 GET  /api/v1/game/state
+GET  /api/v1/model-config
 GET  /api/v1/model-health
+POST /api/v1/model-config
 POST /api/v1/game/new
 POST /api/v1/daily-actions
 POST /api/v1/turns

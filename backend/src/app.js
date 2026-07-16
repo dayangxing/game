@@ -17,11 +17,17 @@ import { resolveBreakthrough } from './domain/progression.js';
 import { applyTimePressure } from './domain/time/timePressure.js';
 import { buildTurnResult, publicTimeResult } from './domain/turnResult.js';
 import { createBailianClient } from './llm/bailianClient.js';
+import { getModelConfigFromEnv, normalizeModelConfig, toPublicModelConfig } from './llm/modelConfig.js';
 import { getModelSelection } from './llm/modelSelection.js';
 
 export function createBackendApp(options = {}) {
   const now = options.now ?? (() => new Date());
-  const llm = options.llm ?? createBailianClient({ env: options.env ?? process.env, fetchImpl: options.fetchImpl });
+  const env = options.env ?? process.env;
+  const modelConfig = options.modelConfig
+    ? normalizeModelConfig(options.modelConfig)
+    : getModelConfigFromEnv(env);
+  const createLlm = options.createLlm ?? ((configOptions) => createBailianClient(configOptions));
+  const llm = options.llm ?? createLlm({ env, fetchImpl: options.fetchImpl, config: modelConfig });
   const persistGame = options.persistGame ?? null;
   const state = {
     game: normalizeGame(options.initialGame ?? createGame(options.seed ?? Date.now())),
@@ -31,11 +37,16 @@ export function createBackendApp(options = {}) {
     auditLog: [],
     requestSequence: 0,
     actionSequence: 0,
-    modelSelection: getModelSelection(options.env ?? process.env),
+    modelConfig,
+    modelSelection: getModelSelection(env, modelConfig),
     llm,
     storyGraph: options.storyGraph ?? createStoryGraph({ llm }),
     storyDirector: options.storyDirector ?? createStoryDirector({ llm }),
-    persistGame
+    persistGame,
+    persistModelConfig: options.persistModelConfig ?? null,
+    createLlm,
+    env,
+    fetchImpl: options.fetchImpl
   };
 
   const handleRequest = async (request) => {
@@ -55,6 +66,15 @@ export function createBackendApp(options = {}) {
 
       if (route === 'GET /api/v1/model-selection') {
         return jsonResponse(200, requestId, { modelSelection: state.modelSelection });
+      }
+
+      if (route === 'GET /api/v1/model-config') {
+        return jsonResponse(200, requestId, { modelConfig: toPublicModelConfig(state.modelConfig) });
+      }
+
+      if (route === 'POST /api/v1/model-config') {
+        const body = await readJson(request);
+        return handleModelConfig({ body, requestId, state });
       }
 
       if (route === 'GET /api/v1/model-health') {
@@ -113,7 +133,9 @@ export function createBackendApp(options = {}) {
   return {
     async handle(request) {
       const response = await handleRequest(request);
-      if (!persistGame || request.method !== 'POST' || response.status < 200 || response.status >= 300) {
+      const pathname = new URL(request.url).pathname;
+      const isModelConfigRequest = pathname === '/api/v1/model-config';
+      if (!persistGame || isModelConfigRequest || request.method !== 'POST' || response.status < 200 || response.status >= 300) {
         return response;
       }
 
@@ -129,6 +151,43 @@ export function createBackendApp(options = {}) {
       return state;
     }
   };
+}
+
+async function handleModelConfig({ body, requestId, state }) {
+  try {
+    const input = body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+    const requested = { ...input };
+    delete requested.clearApiKey;
+
+    if (input.clearApiKey === true) {
+      requested.apiKey = '';
+    } else if (!Object.prototype.hasOwnProperty.call(input, 'apiKey') || !String(input.apiKey ?? '').trim()) {
+      requested.apiKey = state.modelConfig.apiKey;
+    }
+
+    const nextConfig = normalizeModelConfig(requested, state.modelConfig);
+    if (state.persistModelConfig) {
+      await state.persistModelConfig(nextConfig);
+    }
+
+    const nextLlm = state.createLlm({
+      env: state.env,
+      fetchImpl: state.fetchImpl,
+      config: nextConfig
+    });
+    state.modelConfig = nextConfig;
+    state.modelSelection = getModelSelection(state.env, nextConfig);
+    state.llm = nextLlm;
+    state.storyGraph = createStoryGraph({ llm: nextLlm });
+    state.storyDirector = createStoryDirector({ llm: nextLlm });
+
+    return jsonResponse(200, requestId, { modelConfig: toPublicModelConfig(nextConfig) });
+  } catch (error) {
+    if (error.message?.startsWith('MODEL_CONFIG_INVALID')) {
+      return errorResponse(400, requestId, 'MODEL_CONFIG_INVALID', error.message.replace(/^MODEL_CONFIG_INVALID:\s*/, ''));
+    }
+    throw error;
+  }
 }
 
 function handleDailyActions({ body, requestId, state, now }) {
