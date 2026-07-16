@@ -6,7 +6,8 @@
   "scripts": {
     "test": "node --test",
     "start:frontend": "python3 -m http.server 5173",
-    "start:backend": "node backend/src/server.js"
+    "start:backend": "node backend/src/server.js",
+    "start:all": "bash scripts/start-dev.sh"
   },
   "dependencies": {
     "@langchain/langgraph": "^1.4.7"

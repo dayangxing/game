@@ -39,6 +39,18 @@ npm run start:backend
 npm run start:frontend
 ```
 
+也可以一键启动前端和后端。当前项目没有独立数据库服务：后端使用内存权威存档，前端使用浏览器 `localStorage`。
+
+```bash
+npm run start:all
+```
+
+脚本会检查 `8787` 和 `5173` 端口、等待前后端就绪，并在 Ctrl-C 时同时停止两个服务。日志写入 `.runtime/`；需要自动打开浏览器时使用：
+
+```bash
+OPEN_BROWSER=1 npm run start:all
+```
+
 然后打开：
 
 ```text
