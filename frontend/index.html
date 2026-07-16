@@ -9,7 +9,7 @@
         location.replace('http://127.0.0.1:5173/frontend/');
       }
     </script>
-    <link rel="stylesheet" href="./src/styles.css" />
+    <link rel="stylesheet" href="./src/styles.css?v=20260718" />
   </head>
   <body>
     <div class="ink-backdrop" aria-hidden="true">
@@ -42,11 +42,25 @@
             <button class="mode-option active" id="mockMode" type="button">本地</button>
             <button class="mode-option" id="apiMode" type="button">云端</button>
           </div>
-          <button id="guideBtn" type="button">指引</button>
-          <button id="saveBtn" type="button">存档</button>
-          <button id="exportBtn" type="button">传记</button>
-          <button id="resetBtn" type="button">重开</button>
-          <button id="sampleBtn" type="button">随机</button>
+          <div class="utility-menu" id="utilityMenu">
+            <button
+              id="utilityMenuBtn"
+              class="utility-menu-toggle"
+              type="button"
+              aria-controls="utilityMenuPanel"
+              aria-expanded="false"
+            >
+              菜单
+            </button>
+            <div id="utilityMenuPanel" class="utility-menu-panel" aria-hidden="true">
+              <button id="guideBtn" type="button">指引</button>
+              <button id="saveBtn" type="button">存档</button>
+              <button id="exportBtn" type="button">传记</button>
+              <div class="utility-menu-divider" role="separator"></div>
+              <button id="resetBtn" class="is-danger" type="button">重开</button>
+              <button id="sampleBtn" type="button">随机</button>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -113,6 +127,6 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-    <script type="module" src="./src/app.js?v=20260703"></script>
+    <script type="module" src="./src/app.js?v=20260719"></script>
   </body>
 </html>

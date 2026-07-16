@@ -25,7 +25,7 @@
 body {
   margin: 0;
   min-height: 100vh;
-  min-width: 1180px;
+  min-width: 0;
   color: var(--ink);
   font-family: "Songti SC", "STSong", "Noto Serif SC", "PingFang SC", serif;
   background:
@@ -110,13 +110,15 @@ button {
   position: relative;
   z-index: 1;
   width: min(1500px, calc(100% - 36px));
-  min-width: 1144px;
+  min-width: 0;
   min-height: 100vh;
   margin: 0 auto;
   padding: 18px;
 }
 
 .topbar {
+  position: relative;
+  z-index: 5;
   display: grid;
   grid-template-columns: 250px 1fr auto;
   gap: 16px;
@@ -236,6 +238,24 @@ button {
 .top-actions {
   gap: 8px;
   justify-content: flex-end;
+}
+
+.utility-menu {
+  display: contents;
+}
+
+.utility-menu-panel {
+  display: contents;
+}
+
+.utility-menu-panel button {
+  height: 38px;
+  padding: 0 10px;
+}
+
+.utility-menu-toggle,
+.utility-menu-divider {
+  display: none;
 }
 
 .mode-toggle {
@@ -1946,4 +1966,204 @@ blockquote {
 .toast.show {
   opacity: 1;
   transform: translateY(0);
+}
+
+@media (max-width: 1199px) {
+  .app {
+    width: min(100%, calc(100% - 24px));
+    padding: 12px;
+  }
+
+  .topbar {
+    grid-template-columns: minmax(180px, auto) minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .top-tabs {
+    min-width: 0;
+  }
+
+  .top-tabs button {
+    min-width: 0;
+  }
+
+  .top-actions {
+    grid-column: 1 / -1;
+    justify-content: space-between;
+  }
+
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .top-actions {
+    align-items: center;
+  }
+
+  .utility-menu {
+    position: relative;
+    display: block;
+  }
+
+  .utility-menu-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 72px;
+    min-height: 44px;
+  }
+
+  .utility-menu-panel {
+    position: absolute;
+    z-index: 10;
+    top: calc(100% + 8px);
+    right: 0;
+    display: none;
+    min-width: 190px;
+    padding: 8px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--paper-light);
+    box-shadow: var(--shadow);
+  }
+
+  .utility-menu.is-open .utility-menu-panel {
+    display: grid;
+    gap: 4px;
+  }
+
+  .utility-menu-panel button {
+    width: 100%;
+    min-height: 44px;
+    height: auto;
+    text-align: left;
+  }
+
+  .utility-menu-divider {
+    display: block;
+    height: 1px;
+    margin: 4px 0;
+    background: var(--line);
+  }
+
+  .utility-menu-panel .is-danger {
+    color: var(--cinnabar);
+  }
+
+  .utility-menu-panel button {
+    padding: 0 12px;
+  }
+}
+
+@media (max-width: 767px) {
+  body {
+    overflow-x: hidden;
+  }
+
+  .app {
+    width: 100%;
+    padding: 8px;
+  }
+
+  .topbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    margin-bottom: 12px;
+    padding: 10px;
+  }
+
+  .brand {
+    min-width: 0;
+  }
+
+  .brand h1 {
+    font-size: 20px;
+  }
+
+  .top-tabs {
+    grid-column: 1 / -1;
+    justify-content: stretch;
+    width: 100%;
+    min-width: 0;
+    gap: 6px;
+  }
+
+  .top-tabs button {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 44px;
+    height: 44px;
+  }
+
+  .top-actions {
+    grid-column: 2;
+    grid-row: 1;
+    justify-content: flex-end;
+  }
+
+  .layout,
+  .dashboard-content,
+  .active-view-content,
+  .view-grid,
+  .view-grid.compact,
+  .view-grid.split,
+  .action-grid,
+  .status-overview,
+  .attribute-summary,
+  .ending-summary,
+  .personal-sections,
+  .personal-attribute-grid,
+  .personal-status-grid,
+  .personal-relation-list,
+  .personal-technique-list,
+  .profile-grid,
+  .profile-meter-grid,
+  .state-npc-list,
+  .archive-grid,
+  .archive-context-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .character-panel,
+  .personal-sheet {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .hero-scroll {
+    padding: 14px;
+  }
+
+  .hero-scroll h2 {
+    font-size: 24px;
+  }
+
+  .status-pill {
+    position: static;
+    margin-top: 10px;
+  }
+
+  .paper-card {
+    padding: 14px;
+  }
+
+  .allocation-card,
+  .archive-recent-list article,
+  .archive-thread-list article,
+  .personal-relation-list article {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .guide-dialog {
+    width: min(520px, calc(100vw - 24px));
+    padding: 22px;
+  }
+
+  .toast {
+    right: 12px;
+    bottom: 12px;
+    left: 12px;
+    max-width: none;
+  }
 }

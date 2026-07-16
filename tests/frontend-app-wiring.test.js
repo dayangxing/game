@@ -19,6 +19,42 @@ test('browser module entry points use versioned urls to avoid mixed stale module
   assert.match(source, /from '\.\/ui\/views\.js\?v=\d+'/);
 });
 
+test('frontend exposes an accessible utility menu while preserving utility button ids', () => {
+  const html = fs.readFileSync('frontend/index.html', 'utf8');
+
+  assert.match(html, /id="utilityMenuBtn"/);
+  assert.match(html, /aria-controls="utilityMenuPanel"/);
+  assert.match(html, /aria-expanded="false"/);
+  assert.match(html, /id="utilityMenuPanel"/);
+  assert.match(html, /aria-hidden="true"/);
+
+  for (const id of ['guideBtn', 'saveBtn', 'exportBtn', 'resetBtn', 'sampleBtn']) {
+    assert.match(html, new RegExp(`id="${id}"`));
+  }
+});
+
+test('frontend wires utility menu state and escape dismissal', () => {
+  const source = fs.readFileSync('frontend/src/app.js', 'utf8');
+
+  assert.match(source, /utilityMenu:\s*document\.querySelector\('#utilityMenu'\)/);
+  assert.match(source, /utilityMenuBtn:\s*document\.querySelector\('#utilityMenuBtn'\)/);
+  assert.match(source, /utilityMenuPanel:\s*document\.querySelector\('#utilityMenuPanel'\)/);
+  assert.match(source, /function openUtilityMenu\(\)/);
+  assert.match(source, /function closeUtilityMenu\(\)/);
+  assert.match(source, /utilityMenuBtn\.addEventListener\('click'/);
+  assert.match(source, /event\.key === 'Escape'/);
+  assert.match(source, /closeUtilityMenu\(\)/);
+});
+
+test('utility menu synchronizes aria visibility across the collapse breakpoint', () => {
+  const source = fs.readFileSync('frontend/src/app.js', 'utf8');
+
+  assert.match(source, /matchMedia\(['"]\(max-width:\s*900px\)['"]\)/);
+  assert.match(source, /function syncUtilityMenuMode\(\)/);
+  assert.match(source, /setAttribute\('aria-hidden', 'false'\)/);
+  assert.match(source, /syncUtilityMenuMode\(\);/);
+});
+
 test('event action metadata includes chapter cadence and risk labels', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
   const format = extractFunction(source, 'formatActionMeta');

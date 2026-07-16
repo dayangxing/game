@@ -1,5 +1,5 @@
 import { createGameApi } from './api/gameApi.js';
-import { getLayoutMode } from './ui/layoutModes.js';
+import { getLayoutMode } from './ui/layoutModes.js?v=20260719';
 import {
   getGuideStep,
   guideSteps,
@@ -69,6 +69,9 @@ const nodes = {
   logList: document.querySelector('#logList'),
   actionGrid: document.querySelector('#actionGrid'),
   activeViewContent: document.querySelector('#activeViewContent'),
+  utilityMenu: document.querySelector('#utilityMenu'),
+  utilityMenuBtn: document.querySelector('#utilityMenuBtn'),
+  utilityMenuPanel: document.querySelector('#utilityMenuPanel'),
   guideBtn: document.querySelector('#guideBtn'),
   guideOverlay: document.querySelector('#guideOverlay'),
   guideTitle: document.querySelector('#guideTitle'),
@@ -144,6 +147,55 @@ nodes.topTabs.addEventListener('click', (event) => {
   const button = event.target.closest('button[data-view]');
   if (!button) return;
   setActiveView(button.dataset.view);
+});
+
+function setUtilityMenuOpen(isOpen) {
+  nodes.utilityMenuBtn.setAttribute('aria-expanded', String(isOpen));
+  nodes.utilityMenuPanel.setAttribute('aria-hidden', String(!isOpen));
+  nodes.utilityMenu.classList.toggle('is-open', isOpen);
+}
+
+function openUtilityMenu() {
+  setUtilityMenuOpen(true);
+}
+
+function closeUtilityMenu() {
+  setUtilityMenuOpen(false);
+}
+
+const utilityMenuMediaQuery = typeof window.matchMedia === 'function'
+  ? window.matchMedia('(max-width: 900px)')
+  : null;
+
+function syncUtilityMenuMode() {
+  if (utilityMenuMediaQuery?.matches) {
+    closeUtilityMenu();
+    return;
+  }
+
+  nodes.utilityMenuBtn.setAttribute('aria-expanded', 'false');
+  nodes.utilityMenuPanel.setAttribute('aria-hidden', 'false');
+  nodes.utilityMenu.classList.remove('is-open');
+}
+
+syncUtilityMenuMode();
+utilityMenuMediaQuery?.addEventListener('change', syncUtilityMenuMode);
+
+nodes.utilityMenuBtn.addEventListener('click', () => {
+  const isOpen = nodes.utilityMenuBtn.getAttribute('aria-expanded') === 'true';
+  setUtilityMenuOpen(!isOpen);
+});
+
+nodes.utilityMenuPanel.addEventListener('click', (event) => {
+  if (event.target.closest('button')) closeUtilityMenu();
+});
+
+document.addEventListener('click', (event) => {
+  if (!nodes.utilityMenu.contains(event.target)) closeUtilityMenu();
+});
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') closeUtilityMenu();
 });
 
 window.addEventListener('hashchange', () => {
