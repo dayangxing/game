@@ -123,6 +123,18 @@ export function resolveBreakthrough(game, now) {
     time: pressure.timeResult?.deltaMonths ?? 0,
     timeLabel: pressure.timeResult?.label ?? ''
   };
+  const failureTier = getRealmTier(game.player?.realm);
+  const previousStats = {
+    breakthroughFailures: game.progressionStats?.breakthroughFailures ?? 0,
+    breakthroughFailuresByTier: { ...(game.progressionStats?.breakthroughFailuresByTier ?? {}) }
+  };
+  const progressionStats = success ? previousStats : {
+    breakthroughFailures: previousStats.breakthroughFailures + 1,
+    breakthroughFailuresByTier: {
+      ...previousStats.breakthroughFailuresByTier,
+      [failureTier]: (previousStats.breakthroughFailuresByTier[failureTier] ?? 0) + 1
+    }
+  };
   const turn = game.turn + 1;
   const title = success ? '突破成功' : '突破受挫';
   const body = success
@@ -142,6 +154,7 @@ export function resolveBreakthrough(game, now) {
       ...pressure.game,
       turn,
       version: turn,
+      progressionStats,
       lastActionCost,
       log: [...pressure.game.log, entry],
       timeline: [...pressure.game.timeline, { type: 'cultivation', title, detail: body }],

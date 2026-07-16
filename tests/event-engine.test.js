@@ -326,3 +326,64 @@ test('effect resolver grants treasure and technique rewards from event choices',
   assert.equal(afterMistStep.techniques[0].id, 'mist_step');
   assert.equal(afterMistStep.derivedBonuses.damageReduction, 5);
 });
+
+test('story progress effects can only set whitelisted branch fields', () => {
+  const game = formalGame();
+  const next = applyEffects(game, [
+    { type: 'storyProgress', path: 'contractStance', value: 'reject' },
+    { type: 'storyProgress', path: 'finalChoiceMade', value: true }
+  ]);
+
+  assert.equal(next.storyProgress.contractStance, 'reject');
+  assert.equal(next.storyProgress.finalChoiceMade, true);
+  assert.throws(
+    () => applyEffects(game, [{ type: 'storyProgress', path: 'endingId', value: 'break_contract' }]),
+    /RULE_EFFECT_INVALID:storyProgress/
+  );
+});
+
+test('side event repeat rewards decay while costs and persistent flags remain intact', () => {
+  const game = {
+    ...formalGame(),
+    eventHistory: {
+      resolved: ['side'],
+      repeatCounts: { side: 1 },
+      lastResolvedTurn: { side: 2 }
+    }
+  };
+  const event = {
+    id: 'side',
+    category: 'social',
+    cadence: 'side',
+    oneShot: false,
+    cooldownTurns: 1,
+    choices: [{
+      id: 'help',
+      label: '援手',
+      command: '援手',
+      risk: 'low',
+      success: {
+        text: '帮助',
+        effects: [
+          { type: 'stat', path: 'player.qi', delta: 10 },
+          { type: 'stat', path: 'player.lifespan', delta: -2 },
+          { type: 'flag', id: 'helped', value: true }
+        ]
+      }
+    }]
+  };
+  const result = resolveChoice({
+    game,
+    event,
+    choice: event.choices[0],
+    now: new Date('2026-07-02T00:00:00.000Z')
+  });
+
+  assert.equal(result.game.player.qi, game.player.qi + 5);
+  assert.equal(
+    result.game.player.lifespan,
+    game.player.lifespan - 2 + result.ruleResult.timeResult.netLifespanDelta
+  );
+  assert.equal(result.game.flags.helped, true);
+  assert.equal(result.game.eventHistory.repeatCounts.side, 2);
+});

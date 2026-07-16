@@ -139,6 +139,24 @@ test('failed breakthroughs cost health and lifespan and roll cultivation progres
   assert.equal(result.game.player.cultivationProgress, 60);
 });
 
+test('failed breakthroughs increment total and realm-tier failure counters', () => {
+  const base = createFormalGame({ seed: 98 });
+  const result = resolveBreakthrough(base, new Date('2026-07-01T08:00:00.000Z'));
+
+  assert.equal(result.ruleResult.success, false);
+  assert.equal(result.game.progressionStats.breakthroughFailures, 1);
+  assert.equal(result.game.progressionStats.breakthroughFailuresByTier.炼气, 1);
+});
+
+test('successful breakthroughs preserve failure counters without incrementing them', () => {
+  const base = createFormalGame({ seed: 52 });
+  const result = resolveBreakthrough(base, new Date('2026-07-01T08:00:00.000Z'));
+
+  assert.equal(result.ruleResult.success, true);
+  assert.equal(result.game.progressionStats.breakthroughFailures, 0);
+  assert.deepEqual(result.game.progressionStats.breakthroughFailuresByTier, {});
+});
+
 test('successful breakthroughs spend time and restore lifespan', () => {
   const baseGame = createFormalGame({ seed: 52, realm: '炼气九层' });
   const base = {
