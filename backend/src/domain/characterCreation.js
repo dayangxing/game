@@ -75,6 +75,8 @@ export function applyCharacterToGame(game, character, seed) {
     },
     flags: {},
     cooldowns: {},
+    eventHistory: { resolved: [], repeatCounts: {}, lastResolvedTurn: {} },
+    progressionStats: { breakthroughFailures: 0, breakthroughFailuresByTier: {} },
     storyProgress: createFormalStoryProgress(),
     chapterHistory: [],
     karma: {

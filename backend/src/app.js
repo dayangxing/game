@@ -9,6 +9,7 @@ import { applyEnding, resolveEnding } from './domain/endings/endingResolver.js';
 import { getPublicChapterSnapshot, normalizeStoryProgress } from './domain/chapters/storyProgress.js';
 import { resolveDirectorEffectHints } from './domain/director/effectHints.js';
 import { resolveChoice } from './domain/events/effectResolver.js';
+import { normalizeEventHistory } from './domain/events/eventHistory.js';
 import { selectEventActions } from './domain/events/eventSelector.js';
 import { eventNarrationFallback, stripInternalActionFields } from './domain/events/eventResult.js';
 import { ONBOARDING_STEPS, canCreateFormalCharacter, createOnboardingState, createTutorialAction, resolveTutorialAction } from './domain/onboarding.js';
@@ -834,7 +835,12 @@ function normalizeGame(game) {
       futureEventFlags: []
     },
     flags: game.flags ?? {},
-    cooldowns: game.cooldowns ?? {}
+    cooldowns: game.cooldowns ?? {},
+    eventHistory: normalizeEventHistory(game.eventHistory),
+    progressionStats: {
+      breakthroughFailures: game.progressionStats?.breakthroughFailures ?? 0,
+      breakthroughFailuresByTier: { ...(game.progressionStats?.breakthroughFailuresByTier ?? {}) }
+    }
   };
 
   const storyProgress = normalizeStoryProgress(normalized);
