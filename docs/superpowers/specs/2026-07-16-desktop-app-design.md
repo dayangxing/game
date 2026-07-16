@@ -37,7 +37,7 @@ Renderer process
 ### Electron 层
 
 - `electron/main.mjs`：应用生命周期、后端启动/停止、窗口创建、加载前端。
-- `electron/preload.mjs`：使用 `contextBridge` 暴露最小桌面配置，不开启 renderer 的 Node 直接访问。
+- `electron/preload.cjs`：使用 `contextBridge` 暴露最小桌面配置，不开启 renderer 的 Node 直接访问；使用 CommonJS 文件扩展名，避免项目原生 ESM 配置影响 Electron preload 加载。
 - `forge.config.cjs`：应用元数据、资源目录、asar 和 macOS/Windows maker 配置。
 - `package.json`：加入 Electron 开发命令、打包命令和 Electron Forge 依赖。
 
