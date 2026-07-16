@@ -1812,8 +1812,9 @@ function shouldUseContinuousStory(targetGame = game) {
 
 function formatActionMeta(action) {
   const titleMeta = firstReadableMetaPart(action.meta);
+  const cadenceMeta = action.cadence === 'mainline' ? '主线' : action.cadence === 'side' ? '支线' : '';
   const riskMeta = riskLabel(action.risk);
-  return [titleMeta, riskMeta].filter(Boolean).join(' · ') || '今日抉择';
+  return [titleMeta, cadenceMeta, riskMeta].filter(Boolean).join(' · ') || '今日抉择';
 }
 
 function firstReadableMetaPart(meta) {

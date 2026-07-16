@@ -1,6 +1,7 @@
 const EVENT_RULE_BOUNDARY = [
   '如果输入提示本回合来自已结算事件或已结算选择，你必须把它视为规则结果已经落定。',
   '只能润色已结算结果，不得新增奖励、道具、境界、关系、flag、futureEvent 或成功失败判定。',
+  '事件素材只能影响叙事氛围、人物表达与伏笔承接，不能生成新的规则结果。',
   '如果想暗示伏笔，只能使用输入里已有的 foreshadow、flags 或 ruleEntry 内容。'
 ].join('\n');
 
@@ -134,6 +135,20 @@ function pickActionContext(action) {
   if (action?.breakthroughPreview) {
     context.breakthrough = pickBreakthroughPreview(action.breakthroughPreview);
   }
+
+  if (action?.narrativeContext) {
+    context.eventNarrativeContext = {
+      scene: String(action.narrativeContext.scene ?? ''),
+      mood: String(action.narrativeContext.mood ?? ''),
+      npcRoles: Array.isArray(action.narrativeContext.npcRoles)
+        ? action.narrativeContext.npcRoles.map(String)
+        : [],
+      sensoryTags: Array.isArray(action.narrativeContext.sensoryTags)
+        ? action.narrativeContext.sensoryTags.map(String)
+        : []
+    };
+  }
+  if (action?.narrativeIntent) context.narrativeIntent = String(action.narrativeIntent);
 
   return context;
 }

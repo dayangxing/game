@@ -19,6 +19,15 @@ test('browser module entry points use versioned urls to avoid mixed stale module
   assert.match(source, /from '\.\/ui\/views\.js\?v=\d+'/);
 });
 
+test('event action metadata includes chapter cadence and risk labels', () => {
+  const source = fs.readFileSync('frontend/src/app.js', 'utf8');
+  const format = extractFunction(source, 'formatActionMeta');
+
+  assert.match(format, /action\.cadence === 'mainline'/);
+  assert.match(format, /action\.cadence === 'side'/);
+  assert.match(format, /riskLabel\(action\.risk\)/);
+});
+
 test('app rendering is routed through renderActiveView for active tabs', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
   const render = extractFunction(source, 'render');

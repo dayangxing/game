@@ -40,6 +40,8 @@ export function selectEventActions({ game, viewId, now, sequenceStart = 0 }) {
       source: 'event',
       risk: choice.risk,
       cadence: event.cadence,
+      narrativeContext: event.narrativeContext ?? null,
+      narrativeIntent: choice.narrativeIntent ?? '',
       eventId: event.id,
       choiceId: choice.id,
       storyHook: [
