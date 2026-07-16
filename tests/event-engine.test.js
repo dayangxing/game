@@ -192,7 +192,7 @@ test('bag selector filters out crafting choices that cannot pay their material c
   assert.equal(actions.some((action) => action.eventId === 'alchemy_make_qi_pill'), false);
 });
 
-test('bag selector filters out market offers that cannot pay their spirit stone cost', () => {
+test('bag selector filters unaffordable market choices while keeping a cheaper alternative', () => {
   const base = formalGame();
   const game = {
     ...base,
@@ -207,7 +207,8 @@ test('bag selector filters out market offers that cannot pay their spirit stone 
     now: new Date('2026-06-30T08:00:00.000Z')
   });
 
-  assert.equal(actions.some((action) => action.eventId === 'black_market_offer'), false);
+  assert.equal(actions.some((action) => action.eventId === 'black_market_offer' && action.choiceId === 'trade'), false);
+  assert.equal(actions.some((action) => action.eventId === 'black_market_offer' && action.choiceId === 'bargain'), true);
 });
 
 test('realm selector surfaces the unlocked mist step reward event', () => {

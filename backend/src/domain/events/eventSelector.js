@@ -27,10 +27,19 @@ export function selectEventActions({ game, viewId, now, sequenceStart = 0 }) {
     .map(({ event }) => event);
 
   const expiresAt = new Date(now.getTime() + 30 * 60 * 1000).toISOString();
-  const actions = pickDiverseEvents(eligible)
-    .flatMap((event, eventIndex) => event.choices
-      .filter((choice) => canAffordEffects(game, choice.success.effects))
-      .map((choice, choiceIndex) => ({
+  const selectedEvents = pickDiverseEvents(eligible);
+  const affordableChoices = selectedEvents.map((event) => ({
+    event,
+    choices: event.choices.filter((choice) => canAffordEffects(game, choice.success.effects))
+  }));
+  const actions = [];
+  const maxChoices = Math.max(0, ...affordableChoices.map(({ choices }) => choices.length));
+  for (let choiceIndex = 0; choiceIndex < maxChoices && actions.length < 4; choiceIndex += 1) {
+    for (let eventIndex = 0; eventIndex < affordableChoices.length && actions.length < 4; eventIndex += 1) {
+      const { event, choices } = affordableChoices[eventIndex];
+      const choice = choices[choiceIndex];
+      if (!choice) continue;
+      actions.push({
       id: `act_${game.turn}_${viewId}_${sequenceStart + eventIndex}_${choiceIndex}`,
       title: choice.label,
       icon: event.category.slice(0, 1),
@@ -52,8 +61,9 @@ export function selectEventActions({ game, viewId, now, sequenceStart = 0 }) {
       expiresAt,
       event,
       choice
-    })))
-    .slice(0, 4);
+      });
+    }
+  }
 
   if (viewId !== 'cultivation' || !canAttemptBreakthrough(game)) {
     return actions;

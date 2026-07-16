@@ -5,7 +5,7 @@ export function isEventEligible(event, game, viewId) {
   const trigger = event.trigger ?? {};
   if (game.onboarding && !game.onboarding.completed) return false;
   if (trigger.viewIds && !trigger.viewIds.includes(viewId)) return false;
-  if (trigger.chapterIds && !trigger.chapterIds.includes(game.storyProgress?.chapterId)) return false;
+  if (trigger.chapterIds && game.storyProgress?.chapterId && !trigger.chapterIds.includes(game.storyProgress.chapterId)) return false;
   if (trigger.realmAtLeast && compareRealms(game.player?.realm, trigger.realmAtLeast) < 0) return false;
   if (trigger.requiresFlags?.some((flag) => !game.flags?.[flag])) return false;
   if (trigger.forbidFlags?.some((flag) => game.flags?.[flag])) return false;
