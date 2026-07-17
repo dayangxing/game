@@ -252,6 +252,7 @@ export function createGameApi(options = {}) {
 }
 
 async function resolveBackendAction({ baseUrl, fetchImpl, game, action }) {
+  if (action?.category === 'resource') return action;
   if (isBackendAction(action)) return action;
 
   const viewId = action.llmRequest?.context?.view?.id;

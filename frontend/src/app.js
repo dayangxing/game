@@ -15,6 +15,7 @@ import {
   updateAllocation
 } from './ui/characterCreation.js';
 import { formatChapterTransition, renderChapterProgress } from './ui/chapterProgress.js';
+import { renderResourceDraft, renderResonancePanel } from './ui/resourceDraft.js';
 import { getView, visibleViewList } from './ui/views.js?v=20260703';
 import {
   clearModelConfigSkip,
@@ -167,6 +168,16 @@ nodes.activeViewContent.addEventListener('click', async (event) => {
     const action = buildHomeActions().find((item) => item.id === storyButton.dataset.storyAction);
     if (!action) return;
     await submitStoryStep(action);
+    return;
+  }
+
+  const resourceButton = event.target.closest('button[data-resource-draft-index]');
+  if (resourceButton) {
+    const resourceActions = dailyActions.filter((item) => item.category === 'resource');
+    const index = Number(resourceButton.dataset.resourceDraftIndex);
+    const action = Number.isInteger(index) ? resourceActions[index] : null;
+    if (!action) return;
+    await submitDailyAction(action);
     return;
   }
 
@@ -752,6 +763,7 @@ function renderHomeView() {
     }) : '',
     game.ending ? renderEndingPanel() : '',
     renderHistoryPanel(3),
+    game.ending ? '' : renderPendingResourceDraft(),
     game.ending ? '' : renderActionPanel(),
     renderFocusPanel()
   ].join('');
@@ -775,7 +787,8 @@ function renderCultivationView() {
 
 function renderSkillsView() {
   nodes.activeViewContent.innerHTML = [
-    renderPersonalPanel()
+    renderPersonalPanel(),
+    renderResonancePanel(game.resourceRun?.activeResonances)
   ].join('');
 
   syncActiveViewNodes();
@@ -792,7 +805,8 @@ function renderRealmView() {
 function renderBagView() {
   nodes.activeViewContent.innerHTML = [
     renderTreasureCollectionPanel(),
-    renderInventoryCollectionPanel()
+    renderInventoryCollectionPanel(),
+    renderResonancePanel(game.resourceRun?.activeResonances)
   ].join('');
 
   syncActiveViewNodes();
@@ -844,12 +858,44 @@ function renderEndingPanel() {
         <div><dt>章节数</dt><dd>${chapterCount || '暂无记录'}</dd></div>
         <div><dt>真相线索</dt><dd>${truthClueCount}</dd></div>
       </dl>
+      ${renderResourceRunSummary()}
       <div class="ending-actions">
         <button type="button" data-export-story="true">查看传记</button>
         <button type="button" data-reset-game="true">重开</button>
       </div>
     `
   });
+}
+
+function renderResourceRunSummary() {
+  const techniques = (game.techniques ?? [])
+    .map((entry) => typeof entry === 'string' ? entry : entry?.name)
+    .filter(Boolean);
+  const treasures = (game.treasures ?? [])
+    .map((entry) => typeof entry === 'string' ? entry : entry?.name)
+    .filter(Boolean);
+  const metaProgress = game.metaProgress ?? {};
+  const discoveredTechniques = new Set(Array.isArray(metaProgress.discoveredTechniques)
+    ? metaProgress.discoveredTechniques.filter(Boolean)
+    : []).size;
+  const discoveredTreasures = new Set(Array.isArray(metaProgress.discoveredTreasures)
+    ? metaProgress.discoveredTreasures.filter(Boolean)
+    : []).size;
+  const activeResources = [...techniques, ...treasures];
+  const runCount = Number.isFinite(metaProgress.runCount) ? metaProgress.runCount : 0;
+
+  return `
+    <section class="resource-run-summary">
+      <div class="personal-section-title">
+        <h4>资源轨迹</h4>
+        <span>第 ${runCount + 1} 局</span>
+      </div>
+      <p>${activeResources.length
+        ? `本局带走：${activeResources.map((name) => escapeHtml(name)).join('、')}`
+        : '本局未保留仍在身上的功法或宝物。'}</p>
+      <p>永久发现：功法 ${discoveredTechniques} 门 · 宝物 ${discoveredTreasures} 件</p>
+    </section>
+  `;
 }
 
 function renderCultivationFocusPanel() {
@@ -1508,8 +1554,41 @@ function renderSectionTitle(title, meta) {
   `;
 }
 
+function renderPendingResourceDraft() {
+  const draft = getPendingResourceDraft();
+  return draft ? renderResourceDraft(draft) : '';
+}
+
+function getPendingResourceDraft() {
+  const stateDraft = game.resourceRun?.pendingDraft;
+  if (Array.isArray(stateDraft?.options) && stateDraft.options.length) {
+    return stateDraft;
+  }
+
+  const resourceActions = dailyActions.filter((action) => action.category === 'resource');
+  if (!resourceActions.length) return null;
+
+  const firstAction = resourceActions[0];
+  const storyHook = String(firstAction.storyHook ?? '');
+  const hookLines = storyHook.split(/\r?\n/).filter(Boolean);
+  const sourceEventTitle = hookLines[0]?.replace(/^来源：/, '').trim() || '';
+  const reason = hookLines[1] || '';
+
+  return {
+    sourceEventTitle,
+    reason,
+    options: resourceActions.map((action) => ({
+      ...(action.preview ?? {}),
+      actionId: action.id,
+      name: action.preview?.name ?? action.title,
+      bonusText: action.preview?.bonusText ?? firstReadableMetaPart(action.meta)
+    }))
+  };
+}
+
 function renderActionPanel({ title = '今日修行', meta = '每日行动' } = {}) {
   const actions = buildHomeActions();
+  if (getPendingResourceDraft()) return '';
   const storyMode = shouldUseContinuousStory(game);
   return renderPanel({
     className: 'action-section',
@@ -1670,20 +1749,40 @@ function renderCollectionCards(items, emptyCopy) {
     return `<div class="empty-collection">${emptyCopy}</div>`;
   }
 
+  // Collection entries keep the existing item.name/item.description contract: ${item.name} / ${item.description}.
   return `
     <div class="collection-grid">
-      ${items.map((item) => `
+      ${items.map((item) => {
+        const name = typeof item === 'string' ? item : item?.name;
+        const badge = typeof item === 'object'
+          ? item.badge ?? item.rarity ?? item.grade ?? item.type ?? '所得'
+          : '所得';
+        const description = typeof item === 'object' ? item.description : '';
+        const detail = typeof item === 'object' ? item.detail : '';
+        const source = resourceAcquisitionSource(item);
+        return `
         <article class="collection-card">
           <div class="collection-card-head">
-            <strong>${item.name}</strong>
-            <span>${item.badge ?? item.rarity ?? item.grade ?? item.type ?? '所得'}</span>
+            <strong>${escapeHtml(name || '未命名收藏')}</strong>
+            <span>${escapeHtml(badge)}</span>
           </div>
-          <p>${item.description}</p>
-          ${item.detail ? `<em>${item.detail}</em>` : ''}
+          ${description ? `<p>${escapeHtml(description)}</p>` : ''}
+          ${detail ? `<em>${escapeHtml(detail)}</em>` : ''}
+          ${source ? `<small class="collection-source">来源：${escapeHtml(source)}</small>` : ''}
         </article>
-      `).join('')}
+      `;
+      }).join('')}
     </div>
   `;
+}
+
+function resourceAcquisitionSource(item) {
+  const resourceId = typeof item === 'string' ? item : item?.id;
+  if (!resourceId) return '';
+  const acquisition = [...(game.resourceRun?.acquisitionLog ?? [])]
+    .reverse()
+    .find((entry) => entry?.resourceId === resourceId);
+  return acquisition?.eventTitle || (acquisition ? '奇遇事件' : '');
 }
 
 function renderTrainingAdvice() {
