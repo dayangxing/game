@@ -14,6 +14,8 @@ import { selectEventActions } from './domain/events/eventSelector.js';
 import { eventNarrationFallback, stripInternalActionFields } from './domain/events/eventResult.js';
 import { ONBOARDING_STEPS, canCreateFormalCharacter, createOnboardingState, createTutorialAction, resolveTutorialAction } from './domain/onboarding.js';
 import { resolveBreakthrough } from './domain/progression.js';
+import { getPublicResourceDraft, resolveResourceDraft } from './domain/resources/resourceDraft.js';
+import { normalizeResourceState } from './domain/resources/resourceProgress.js';
 import { applyTimePressure } from './domain/time/timePressure.js';
 import { buildTurnResult, publicTimeResult } from './domain/turnResult.js';
 import { createBailianClient } from './llm/bailianClient.js';
@@ -204,6 +206,11 @@ function handleDailyActions({ body, requestId, state, now }) {
   const ended = rejectIfGameEnded({ requestId, state });
   if (ended) return ended;
 
+  if (state.game.resourceRun?.pendingDraft) {
+    const actions = createResourceDraftActions({ state, now: now() });
+    return jsonResponse(200, requestId, { actions: actions.map(stripResourceDraftAction) });
+  }
+
   if (!state.game.onboarding.completed) {
     const action = createTutorialAction({
       game: state.game,
@@ -278,6 +285,60 @@ function composeDailyActions({ game, viewId, now, sequenceStart, eventActions })
   }
 
   return eventActions;
+}
+
+function createResourceDraftActions({ state, now }) {
+  const publicDraft = getPublicResourceDraft(state.game.resourceRun.pendingDraft);
+  const expiresAt = new Date(now.getTime() + 30 * 60 * 1000).toISOString();
+
+  for (const [id, action] of state.pendingActions.entries()) {
+    if (action.source === 'resourceDraft') state.pendingActions.delete(id);
+  }
+
+  const actions = publicDraft.options.map((option) => {
+    const { actionId, ...preview } = option;
+    return {
+      id: actionId,
+      title: option.name,
+      icon: '资',
+      command: `选择${option.name}`,
+      meta: `${publicDraft.sourceEventTitle} / ${option.bonusText}`,
+      storyHook: [
+        `来源：${publicDraft.sourceEventTitle}`,
+        publicDraft.reason,
+        option.description
+      ].filter(Boolean).join('\n'),
+      expiresAt,
+      source: 'resourceDraft',
+      category: 'resource',
+      draftActionId: actionId,
+      preview,
+      turn: state.game.turn,
+      consumed: false
+    };
+  });
+
+  for (const action of actions) state.pendingActions.set(action.id, action);
+  state.auditLog.push({
+    type: 'resource-draft-actions',
+    actionIds: actions.map((action) => action.id),
+    at: now.toISOString()
+  });
+  return actions;
+}
+
+function stripResourceDraftAction(action) {
+  return {
+    id: action.id,
+    title: action.title,
+    icon: action.icon,
+    command: action.command,
+    meta: action.meta,
+    storyHook: action.storyHook,
+    expiresAt: action.expiresAt,
+    category: 'resource',
+    preview: action.preview
+  };
 }
 
 function hasOnlyBreakthroughAction(actions) {
@@ -649,6 +710,58 @@ function resolveTurnRules({ body, requestId, state, now }) {
   }
 
   const before = state.game;
+  if (action.source === 'resourceDraft') {
+    const resolution = resolveResourceDraft({
+      game: before,
+      draftActionId: action.draftActionId ?? action.id,
+      turn: before.turn
+    });
+    const selectedName = resolution.entry?.name ?? '灵石补偿';
+    const entry = {
+      id: `resource-${before.turn}-${action.id}`,
+      title: '机缘入手',
+      command: action.command,
+      body: resolution.entry
+        ? `你从「${action.preview?.name ?? selectedName}」的候选中，收下了${selectedName}。`
+        : '你收下了遗迹留下的灵石补偿，机缘没有白白错过。',
+      npcLine: '',
+      worldEvent: '资源机缘'
+    };
+    state.game = normalizeGame({
+      ...resolution.game,
+      log: [...resolution.game.log, entry],
+      timeline: [...resolution.game.timeline, { type: 'resource', title: entry.title, detail: entry.body }],
+      worldEvents: [...resolution.game.worldEvents, { title: entry.title, detail: entry.body, turn: before.turn }]
+    });
+    action.consumed = true;
+    state.turnSnapshots.set(state.game.turn, {
+      beforeGame: before,
+      afterGame: state.game,
+      action: { ...action },
+      ruleEntry: entry
+    });
+    return {
+      before,
+      action,
+      ruleEntry: entry,
+      narration: {
+        status: 'fallback',
+        title: entry.title,
+        body: entry.body,
+        npcLine: '',
+        foreshadow: state.game.foreshadows.at(-1) ?? ''
+      },
+      ruleResult: {
+        success: true,
+        eventId: 'resource_draft',
+        choiceId: action.draftActionId ?? action.id,
+        resolvedAt: now().toISOString(),
+        lifespanCost: 0,
+        timeResult: null
+      }
+    };
+  }
+
   if (action.source === 'breakthrough') {
     const resolution = resolveBreakthrough(before, now());
     const chapterResolution = applyTerminalResolution({ before, after: resolution.game, turn: resolution.game.turn });
@@ -955,10 +1068,11 @@ function normalizeGame(game) {
     chapterHistory: storyProgress ? (game.chapterHistory ?? []) : []
   };
 
+  const withResourceState = normalizeResourceState(withStoryProgress);
   return {
-    ...withStoryProgress,
-    chapter: getPublicChapterSnapshot(withStoryProgress),
-    storyMemory: normalizeStoryMemory(game.storyMemory, withStoryProgress)
+    ...withResourceState,
+    chapter: getPublicChapterSnapshot(withResourceState),
+    storyMemory: normalizeStoryMemory(game.storyMemory, withResourceState)
   };
 }
 

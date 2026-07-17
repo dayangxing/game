@@ -5,6 +5,7 @@ import { createBackendApp } from '../backend/src/app.js';
 import { EVENT_CATALOG } from '../backend/src/domain/events/eventCatalog.js';
 import { ONBOARDING_STEPS } from '../backend/src/domain/onboarding.js';
 import { getModelSelection } from '../backend/src/llm/modelSelection.js';
+import { createResourceDraft } from '../backend/src/domain/resources/resourceDraft.js';
 
 test('model selection defaults to Bailian qwen3.7-plus without exposing an API key', () => {
   const selection = getModelSelection({});
@@ -28,6 +29,63 @@ test('GET /api/v1/game/state returns the authoritative game state envelope', asy
   assert.match(payload.requestId, /^req_/);
   assert.equal(payload.data.game.player.name, '陆青玄');
   assert.equal(payload.data.game.turn, 0);
+});
+
+test('pending resource draft blocks ordinary actions and exposes three public choices', async () => {
+  const app = createBackendApp({ seed: 73, now: fixedNow });
+  const state = app.getState();
+  state.game = createResourceDraft({
+    game: state.game,
+    poolId: 'mistRelics',
+    sourceEventId: 'mist_relic_cache',
+    sourceEventTitle: '雾中遗物',
+    reason: '雾灯下的遗物',
+    turn: state.game.turn
+  });
+
+  const response = await app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+    viewId: 'home',
+    gameVersion: state.game.version
+  }));
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.data.actions.length, 3);
+  assert.equal(payload.data.actions.every((action) => action.category === 'resource'), true);
+  assert.equal(payload.data.actions.every((action) => action.preview?.name), true);
+  assert.equal(JSON.stringify(payload).includes('poolId'), false);
+  assert.equal(JSON.stringify(payload).includes('resourceId'), false);
+  assert.equal(JSON.stringify(payload).includes('bonuses'), false);
+});
+
+test('selecting a resource draft changes the collection without spending a turn', async () => {
+  const app = createBackendApp({ seed: 73, now: fixedNow });
+  const state = app.getState();
+  state.game = createResourceDraft({
+    game: state.game,
+    poolId: 'mistRelics',
+    sourceEventId: 'mist_relic_cache',
+    sourceEventTitle: '雾中遗物',
+    reason: '雾灯下的遗物',
+    turn: state.game.turn
+  });
+  const before = state.game;
+  const actionsPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+    viewId: 'home',
+    gameVersion: before.version
+  })));
+  const selectedResponse = await app.handle(makeRequest('POST', '/api/v1/turns', {
+    actionId: actionsPayload.data.actions[0].id,
+    clientTurn: before.turn
+  }));
+  const selected = await selectedResponse.json();
+
+  assert.equal(selectedResponse.status, 200);
+  assert.equal(selected.data.game.turn, before.turn);
+  assert.equal(selected.data.game.player.lifespan, before.player.lifespan);
+  assert.equal(selected.data.game.resourceRun.pendingDraft, null);
+  assert.equal(selected.data.game.techniques.length + selected.data.game.treasures.length, 1);
+  assert.equal(selected.data.turnResult.ruleResult.eventId, 'resource_draft');
 });
 
 test('GET /api/v1/game/state starts in tutorial onboarding mode', async () => {
