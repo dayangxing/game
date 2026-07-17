@@ -152,7 +152,7 @@ const TREASURE_ENTRIES = [
     grade: '良品',
     type: '法器',
     realmAtLeast: '炼气三层',
-    tags: ['雾隐', '神识'],
+    tags: ['雾隐', '神识', '雷法'],
     description: '残缺铃片仍有回响，适合在雾境中护念。',
     detail: '青铜铃片带着雾里回音，既能帮助定神，也能在秘境压力下稍稍减轻失误损伤。',
     bonuses: { breakthroughChance: 2, damageReduction: 2 }
@@ -185,7 +185,7 @@ const TREASURE_ENTRIES = [
     grade: '上品',
     type: '法器',
     realmAtLeast: '炼气五层',
-    tags: ['神识', '太虚'],
+    tags: ['神识', '太虚', '雷法'],
     description: '星盘对照虚空，破境时更易把握方向。',
     detail: '太虚星盘能让修士在神识观照中更快辨认虚实，适合需要稳住破境脉络的场合。',
     bonuses: { breakthroughChance: 4 }
@@ -370,11 +370,20 @@ export function getResourceById(kind, id) {
   return undefined;
 }
 
-export function validateResourceCatalog() {
-  validateEntries(TECHNIQUE_CATALOG, 'technique');
-  validateEntries(TREASURE_CATALOG, 'treasure');
-  validatePools();
-  validateResonances();
+export function validateResourceCatalog(overrides = {}) {
+  const {
+    techniqueCatalog = TECHNIQUE_CATALOG,
+    treasureCatalog = TREASURE_CATALOG,
+    resourcePoolCatalog = RESOURCE_POOL_CATALOG,
+    resonanceCatalog = RESONANCE_CATALOG
+  } = overrides;
+  const allResourcesById = buildAllResourcesById(techniqueCatalog, treasureCatalog);
+
+  validateEntries(techniqueCatalog, 'technique');
+  validateEntries(treasureCatalog, 'treasure');
+  validateGlobalUniqueIds(techniqueCatalog, treasureCatalog);
+  validatePools(resourcePoolCatalog, allResourcesById);
+  validateResonances(resonanceCatalog, allResourcesById);
 
   return true;
 }
@@ -423,8 +432,20 @@ function validateEntry(entry, kind) {
   }
 }
 
-function validatePools() {
-  for (const pool of Object.values(RESOURCE_POOL_CATALOG)) {
+function validateGlobalUniqueIds(techniqueCatalog, treasureCatalog) {
+  const ids = new Set();
+
+  for (const entry of [...Object.values(techniqueCatalog), ...Object.values(treasureCatalog)]) {
+    if (ids.has(entry.id)) {
+      throw new Error(`RESOURCE_CATALOG_DUPLICATE_ID:${entry.id}`);
+    }
+
+    ids.add(entry.id);
+  }
+}
+
+function validatePools(resourcePoolCatalog, allResourcesById) {
+  for (const pool of Object.values(resourcePoolCatalog)) {
     if (!pool.id || !pool.label || !pool.narrativeReason) {
       throw new Error(`RESOURCE_CATALOG_INVALID_POOL:${pool.id ?? 'unknown'}`);
     }
@@ -438,15 +459,15 @@ function validatePools() {
     }
 
     for (const resourceId of pool.resourceIds) {
-      if (!ALL_RESOURCES_BY_ID[resourceId]) {
+      if (!allResourcesById[resourceId]) {
         throw new Error(`RESOURCE_CATALOG_UNKNOWN_POOL_RESOURCE:${pool.id}:${resourceId}`);
       }
     }
   }
 }
 
-function validateResonances() {
-  for (const resonance of Object.values(RESONANCE_CATALOG)) {
+function validateResonances(resonanceCatalog, allResourcesById) {
+  for (const resonance of Object.values(resonanceCatalog)) {
     if (!resonance.id || !resonance.name || !resonance.tag) {
       throw new Error(`RESOURCE_CATALOG_INVALID_RESONANCE:${resonance.id ?? 'unknown'}`);
     }
@@ -460,6 +481,11 @@ function validateResonances() {
 
     if (JSON.stringify(two) === JSON.stringify(three)) {
       throw new Error(`RESOURCE_CATALOG_NON_DISTINCT_RESONANCE:${resonance.id}`);
+    }
+
+    const eligibleEntries = Object.values(allResourcesById).filter((entry) => entry.tags.includes(resonance.tag));
+    if (eligibleEntries.length < 3) {
+      throw new Error(`RESOURCE_CATALOG_UNREACHABLE_RESONANCE:${resonance.id}:${resonance.tag}`);
     }
 
     validateThresholdBonuses(resonance.id, two);
@@ -487,6 +513,13 @@ function indexById(entries) {
   }
 
   return catalog;
+}
+
+function buildAllResourcesById(techniqueCatalog, treasureCatalog) {
+  return {
+    ...techniqueCatalog,
+    ...treasureCatalog
+  };
 }
 
 function freezeValue(value) {

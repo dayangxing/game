@@ -51,3 +51,46 @@ test('every pool has four or more valid resources and every resonance has two di
     assert.notDeepEqual(resonance.thresholds[2], resonance.thresholds[3]);
   }
 });
+
+test('every resonance tag stays reachable through at least three catalog entries', () => {
+  for (const resonance of Object.values(RESONANCE_CATALOG)) {
+    const eligibleEntries = [...Object.values(TECHNIQUE_CATALOG), ...Object.values(TREASURE_CATALOG)]
+      .filter((entry) => entry.tags.includes(resonance.tag));
+
+    assert.ok(
+      eligibleEntries.length >= 3,
+      `${resonance.id} should have at least three eligible entries, got ${eligibleEntries
+        .map((entry) => entry.id)
+        .join(', ')}`
+    );
+  }
+
+  assert.ok(TREASURE_CATALOG.bronze_bell_fragment.tags.includes('雷法'));
+});
+
+test('validateResourceCatalog rejects duplicate resource ids across techniques and treasures', () => {
+  const duplicateId = 'shared_resource_id';
+  const techniqueCatalog = {
+    [duplicateId]: {
+      ...TECHNIQUE_CATALOG.qingmu_jue,
+      id: duplicateId
+    }
+  };
+  const treasureCatalog = {
+    [duplicateId]: {
+      ...TREASURE_CATALOG.calm_lotus_incense,
+      id: duplicateId
+    }
+  };
+
+  assert.throws(
+    () =>
+      validateResourceCatalog({
+        techniqueCatalog,
+        treasureCatalog,
+        resourcePoolCatalog: {},
+        resonanceCatalog: {}
+      }),
+    /RESOURCE_CATALOG_DUPLICATE_ID:shared_resource_id/
+  );
+});
