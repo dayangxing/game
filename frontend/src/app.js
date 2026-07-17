@@ -50,6 +50,7 @@ const initialMode = localStorage.getItem(MODE_KEY) || 'api';
 let startupNotice = '';
 let actionRefreshSequence = 0;
 let pendingApiImmediateActions = false;
+let resourceDraftSelectionPending = false;
 let streamingNarration = null;
 let storyChoices = [];
 let storyStepPending = false;
@@ -177,16 +178,22 @@ nodes.activeViewContent.addEventListener('click', async (event) => {
 
   const resourceButton = event.target.closest('button[data-resource-draft-index]');
   if (resourceButton) {
-    let resourceActions = dailyActions.filter((item) => item.category === 'resource');
-    const index = Number(resourceButton.dataset.resourceDraftIndex);
-    let action = Number.isInteger(index) ? resourceActions[index] : null;
-    if (!action && game.resourceRun?.pendingDraft) {
-      await refreshDailyActionsForView(activeViewId).catch(handleApiError);
-      resourceActions = dailyActions.filter((item) => item.category === 'resource');
-      action = Number.isInteger(index) ? resourceActions[index] : null;
+    if (resourceDraftSelectionPending) return;
+    resourceDraftSelectionPending = true;
+    try {
+      let resourceActions = dailyActions.filter((item) => item.category === 'resource');
+      const index = Number(resourceButton.dataset.resourceDraftIndex);
+      let action = Number.isInteger(index) ? resourceActions[index] : null;
+      if (!action && game.resourceRun?.pendingDraft) {
+        await refreshDailyActionsForView(activeViewId).catch(handleApiError);
+        resourceActions = dailyActions.filter((item) => item.category === 'resource');
+        action = Number.isInteger(index) ? resourceActions[index] : null;
+      }
+      if (!action) return;
+      await submitDailyAction(action);
+    } finally {
+      resourceDraftSelectionPending = false;
     }
-    if (!action) return;
-    await submitDailyAction(action);
     return;
   }
 

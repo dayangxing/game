@@ -241,6 +241,10 @@ test('pending resource drafts refresh backend actions during continuous story mo
   const loadDailyActions = extractFunction(source, 'loadDailyActionsForGame');
   const submitDailyAction = extractFunction(source, 'submitDailyAction');
 
+  assert.match(source, /let resourceDraftSelectionPending = false;/);
+  assert.match(clickHandler, /if \(resourceDraftSelectionPending\) return;/);
+  assert.match(clickHandler, /resourceDraftSelectionPending = true;/);
+  assert.match(clickHandler, /resourceDraftSelectionPending = false;/);
   assert.match(clickHandler, /if \(!action && game\.resourceRun\?\.pendingDraft\)/);
   assert.match(clickHandler, /await refreshDailyActionsForView\(activeViewId\)/);
   assert.match(loadDailyActions, /targetGame\.resourceRun\?\.pendingDraft/);
