@@ -5,7 +5,7 @@ import { buildUnavailableNarration, createStoryGraph, normalizeGeneratedNarratio
 import { createDailyActions, hasView } from './domain/actions.js';
 import { resolveChapterProgress } from './domain/chapters/chapterProgression.js';
 import { applyCharacterToGame, rollCharacter } from './domain/characterCreation.js';
-import { applyEnding, resolveEnding } from './domain/endings/endingResolver.js';
+import { applyEnding, isTerminalGame, resolveEnding } from './domain/endings/endingResolver.js';
 import { getPublicChapterSnapshot, normalizeStoryProgress } from './domain/chapters/storyProgress.js';
 import { resolveDirectorEffectHints } from './domain/director/effectHints.js';
 import { resolveChoice } from './domain/events/effectResolver.js';
@@ -15,7 +15,7 @@ import { eventNarrationFallback, stripInternalActionFields } from './domain/even
 import { ONBOARDING_STEPS, canCreateFormalCharacter, createOnboardingState, createTutorialAction, resolveTutorialAction } from './domain/onboarding.js';
 import { resolveBreakthrough } from './domain/progression.js';
 import { getPublicResourceDraft, resolveResourceDraft } from './domain/resources/resourceDraft.js';
-import { normalizeResourceState } from './domain/resources/resourceProgress.js';
+import { finalizeRun, normalizeResourceState } from './domain/resources/resourceProgress.js';
 import { applyTimePressure } from './domain/time/timePressure.js';
 import { buildTurnResult, publicTimeResult } from './domain/turnResult.js';
 import { createBailianClient } from './llm/bailianClient.js';
@@ -358,7 +358,11 @@ function handleNewFormalGame({ body, requestId, state }) {
   try {
     const seed = Number.isInteger(body.rerollSeed) ? body.rerollSeed : state.game.seed + state.requestSequence + 101;
     const character = rollCharacter({ seed, name, attributes: body.attributes });
-    const nextGame = normalizeGame(applyCharacterToGame(createGame(seed), character, seed));
+    const preservedMetaProgress = finalizeActiveResourceRun(state.game).metaProgress;
+    const nextGame = normalizeGame({
+      ...applyCharacterToGame(createGame(seed), character, seed),
+      metaProgress: preservedMetaProgress
+    });
     nextGame.onboarding = createCompletedFormalOnboardingState();
     state.pendingActions.clear();
     state.pendingDirectorChoices.clear();
@@ -382,7 +386,8 @@ function handleNewFormalGame({ body, requestId, state }) {
 
 function handleResetGame({ body, requestId, state }) {
   const seed = Number.isInteger(body.rerollSeed) ? body.rerollSeed : state.game.seed + state.requestSequence + 101;
-  const nextGame = normalizeGame(createGame(seed));
+  const preservedMetaProgress = finalizeActiveResourceRun(state.game).metaProgress;
+  const nextGame = normalizeGame({ ...createGame(seed), metaProgress: preservedMetaProgress });
   nextGame.onboarding = createCompletedFormalOnboardingState();
   delete nextGame.characterSeed;
   nextGame.mode = 'api';
@@ -845,12 +850,27 @@ function resolveTurnRules({ body, requestId, state, now }) {
 function applyTerminalResolution({ before, after, turn }) {
   const chapterResolution = resolveChapterProgress({ before, after: normalizeGame(after), turn });
   const candidate = resolveEnding(chapterResolution.game);
-  const game = candidate ? applyEnding(chapterResolution.game, candidate, turn) : chapterResolution.game;
+  const withEnding = candidate ? applyEnding(chapterResolution.game, candidate, turn) : chapterResolution.game;
+  const game = isTerminalGame(withEnding)
+    ? finalizeRun(withEnding, { chapterId: withEnding.storyProgress?.chapterId })
+    : withEnding;
   return {
     ...chapterResolution,
     game: normalizeGame(game),
     ending: game.ending ?? null
   };
+}
+
+function finalizeActiveResourceRun(game) {
+  const normalized = normalizeResourceState(game);
+  const hasRunContent = normalized.techniques.length > 0
+    || normalized.treasures.length > 0
+    || normalized.resourceRun.acquisitionLog.length > 0
+    || Boolean(normalized.resourceRun.pendingDraft);
+
+  return hasRunContent
+    ? finalizeRun(normalized, { chapterId: normalized.storyProgress?.chapterId })
+    : normalized;
 }
 
 function finalizeTurn({ resolved, state, now }) {

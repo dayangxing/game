@@ -690,6 +690,60 @@ test('event resolution preserves a lifespan ending and deterministic fallback na
   assert.match(turnPayload.data.turnResult.narration.body, /收束杂念|灵气缓缓行过周天/);
 });
 
+test('lifespan terminal resolution finalizes the active resource build into meta progress', async () => {
+  const app = createBackendApp({ seed: 31, now: fixedNow });
+  const game = app.getState().game;
+  game.onboarding = completedOnboardingState();
+  game.techniques = [{ id: 'taixu_heart_mirror' }];
+  game.player = { ...game.player, lifespan: 1, maxLifespan: 100 };
+
+  const actionsPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+    viewId: 'home',
+    gameVersion: game.version
+  })));
+  const pendingAction = [...app.getState().pendingActions.values()].find(
+    (candidate) => candidate.eventId === 'cultivation_breathing' && candidate.choiceId === 'steady'
+  );
+  const action = actionsPayload.data.actions.find((candidate) => candidate.id === pendingAction?.id);
+  const turnPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/turns', {
+    actionId: action.id,
+    clientTurn: game.turn
+  })));
+
+  assert.equal(turnPayload.data.game.ending.type, 'lifespan_exhausted');
+  assert.deepEqual(turnPayload.data.game.techniques, []);
+  assert.deepEqual(turnPayload.data.game.metaProgress.unlockedTechniques, ['taixu_heart_mirror']);
+  assert.equal(turnPayload.data.game.metaProgress.runCount, 1);
+});
+
+test('reset preserves meta progress while starting with an empty active build', async () => {
+  const app = createBackendApp({ seed: 31, now: fixedNow });
+  const state = app.getState();
+  state.game.onboarding = completedOnboardingState();
+  state.game.techniques = [{ id: 'taixu_heart_mirror' }];
+  state.game.metaProgress = {
+    ...state.game.metaProgress,
+    discoveredTechniques: ['taixu_heart_mirror'],
+    unlockedTechniques: ['taixu_heart_mirror'],
+    runCount: 2,
+    bestChapter: 'foundation'
+  };
+
+  const payload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/game/reset', {
+    rerollSeed: 52
+  })));
+
+  assert.deepEqual(payload.data.game.techniques, []);
+  assert.deepEqual(payload.data.game.metaProgress.unlockedTechniques, ['taixu_heart_mirror']);
+  assert.equal(payload.data.game.metaProgress.runCount, 3);
+  assert.equal(payload.data.game.resourceRun.pendingDraft, null);
+
+  const repeated = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/game/reset', {
+    rerollSeed: 52
+  })));
+  assert.equal(repeated.data.game.metaProgress.runCount, 3);
+});
+
 test('POST /api/v1/daily-actions rejects after lifespan ending', async () => {
   const app = createBackendApp({ seed: 31, now: fixedNow });
   app.getState().game.onboarding = completedOnboardingState();

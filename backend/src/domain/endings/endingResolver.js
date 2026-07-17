@@ -12,6 +12,10 @@ export function resolveEnding(game = {}) {
   return candidate ? structuredClone(candidate) : null;
 }
 
+export function isTerminalGame(game = {}) {
+  return Boolean(game.ending || game.storyProgress?.status === 'ended');
+}
+
 export function applyEnding(game, candidate, turn) {
   if (!candidate || game.ending || game.storyProgress?.status === 'ended') return game;
 

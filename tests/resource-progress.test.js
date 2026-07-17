@@ -58,3 +58,17 @@ test('normalizing a reward state preserves active resonance display data', () =>
   assert.deepEqual(normalized.resourceRun.activeResonances.map((entry) => entry.id), ['thunder_resonance']);
   assert.equal(normalized.resourceRun.activeResonances[0].effectText, '突破 +2');
 });
+
+test('finalizing a run is idempotent and preserves discovered resources after the active build is cleared', () => {
+  const game = normalizeResourceState({
+    ...createGame(41),
+    techniques: [{ id: 'taixu_heart_mirror' }]
+  });
+  const once = finalizeRun(game, { chapterId: 'finale' });
+  const twice = finalizeRun(once, { chapterId: 'finale' });
+
+  assert.equal(once.metaProgress.runCount, 1);
+  assert.equal(twice.metaProgress.runCount, 1);
+  assert.deepEqual(twice.metaProgress.unlockedTechniques, ['taixu_heart_mirror']);
+  assert.deepEqual(twice.techniques, []);
+});
