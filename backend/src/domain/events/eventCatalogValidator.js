@@ -1,9 +1,9 @@
 const EXPECTED_CHAPTER_COUNTS = {
   prologue: 6,
-  qi: 7,
-  foundation: 7,
+  qi: 8,
+  foundation: 9,
   golden_core: 7,
-  mist: 8,
+  mist: 10,
   ascension_scam: 8,
   finale: 7
 };
@@ -50,7 +50,7 @@ export function validateEventCatalog(catalog = []) {
       errors.push(`${chapterId}: expected ${expected}, got ${counts[chapterId]}`);
     }
   }
-  if (catalog.length !== 50) errors.push(`expected 50 formal events, got ${catalog.length}`);
+  if (catalog.length !== 55) errors.push(`expected 55 formal events, got ${catalog.length}`);
 
   const knownIds = new Set(catalog.map((event) => event?.id));
   for (const event of catalog) {

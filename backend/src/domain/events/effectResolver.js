@@ -1,5 +1,6 @@
 import { ATTRIBUTE_KEYS, deriveMaxHealth, deriveMaxLifespan } from '../attributes.js';
 import { calculateDerivedBonuses, grantTechnique, grantTreasure } from '../rewards.js';
+import { createResourceDraft } from '../resources/resourceDraft.js';
 import { applyTimePressure } from '../time/timePressure.js';
 import {
   getEventRepeatCount,
@@ -35,8 +36,26 @@ export function resolveChoice({ game, event, choice, now }) {
     npcLine: '',
     worldEvent: event.title
   };
-  return {
-    game: {
+  const draftRequest = next.resourceRun?.draftRequest;
+  const resolvedGame = draftRequest
+    ? createResourceDraft({
+      game: {
+        ...next,
+        turn,
+        version: turn,
+        log: [...next.log, entry],
+        timeline: [...next.timeline, { type: event.category, title: event.title, detail: outcome.text }],
+        worldEvents: [...next.worldEvents, { title: event.title, detail: outcome.text, turn }],
+        cooldowns: { ...next.cooldowns, [event.id]: turn + (event.cooldownTurns ?? 0) },
+        eventHistory
+      },
+      poolId: draftRequest.poolId,
+      sourceEventId: event.id,
+      sourceEventTitle: event.title,
+      reason: draftRequest.reason,
+      turn
+    })
+    : {
       ...next,
       turn,
       version: turn,
@@ -45,7 +64,9 @@ export function resolveChoice({ game, event, choice, now }) {
       worldEvents: [...next.worldEvents, { title: event.title, detail: outcome.text, turn }],
       cooldowns: { ...next.cooldowns, [event.id]: turn + (event.cooldownTurns ?? 0) },
       eventHistory
-    },
+    };
+  return {
+    game: resolvedGame,
     entry,
     outcome,
     ruleResult: {
@@ -87,6 +108,18 @@ function applyEffect(game, effect) {
   if (effect.type === 'flag') return { ...game, flags: { ...game.flags, [effect.id]: effect.value } };
   if (effect.type === 'treasure') return grantTreasure(game, effect.id);
   if (effect.type === 'technique') return grantTechnique(game, effect.id);
+  if (effect.type === 'resourceDraft') {
+    return {
+      ...game,
+      resourceRun: {
+        ...(game.resourceRun ?? {}),
+        draftRequest: {
+          poolId: effect.poolId,
+          reason: effect.reason ?? ''
+        }
+      }
+    };
+  }
   if (effect.type === 'futureEvent') {
     return {
       ...game,

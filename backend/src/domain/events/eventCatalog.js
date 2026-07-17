@@ -28,6 +28,11 @@ const EVENT_METADATA = {
   xuanheng_private_confession: eventMetadata('golden_core', 'mainline', '玄衡长老旧院', '悲凉、克制', ['契痕', '旧伤', '风铃'], ['xuanheng']),
   mist_bronze_bell: eventMetadata('mist', 'mainline', '雾隐秘境边缘', '诡谲、克制', ['铜铃', '白雾', '残碑'], ['lin_shijie']),
   mist_archive_fragment: eventMetadata('mist', 'mainline', '雾隐秘境残碑林', '冷寂、怀疑', ['残碑', '石刻', '回声'], []),
+  mist_relic_cache: eventMetadata('mist', 'side', '雾隐秘境雾灯石径', '好奇、戒备', ['雾灯', '残匣', '铃声'], []),
+  scripture_archive_cache: eventMetadata('foundation', 'side', '青云宗藏经阁', '幽深、克制', ['尘埃', '残卷', '墨香'], ['lin_shijie']),
+  alchemy_hidden_fire: eventMetadata('qi', 'side', '青云宗丹房', '温热、谨慎', ['丹火', '炉灰', '药香'], []),
+  beast_bone_reliquary: eventMetadata('foundation', 'side', '青云宗巡山遗迹', '肃杀、贪念', ['兽骨', '旧匣', '山风'], []),
+  ancient_ruins_starfall: eventMetadata('mist', 'side', '雾隐秘境古修遗府', '宏大、失真', ['星盘', '裂墙', '冷光'], []),
   mist_lantern_path: eventMetadata('mist', 'mainline', '雾隐秘境雾灯石径', '诱导、危险', ['雾灯', '石径', '铃声'], []),
   mist_archive_full: eventMetadata('mist', 'mainline', '雾隐秘境深档库', '震骇、肃穆', ['石档', '白雾', '回声'], []),
   heaven_gate_key_fragment: eventMetadata('mist', 'mainline', '秘境天门残台', '冰冷、决绝', ['碎片', '雾门', '寒光'], []),
@@ -158,6 +163,51 @@ export const EVENT_CATALOG = [
       stat('player.mood', -2),
       flag('mist_archive', true)
     ], '你把石文一字不差地记进识海，离开时却发现最后一行正在缓缓变淡。')
+  ]),
+  event('mist_relic_cache', '雾中遗物', 'realm', ['realm'], [
+    choice('claim', '取下遗物', '从雾灯石径的残匣中取下一件遗物', 'medium', [
+      resourceDraft('mistRelics', '雾灯下的遗物带着秘境回声，值得带走一件。')
+    ], '残匣在雾灯下露出三道不同的灵息，你把它们一一辨认出来。'),
+    choice('leave', '封回残匣', '封回雾灯石径的残匣并记下位置', 'low', [
+      stat('player.mood', 2),
+      flag('mist_relic_cache_left', true)
+    ], '你没有立刻伸手，先以符纸封住残匣，把这处机缘记在地图边角。')
+  ]),
+  event('scripture_archive_cache', '藏经阁残卷', 'sect', ['home', 'realm'], [
+    choice('claim', '整理残卷', '在藏经阁尘封书架中整理可带走的残卷', 'medium', [
+      resourceDraft('scriptureArchive', '残卷之间藏着几门尚未失传的修行法门。')
+    ], '你拨开尘埃，发现几页旧注彼此呼应，像有人特意把它们留给后来者。'),
+    choice('leave', '归还旧卷', '把藏经阁残卷归回原处并记下卷号', 'low', [
+      stat('player.sectRelation', 2),
+      flag('scripture_archive_left', true)
+    ], '你将残卷按原位归档，只把卷号记下，留待日后凭宗门规矩再来查阅。')
+  ]),
+  event('alchemy_hidden_fire', '丹房暗火', 'economy', ['home'], [
+    choice('claim', '护住暗火', '在丹房炉灰下护住一簇未熄的暗火', 'medium', [
+      resourceDraft('alchemyFinds', '暗火守着丹房旧藏，几件灵物仍有温度。')
+    ], '炉灰拨开后，一簇暗火照出几件被岁月封存的丹房灵藏。'),
+    choice('leave', '熄灭暗火', '熄灭丹房炉灰下的危险暗火', 'high', [
+      stat('player.qi', -3),
+      flag('alchemy_hidden_fire_left', true)
+    ], '你以水息熄灭暗火，炉壁上的旧刻随之暗下，里面的东西也再无人辨认。')
+  ]),
+  event('beast_bone_reliquary', '兽骨遗匣', 'realm', ['realm'], [
+    choice('claim', '开启遗匣', '在巡山遗迹中开启妖兽守着的遗匣', 'high', [
+      resourceDraft('beastSpoils', '兽骨与旧匣共同守着一批偏重护身的收获。')
+    ], '断裂兽骨围着一只旧匣，你避开残留妖息，终于看清匣中并非寻常战利品。'),
+    choice('leave', '立碑封存', '在巡山遗迹立碑封存兽骨遗匣', 'low', [
+      stat('player.sectRelation', 3),
+      flag('beast_bone_reliquary_left', true)
+    ], '你没有动遗匣，只立下一块警示石碑，让后来巡山的人知道这里仍有妖息未散。')
+  ]),
+  event('ancient_ruins_starfall', '星落遗府', 'realm', ['realm'], [
+    choice('claim', '接住星盘', '在古修遗府接住坠落的星盘与命火遗物', 'high', [
+      resourceDraft('ancientRuins', '星盘坠落时照见古修遗府旧匣，里面仍有命火回声。')
+    ], '裂墙外落下一线星光，古修遗府的旧匣在光里显出几件尚未腐朽的遗物。'),
+    choice('leave', '避开星落', '避开古修遗府的星落异象', 'medium', [
+      stat('player.mood', -2),
+      flag('ancient_ruins_starfall_left', true)
+    ], '你退到石柱后，任由星光穿过遗府，等异象散去后只剩一层冷灰。')
   ]),
   event('heaven_contract_echo', '天门契影', 'heaven', ['home', 'cultivation'], [
     choice('read', '研读契影', '研读古修残卷中的天门契影', 'high', [
@@ -696,6 +746,10 @@ function evil(delta) {
 
 function attribute(path, delta) {
   return { type: 'attribute', path, delta };
+}
+
+function resourceDraft(poolId, reason) {
+  return { type: 'resourceDraft', poolId, reason };
 }
 
 function storyProgress(path, value) {
