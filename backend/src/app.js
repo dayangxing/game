@@ -510,6 +510,9 @@ function handleDirectorTurnStream({ body, requestId, state, now }) {
 }
 
 function validateDirectorTurnRequest({ body, requestId, state }) {
+  if (state.game.resourceRun?.pendingDraft) {
+    return errorResponse(409, requestId, 'RESOURCE_DRAFT_PENDING', '请先选择当前机缘候选，再继续推演。');
+  }
   if (!state.game.onboarding?.completed) {
     return errorResponse(409, requestId, 'ONBOARDING_REQUIRED', '完成新手任务后才能进入连续剧情。');
   }

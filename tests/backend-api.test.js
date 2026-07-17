@@ -109,6 +109,58 @@ test('selecting a resource draft changes the collection without spending a turn'
   assert.equal(selected.data.turnResult.ruleResult.eventId, 'resource_draft');
 });
 
+test('pending resource draft blocks continuous story stream without spending time', async () => {
+  const app = createBackendApp({ seed: 73, now: fixedNow });
+  const state = app.getState();
+  state.game = createResourceDraft({
+    game: state.game,
+    poolId: 'mistRelics',
+    sourceEventId: 'mist_relic_cache',
+    sourceEventTitle: '雾中遗物',
+    reason: '雾灯下的遗物',
+    turn: state.game.turn
+  });
+
+  const response = await app.handle(makeRequest('POST', '/api/v1/turns/stream', {
+    type: 'continue',
+    clientTurn: state.game.turn
+  }));
+  const payload = await response.json();
+
+  assert.equal(response.status, 409);
+  assert.equal(payload.error.code, 'RESOURCE_DRAFT_PENDING');
+  assert.equal(state.game.turn, 0);
+  assert.equal(state.game.resourceRun.pendingDraft !== null, true);
+});
+
+test('resource draft actions resolve through the streaming turn endpoint without advancing time', async () => {
+  const app = createBackendApp({ seed: 73, now: fixedNow });
+  const state = app.getState();
+  state.game = createResourceDraft({
+    game: state.game,
+    poolId: 'mistRelics',
+    sourceEventId: 'mist_relic_cache',
+    sourceEventTitle: '雾中遗物',
+    reason: '雾灯下的遗物',
+    turn: state.game.turn
+  });
+  const actionsPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+    viewId: 'home',
+    gameVersion: state.game.version
+  })));
+
+  const response = await app.handle(makeRequest('POST', '/api/v1/turns/stream', {
+    actionId: actionsPayload.data.actions[0].id,
+    clientTurn: state.game.turn
+  }));
+  const body = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.match(body, /resource_draft/);
+  assert.equal(state.game.turn, 0);
+  assert.equal(state.game.resourceRun.pendingDraft, null);
+});
+
 test('GET /api/v1/game/state starts in tutorial onboarding mode', async () => {
   const app = createBackendApp({ seed: 31, now: fixedNow });
   const payload = await jsonResponse(app.handle(makeRequest('GET', '/api/v1/game/state')));
