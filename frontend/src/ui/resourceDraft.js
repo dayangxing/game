@@ -71,6 +71,40 @@ export function renderResonancePanel(resonances = []) {
   `;
 }
 
+export function renderResourceRunSummary({ summary = {}, metaProgress = {} } = {}) {
+  const techniques = (summary.techniques ?? [])
+    .map((entry) => typeof entry === 'string' ? entry : entry?.name)
+    .filter(Boolean);
+  const treasures = (summary.treasures ?? [])
+    .map((entry) => typeof entry === 'string' ? entry : entry?.name)
+    .filter(Boolean);
+  const discoveredTechniques = new Set(Array.isArray(metaProgress.discoveredTechniques)
+    ? metaProgress.discoveredTechniques.filter(Boolean)
+    : []).size;
+  const discoveredTreasures = new Set(Array.isArray(metaProgress.discoveredTreasures)
+    ? metaProgress.discoveredTreasures.filter(Boolean)
+    : []).size;
+  const activeResources = [...techniques, ...treasures];
+  const runCount = Number.isFinite(summary.runCount)
+    ? summary.runCount
+    : Number.isFinite(metaProgress.runCount)
+      ? metaProgress.runCount
+      : 0;
+
+  return `
+    <section class="resource-run-summary">
+      <div class="personal-section-title">
+        <h4>资源轨迹</h4>
+        <span>第 ${runCount || 1} 局</span>
+      </div>
+      <p>${activeResources.length
+        ? `本局带走：${activeResources.map((name) => escapeHtml(name)).join('、')}`
+        : '本局未保留仍在身上的功法或宝物。'}</p>
+      <p>永久发现：功法 ${discoveredTechniques} 门 · 宝物 ${discoveredTreasures} 件</p>
+    </section>
+  `;
+}
+
 function renderResonanceEntry(resonance = {}) {
   const count = Number.isFinite(resonance.count) ? resonance.count : 0;
   const next = Number.isFinite(resonance.next)

@@ -15,7 +15,11 @@ import {
   updateAllocation
 } from './ui/characterCreation.js';
 import { formatChapterTransition, renderChapterProgress } from './ui/chapterProgress.js';
-import { renderResourceDraft, renderResonancePanel } from './ui/resourceDraft.js';
+import {
+  renderResourceDraft,
+  renderResourceRunSummary as renderResourceRunSummaryView,
+  renderResonancePanel
+} from './ui/resourceDraft.js';
 import { getView, visibleViewList } from './ui/views.js?v=20260703';
 import {
   clearModelConfigSkip,
@@ -173,9 +177,14 @@ nodes.activeViewContent.addEventListener('click', async (event) => {
 
   const resourceButton = event.target.closest('button[data-resource-draft-index]');
   if (resourceButton) {
-    const resourceActions = dailyActions.filter((item) => item.category === 'resource');
+    let resourceActions = dailyActions.filter((item) => item.category === 'resource');
     const index = Number(resourceButton.dataset.resourceDraftIndex);
-    const action = Number.isInteger(index) ? resourceActions[index] : null;
+    let action = Number.isInteger(index) ? resourceActions[index] : null;
+    if (!action && game.resourceRun?.pendingDraft) {
+      await refreshDailyActionsForView(activeViewId).catch(handleApiError);
+      resourceActions = dailyActions.filter((item) => item.category === 'resource');
+      action = Number.isInteger(index) ? resourceActions[index] : null;
+    }
     if (!action) return;
     await submitDailyAction(action);
     return;
@@ -465,7 +474,7 @@ async function submitDailyAction(action) {
     saveGame();
     clearStreamingNarration();
     showImmediateActionsForView(activeViewId);
-    refreshDailyActionsForView(activeViewId).catch(handleApiError);
+    await refreshDailyActionsForView(activeViewId);
     nodes.logList?.scrollTo({ top: 0, behavior: 'smooth' });
   } catch (error) {
     clearStreamingNarration();
@@ -858,7 +867,7 @@ function renderEndingPanel() {
         <div><dt>章节数</dt><dd>${chapterCount || '暂无记录'}</dd></div>
         <div><dt>真相线索</dt><dd>${truthClueCount}</dd></div>
       </dl>
-      ${renderResourceRunSummary()}
+      ${renderCurrentResourceRunSummary()}
       <div class="ending-actions">
         <button type="button" data-export-story="true">查看传记</button>
         <button type="button" data-reset-game="true">重开</button>
@@ -867,35 +876,15 @@ function renderEndingPanel() {
   });
 }
 
-function renderResourceRunSummary() {
-  const techniques = (game.techniques ?? [])
-    .map((entry) => typeof entry === 'string' ? entry : entry?.name)
-    .filter(Boolean);
-  const treasures = (game.treasures ?? [])
-    .map((entry) => typeof entry === 'string' ? entry : entry?.name)
-    .filter(Boolean);
-  const metaProgress = game.metaProgress ?? {};
-  const discoveredTechniques = new Set(Array.isArray(metaProgress.discoveredTechniques)
-    ? metaProgress.discoveredTechniques.filter(Boolean)
-    : []).size;
-  const discoveredTreasures = new Set(Array.isArray(metaProgress.discoveredTreasures)
-    ? metaProgress.discoveredTreasures.filter(Boolean)
-    : []).size;
-  const activeResources = [...techniques, ...treasures];
-  const runCount = Number.isFinite(metaProgress.runCount) ? metaProgress.runCount : 0;
-
-  return `
-    <section class="resource-run-summary">
-      <div class="personal-section-title">
-        <h4>资源轨迹</h4>
-        <span>第 ${runCount + 1} 局</span>
-      </div>
-      <p>${activeResources.length
-        ? `本局带走：${activeResources.map((name) => escapeHtml(name)).join('、')}`
-        : '本局未保留仍在身上的功法或宝物。'}</p>
-      <p>永久发现：功法 ${discoveredTechniques} 门 · 宝物 ${discoveredTreasures} 件</p>
-    </section>
-  `;
+function renderCurrentResourceRunSummary() {
+  return renderResourceRunSummaryView({
+    summary: game.resourceRun?.lastRunSummary ?? {
+      runCount: game.metaProgress?.runCount ?? 0,
+      techniques: game.techniques ?? [],
+      treasures: game.treasures ?? []
+    },
+    metaProgress: game.metaProgress ?? {}
+  });
 }
 
 function renderCultivationFocusPanel() {
@@ -1865,6 +1854,7 @@ async function loadGame() {
 }
 
 async function loadDailyActionsForGame(targetGame, targetView) {
+  if (targetGame.resourceRun?.pendingDraft) return api.getDailyActions(targetGame, targetView);
   if (shouldUseContinuousStory(targetGame)) return [];
   return api.getDailyActions(targetGame, targetView);
 }

@@ -787,6 +787,11 @@ test('lifespan terminal resolution finalizes the active resource build into meta
   assert.deepEqual(turnPayload.data.game.techniques, []);
   assert.deepEqual(turnPayload.data.game.metaProgress.unlockedTechniques, ['taixu_heart_mirror']);
   assert.equal(turnPayload.data.game.metaProgress.runCount, 1);
+  assert.equal(turnPayload.data.game.resourceRun.lastRunSummary.runCount, 1);
+  assert.deepEqual(
+    turnPayload.data.game.resourceRun.lastRunSummary.techniques.map((entry) => entry.id),
+    ['taixu_heart_mirror']
+  );
 });
 
 test('reset preserves meta progress while starting with an empty active build', async () => {

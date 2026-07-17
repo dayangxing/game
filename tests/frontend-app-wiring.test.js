@@ -235,6 +235,19 @@ test('home story flow uses continuous director calls and public choices', () => 
   assert.doesNotMatch(source, /choiceId/);
 });
 
+test('pending resource drafts refresh backend actions during continuous story mode', () => {
+  const source = fs.readFileSync('frontend/src/app.js', 'utf8');
+  const clickHandler = source.match(/nodes\.activeViewContent\.addEventListener\('click', async \(event\) => \{([\s\S]*?)\n\}\);/)?.[1] ?? '';
+  const loadDailyActions = extractFunction(source, 'loadDailyActionsForGame');
+  const submitDailyAction = extractFunction(source, 'submitDailyAction');
+
+  assert.match(clickHandler, /if \(!action && game\.resourceRun\?\.pendingDraft\)/);
+  assert.match(clickHandler, /await refreshDailyActionsForView\(activeViewId\)/);
+  assert.match(loadDailyActions, /targetGame\.resourceRun\?\.pendingDraft/);
+  assert.match(loadDailyActions, /api\.getDailyActions\(targetGame,\s*targetView\)/);
+  assert.match(submitDailyAction, /await refreshDailyActionsForView\(activeViewId\)/);
+});
+
 test('daily action refresh is guarded by request, view, and game context', () => {
   const source = fs.readFileSync('frontend/src/app.js', 'utf8');
   const helper = extractFunction(source, 'refreshDailyActionsForView');

@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { renderResourceCard, renderResourceDraft, renderResonancePanel } from '../frontend/src/ui/resourceDraft.js';
+import {
+  renderResourceCard,
+  renderResourceDraft,
+  renderResourceRunSummary,
+  renderResonancePanel
+} from '../frontend/src/ui/resourceDraft.js';
 
 test('resource draft renders source context and three player-facing cards', () => {
   const html = renderResourceDraft({
@@ -20,4 +25,23 @@ test('resonance panel explains active threshold and next threshold', () => {
   const html = renderResonancePanel([{ name: '养元共鸣', count: 2, next: 3, effectText: '寿元上限 +4' }]);
   assert.match(html, /养元共鸣/);
   assert.match(html, /还需 1 件/);
+});
+
+test('terminal resource summary uses the finalized current-run snapshot', () => {
+  const html = renderResourceRunSummary({
+    summary: {
+      runCount: 1,
+      techniques: [{ name: '太虚心镜' }],
+      treasures: [{ name: '雾隐披风' }]
+    },
+    metaProgress: {
+      discoveredTechniques: ['taixu_heart_mirror'],
+      discoveredTreasures: ['mist_veil']
+    }
+  });
+
+  assert.match(html, /第 1 局/);
+  assert.match(html, /太虚心镜/);
+  assert.match(html, /雾隐披风/);
+  assert.match(html, /永久发现：功法 1 门 · 宝物 1 件/);
 });

@@ -72,3 +72,23 @@ test('finalizing a run is idempotent and preserves discovered resources after th
   assert.deepEqual(twice.metaProgress.unlockedTechniques, ['taixu_heart_mirror']);
   assert.deepEqual(twice.techniques, []);
 });
+
+test('finalizing a run preserves a public snapshot of the build that just ended', () => {
+  const game = normalizeResourceState({
+    ...createGame(43),
+    techniques: [{ id: 'taixu_heart_mirror' }],
+    treasures: [{ id: 'mist_veil' }]
+  });
+
+  const finalized = finalizeRun(game, { chapterId: 'mist_realm' });
+
+  assert.equal(finalized.resourceRun.lastRunSummary.runCount, 1);
+  assert.deepEqual(
+    finalized.resourceRun.lastRunSummary.techniques.map((entry) => entry.id),
+    ['taixu_heart_mirror']
+  );
+  assert.deepEqual(
+    finalized.resourceRun.lastRunSummary.treasures.map((entry) => entry.id),
+    ['mist_veil']
+  );
+});

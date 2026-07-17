@@ -6,7 +6,8 @@ export const EMPTY_RESOURCE_RUN = Object.freeze({
   activeResonances: [],
   resolvedDraftIds: [],
   acquisitionLog: [],
-  finalizedRunId: null
+  finalizedRunId: null,
+  lastRunSummary: null
 });
 
 export const EMPTY_META_PROGRESS = Object.freeze({
@@ -86,11 +87,22 @@ export function finalizeRun(game, { chapterId }) {
   }
 
   const mergedMetaProgress = mergeRunProgress(normalized.metaProgress, normalized.techniques, normalized.treasures);
+  const runCount = mergedMetaProgress.runCount + 1;
+  const lastRunSummary = {
+    runCount,
+    techniques: cloneResourceEntries(normalized.techniques),
+    treasures: cloneResourceEntries(normalized.treasures),
+    acquisitionLog: normalized.resourceRun.acquisitionLog.map((entry) => ({ ...entry }))
+  };
   const finalized = resetRunResources({
     ...normalized,
+    resourceRun: {
+      ...normalized.resourceRun,
+      lastRunSummary
+    },
     metaProgress: {
       ...mergedMetaProgress,
-      runCount: mergedMetaProgress.runCount + 1,
+      runCount,
       bestChapter: pickBestChapter(mergedMetaProgress.bestChapter, chapterId)
     }
   });
@@ -126,7 +138,18 @@ function normalizeResourceRun(resourceRun) {
     activeResonances: normalizeActiveResonances(source.activeResonances),
     resolvedDraftIds: uniqueStrings(source.resolvedDraftIds),
     acquisitionLog: normalizeAcquisitionLog(source.acquisitionLog),
-    finalizedRunId: source.finalizedRunId ?? null
+    finalizedRunId: source.finalizedRunId ?? null,
+    lastRunSummary: normalizeLastRunSummary(source.lastRunSummary)
+  };
+}
+
+function normalizeLastRunSummary(summary) {
+  if (!summary || typeof summary !== 'object') return null;
+  return {
+    runCount: typeof summary.runCount === 'number' ? summary.runCount : 0,
+    techniques: normalizeActiveResources(summary.techniques, TECHNIQUE_CATALOG),
+    treasures: normalizeActiveResources(summary.treasures, TREASURE_CATALOG),
+    acquisitionLog: normalizeAcquisitionLog(summary.acquisitionLog)
   };
 }
 
@@ -155,6 +178,14 @@ function normalizeActiveResources(entries, catalog) {
   }
 
   return result;
+}
+
+function cloneResourceEntries(entries) {
+  return entries.map((entry) => ({
+    ...entry,
+    tags: [...(entry.tags ?? [])],
+    bonuses: { ...(entry.bonuses ?? {}) }
+  }));
 }
 
 function normalizeAcquisitionLog(entries) {

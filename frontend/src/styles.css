@@ -1107,6 +1107,102 @@ button {
   gap: 10px;
 }
 
+.resource-draft-panel,
+.resonance-panel,
+.resource-run-summary {
+  min-width: 0;
+}
+
+.resource-draft-panel {
+  grid-column: 1 / -1;
+}
+
+.resource-draft-source,
+.resource-draft-reason,
+.resource-run-summary p {
+  margin: 0 0 10px;
+  color: var(--ink-soft);
+  line-height: 1.6;
+}
+
+.resource-draft-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.resource-draft-card {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid rgba(181, 139, 63, 0.28);
+  border-radius: 8px;
+  color: var(--ink);
+  text-align: left;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.62), rgba(236, 229, 202, 0.6));
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.resource-draft-card:hover,
+.resource-draft-card:focus-visible {
+  transform: translateY(-2px);
+  border-color: rgba(47, 143, 112, 0.52);
+  box-shadow: 0 14px 28px rgba(47, 62, 54, 0.14);
+}
+
+.resource-draft-card strong {
+  font-size: 17px;
+}
+
+.resource-draft-card p,
+.resource-draft-card em,
+.resonance-entry p,
+.resonance-entry em,
+.collection-source {
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.55;
+}
+
+.draft-grade,
+.draft-type,
+.draft-tags,
+.draft-bonus {
+  color: var(--gold);
+  font-size: 12px;
+}
+
+.resonance-list {
+  display: grid;
+  gap: 10px;
+}
+
+.resonance-entry {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid rgba(47, 143, 112, 0.2);
+  border-radius: 8px;
+  background: rgba(236, 248, 239, 0.42);
+}
+
+.resonance-entry-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.resource-run-summary {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
 .collection-card {
   display: grid;
   gap: 8px;
@@ -2217,6 +2313,7 @@ blockquote {
   .view-grid.compact,
   .view-grid.split,
   .action-grid,
+  .resource-draft-grid,
   .status-overview,
   .attribute-summary,
   .ending-summary,
