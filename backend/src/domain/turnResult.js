@@ -1,9 +1,12 @@
-export function buildTurnResult({ before, after, actionId, narration, timeResult }) {
+export function buildTurnResult({ before, after, actionId, narration, timeResult, chapterTransition = null, ending = after.ending ?? null }) {
   const entry = after.log.at(-1);
 
   return {
     turn: after.turn,
     actionId,
+    chapter: after.chapter ?? null,
+    chapterTransition,
+    ending,
     ruleResult: {
       success: true,
       statChanges: diffStats(before.player, after.player),

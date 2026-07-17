@@ -5,9 +5,9 @@ import {
 } from './prompts/narrationPrompt.js';
 import { buildStoryDirectorMessages } from './prompts/storyDirectorPrompt.js';
 
-export function createBailianClient({ env = process.env, fetchImpl = globalThis.fetch } = {}) {
-  const selection = getModelSelection(env);
-  const apiKey = resolveBailianApiKey(env);
+export function createBailianClient({ env = process.env, fetchImpl = globalThis.fetch, config = null } = {}) {
+  const selection = getModelSelection(env, config);
+  const apiKey = resolveBailianApiKey(env, config);
 
   async function requestChatCompletion({ messages, model = selection.chatModel, temperature = 0.7 }) {
     if (!apiKey) {

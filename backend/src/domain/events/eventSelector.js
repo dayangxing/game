@@ -1,6 +1,7 @@
 import { calculateBreakthroughChance, canAttemptBreakthrough } from '../progression.js';
 import { BREAKTHROUGH_EVENT, EVENT_CATALOG } from './eventCatalog.js';
 import { canAffordEffects } from './effectResolver.js';
+import { hasResolvedEvent } from './eventHistory.js';
 import { isEventEligible } from './triggerMatcher.js';
 
 const FEATURED_EVENT_PRIORITY_BOOSTS = {
@@ -19,16 +20,26 @@ export function selectEventActions({ game, viewId, now, sequenceStart = 0 }) {
   const eligible = EVENT_CATALOG
     .map((event, index) => ({ event, index }))
     .filter(({ event }) => isEventEligible(event, game, viewId))
+    .filter(({ event }) => !isEventCompleted(event, game))
     .filter(({ event }) => !isEventOnCooldown(event, game))
     .filter(({ event }) => !isEventRecentlyResolved(event, game))
     .sort((left, right) => compareEvents(left, right, viewId, game))
     .map(({ event }) => event);
 
   const expiresAt = new Date(now.getTime() + 30 * 60 * 1000).toISOString();
-  const actions = pickDiverseEvents(eligible)
-    .flatMap((event, eventIndex) => event.choices
-      .filter((choice) => canAffordEffects(game, choice.success.effects))
-      .map((choice, choiceIndex) => ({
+  const selectedEvents = pickDiverseEvents(eligible);
+  const affordableChoices = selectedEvents.map((event) => ({
+    event,
+    choices: event.choices.filter((choice) => canAffordEffects(game, choice.success.effects))
+  }));
+  const actions = [];
+  const maxChoices = Math.max(0, ...affordableChoices.map(({ choices }) => choices.length));
+  for (let choiceIndex = 0; choiceIndex < maxChoices && actions.length < 4; choiceIndex += 1) {
+    for (let eventIndex = 0; eventIndex < affordableChoices.length && actions.length < 4; eventIndex += 1) {
+      const { event, choices } = affordableChoices[eventIndex];
+      const choice = choices[choiceIndex];
+      if (!choice) continue;
+      actions.push({
       id: `act_${game.turn}_${viewId}_${sequenceStart + eventIndex}_${choiceIndex}`,
       title: choice.label,
       icon: event.category.slice(0, 1),
@@ -37,6 +48,9 @@ export function selectEventActions({ game, viewId, now, sequenceStart = 0 }) {
       category: event.category,
       source: 'event',
       risk: choice.risk,
+      cadence: event.cadence,
+      narrativeContext: event.narrativeContext ?? null,
+      narrativeIntent: choice.narrativeIntent ?? '',
       eventId: event.id,
       choiceId: choice.id,
       storyHook: [
@@ -47,8 +61,9 @@ export function selectEventActions({ game, viewId, now, sequenceStart = 0 }) {
       expiresAt,
       event,
       choice
-    })))
-    .slice(0, 4);
+      });
+    }
+  }
 
   if (viewId !== 'cultivation' || !canAttemptBreakthrough(game)) {
     return actions;
@@ -93,8 +108,16 @@ function isEventOnCooldown(event, game) {
   return typeof cooldownTurn === 'number' && cooldownTurn >= game.turn;
 }
 
+function isEventCompleted(event, game) {
+  return event.oneShot === true && hasResolvedEvent(game, event.id);
+}
+
 function isEventRecentlyResolved(event, game) {
   const cooldownTurn = game.cooldowns?.[event.id];
+  const lastResolvedTurn = game.eventHistory?.lastResolvedTurn?.[event.id];
+  if (typeof lastResolvedTurn === 'number') {
+    return game.turn - lastResolvedTurn <= RECENT_EVENT_TURN_WINDOW;
+  }
   if (typeof cooldownTurn !== 'number') return false;
   return game.turn - cooldownTurn <= RECENT_EVENT_TURN_WINDOW;
 }

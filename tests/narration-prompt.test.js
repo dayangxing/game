@@ -35,6 +35,31 @@ test('narration prompt contains detailed role, boundaries, style, and json schem
   assert.match(system, /剧情摘要|近期回合|未解伏笔/);
 });
 
+test('narration prompt includes event atmosphere but excludes internal event rules', () => {
+  const messages = buildNarrationMessages({
+    ...makePromptInput(),
+    action: {
+      title: '雾中青铜铃',
+      command: '靠近铜铃',
+      source: 'event',
+      eventId: 'mist_bronze_bell',
+      choiceId: 'approach',
+      narrativeContext: {
+        scene: '雾隐秘境边缘',
+        mood: '诡谲、克制',
+        npcRoles: ['lin_shijie'],
+        sensoryTags: ['铜铃', '白雾', '残碑']
+      },
+      narrativeIntent: '主动追查铜铃来源'
+    }
+  });
+  const payload = JSON.stringify(JSON.parse(messages[1].content));
+
+  assert.match(payload, /雾隐秘境边缘/);
+  assert.match(payload, /主动追查铜铃来源/);
+  assert.doesNotMatch(payload, /mist_bronze_bell|approach|requiresFlags|effects|eventId|choiceId/);
+});
+
 test('narration prompt includes compact deterministic state for attributes, vitality, collections, and breakthrough context', () => {
   const messages = buildNarrationMessages(makePromptInput());
   const user = JSON.parse(messages.find((message) => message.role === 'user').content);

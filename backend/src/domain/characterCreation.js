@@ -4,6 +4,7 @@ import {
   rollAttributeAllocation,
   validateAttributeAllocation
 } from './attributes.js';
+import { createFormalStoryProgress } from './chapters/storyProgress.js';
 
 const ORIGINS = ['山野孤子', '没落世家', '药铺学徒', '渔村遗孤', '外门杂役', '散修之后'];
 const ROOTS = ['雷木双灵根', '金火双灵根', '水木双灵根', '土灵根', '风雷异灵根', '五行杂灵根'];
@@ -74,6 +75,10 @@ export function applyCharacterToGame(game, character, seed) {
     },
     flags: {},
     cooldowns: {},
+    eventHistory: { resolved: [], repeatCounts: {}, lastResolvedTurn: {} },
+    progressionStats: { breakthroughFailures: 0, breakthroughFailuresByTier: {} },
+    storyProgress: createFormalStoryProgress(),
+    chapterHistory: [],
     karma: {
       karma: 0,
       evil: 0,

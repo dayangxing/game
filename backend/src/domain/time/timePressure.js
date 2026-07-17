@@ -2,6 +2,7 @@ import { advanceCalendarByMonths, formatCalendarLabel } from './calendar.js';
 import { calculateActionTimeCost } from './timeCost.js';
 import { applyLongevityState, calculateLongevityChange } from './longevity.js';
 import { calculateLifespanCost } from '../realmRules.js';
+import { createLifespanEnding } from '../endings/endingResolver.js';
 
 export function applyTimePressure({
   game = {},
@@ -115,13 +116,13 @@ function emptyTimeResult(game) {
 }
 
 function withLifespanEnding(game) {
+  const ending = createLifespanEnding(game);
   return {
     ...game,
-    ending: {
-      type: 'lifespan_exhausted',
-      title: '命簿终章',
-      body: '命火在最后一夜熄灭，未解伏笔仍悬于天门之后。'
-    }
+    ending,
+    storyProgress: game.storyProgress
+      ? { ...game.storyProgress, status: 'ended', endingId: ending.type }
+      : game.storyProgress
   };
 }
 

@@ -52,10 +52,23 @@ test('frontend api streams continuous story scene previews and public choices', 
               turn: 4,
               version: 4,
               player: { name: '顾清河' },
+              chapter: {
+                id: 'qi',
+                index: 1,
+                title: '炼气：命火有痕',
+                progress: 50,
+                objectives: [{ text: '将炼气修至圆满', completed: false, required: true }]
+              },
               log: [{ id: 'turn-4', title: '命途分岔', command: '继续', body: '第一段雾声压近，第二段命火回应' }]
             },
             turnResult: {
               mode: 'choice',
+              chapterTransition: {
+                fromChapterId: 'qi',
+                toChapterId: 'foundation',
+                fromTitle: '炼气：命火有痕',
+                toTitle: '筑基：道基与宗门'
+              },
               choices: [{ id: 'choice_1', text: '追入雾中' }]
             }
           },
@@ -81,6 +94,19 @@ test('frontend api streams continuous story scene previews and public choices', 
   assert.deepEqual(choices.at(-1), [{ id: 'choice_1', text: '追入雾中' }]);
   assert.equal(result.game.mode, 'api');
   assert.equal(result.game.turn, 4);
+  assert.deepEqual(result.game.chapter, {
+    id: 'qi',
+    index: 1,
+    title: '炼气：命火有痕',
+    progress: 50,
+    objectives: [{ text: '将炼气修至圆满', completed: false, required: true }]
+  });
+  assert.deepEqual(result.turnResult.chapterTransition, {
+    fromChapterId: 'qi',
+    toChapterId: 'foundation',
+    fromTitle: '炼气：命火有痕',
+    toTitle: '筑基：道基与宗门'
+  });
   assert.deepEqual(result.turnResult.choices, [{ id: 'choice_1', text: '追入雾中' }]);
   assert.equal('effectHints' in result.turnResult.choices[0], false);
 });

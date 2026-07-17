@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>问道浮生</title>
     <script>
-      if (location.protocol === 'file:') {
+      if (location.protocol === 'file:' && !window.WENDAO_DESKTOP_APP) {
         location.replace('http://127.0.0.1:5173/frontend/');
       }
     </script>
-    <link rel="stylesheet" href="./src/styles.css" />
+    <link rel="stylesheet" href="./src/styles.css?v=20260718" />
   </head>
   <body>
     <div class="ink-backdrop" aria-hidden="true">
@@ -42,11 +42,26 @@
             <button class="mode-option active" id="mockMode" type="button">本地</button>
             <button class="mode-option" id="apiMode" type="button">云端</button>
           </div>
-          <button id="guideBtn" type="button">指引</button>
-          <button id="saveBtn" type="button">存档</button>
-          <button id="exportBtn" type="button">传记</button>
-          <button id="resetBtn" type="button">重开</button>
-          <button id="sampleBtn" type="button">随机</button>
+          <div class="utility-menu" id="utilityMenu">
+            <button
+              id="utilityMenuBtn"
+              class="utility-menu-toggle"
+              type="button"
+              aria-controls="utilityMenuPanel"
+              aria-expanded="false"
+            >
+              菜单
+            </button>
+            <div id="utilityMenuPanel" class="utility-menu-panel" aria-hidden="true">
+              <button id="guideBtn" type="button">指引</button>
+              <button id="saveBtn" type="button">存档</button>
+              <button id="exportBtn" type="button">传记</button>
+              <button id="modelConfigBtn" type="button">模型配置</button>
+              <div class="utility-menu-divider" role="separator"></div>
+              <button id="resetBtn" class="is-danger" type="button">重开</button>
+              <button id="sampleBtn" type="button">随机</button>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -111,8 +126,36 @@
       </section>
     </div>
 
+    <div class="model-config-overlay" id="modelConfigOverlay" hidden>
+      <section class="model-config-dialog" role="dialog" aria-modal="true" aria-labelledby="modelConfigTitle">
+        <div class="model-config-kicker">云箓设置</div>
+        <h2 id="modelConfigTitle">连接你的模型</h2>
+        <p class="model-config-intro">填写一个兼容 OpenAI Chat Completions 的服务地址，保存后会立即用于后续剧情生成。</p>
+        <div class="model-config-fields">
+          <label class="model-config-field" for="modelBaseUrlInput">
+            <span>API 地址</span>
+            <input id="modelBaseUrlInput" type="url" autocomplete="url" placeholder="https://example.com/v1" />
+          </label>
+          <label class="model-config-field" for="modelApiKeyInput">
+            <span>API Key</span>
+            <input id="modelApiKeyInput" type="password" autocomplete="new-password" placeholder="留空保持当前 Key" />
+          </label>
+          <label class="model-config-field" for="modelNameInput">
+            <span>主模型</span>
+            <input id="modelNameInput" type="text" autocomplete="off" placeholder="qwen3.7-plus" />
+          </label>
+        </div>
+        <p class="model-config-status" id="modelConfigStatus" role="status"></p>
+        <div class="model-config-actions">
+          <button id="skipModelConfigBtn" type="button">暂不配置</button>
+          <button id="clearModelConfigBtn" type="button">清除配置</button>
+          <button id="saveModelConfigBtn" type="button">保存并应用</button>
+        </div>
+      </section>
+    </div>
+
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-    <script type="module" src="./src/app.js?v=20260703"></script>
+    <script type="module" src="./src/app.js?v=20260719"></script>
   </body>
 </html>

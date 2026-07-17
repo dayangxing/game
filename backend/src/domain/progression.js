@@ -21,26 +21,23 @@ const BREAKTHROUGH_FAILURE_COSTS = {
   化神: { health: 52, lifespan: 12, progressLoss: 65 }
 };
 
-const REALM_ADVANCEMENT = {
-  '炼气一层': '炼气二层',
-  '炼气二层': '炼气三层',
-  '炼气三层': '炼气四层',
-  '炼气四层': '炼气五层',
-  '炼气五层': '炼气六层',
-  '炼气六层': '炼气七层',
-  '炼气七层': '炼气八层',
-  '炼气八层': '炼气九层',
-  '炼气九层': '筑基初期',
-  '筑基初期': '筑基中期',
-  '筑基中期': '筑基后期',
-  '筑基后期': '金丹初期',
-  '金丹初期': '金丹中期',
-  '金丹中期': '金丹后期',
-  '金丹后期': '元婴初期',
-  '元婴初期': '元婴中期',
-  '元婴中期': '元婴后期',
-  '元婴后期': '化神初期'
-};
+export const REALM_ORDER = [
+  '炼气一层', '炼气二层', '炼气三层', '炼气四层', '炼气五层',
+  '炼气六层', '炼气七层', '炼气八层', '炼气九层',
+  '筑基初期', '筑基中期', '筑基后期',
+  '金丹初期', '金丹中期', '金丹后期',
+  '元婴初期', '元婴中期', '元婴后期',
+  '化神初期', '化神中期', '化神后期'
+];
+
+export function compareRealms(left = '', right = '') {
+  return REALM_ORDER.indexOf(left) - REALM_ORDER.indexOf(right);
+}
+
+const breakthroughRealmOrder = REALM_ORDER.slice(0, REALM_ORDER.indexOf('化神初期') + 1);
+const REALM_ADVANCEMENT = Object.fromEntries(
+  breakthroughRealmOrder.slice(0, -1).map((realm, index) => [realm, breakthroughRealmOrder[index + 1]])
+);
 
 export function applyActionCost(game) {
   const cost = calculateLifespanCost(game);
@@ -126,6 +123,18 @@ export function resolveBreakthrough(game, now) {
     time: pressure.timeResult?.deltaMonths ?? 0,
     timeLabel: pressure.timeResult?.label ?? ''
   };
+  const failureTier = getRealmTier(game.player?.realm);
+  const previousStats = {
+    breakthroughFailures: game.progressionStats?.breakthroughFailures ?? 0,
+    breakthroughFailuresByTier: { ...(game.progressionStats?.breakthroughFailuresByTier ?? {}) }
+  };
+  const progressionStats = success ? previousStats : {
+    breakthroughFailures: previousStats.breakthroughFailures + 1,
+    breakthroughFailuresByTier: {
+      ...previousStats.breakthroughFailuresByTier,
+      [failureTier]: (previousStats.breakthroughFailuresByTier[failureTier] ?? 0) + 1
+    }
+  };
   const turn = game.turn + 1;
   const title = success ? '突破成功' : '突破受挫';
   const body = success
@@ -145,6 +154,7 @@ export function resolveBreakthrough(game, now) {
       ...pressure.game,
       turn,
       version: turn,
+      progressionStats,
       lastActionCost,
       log: [...pressure.game.log, entry],
       timeline: [...pressure.game.timeline, { type: 'cultivation', title, detail: body }],

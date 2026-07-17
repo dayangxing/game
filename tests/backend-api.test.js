@@ -451,7 +451,8 @@ test('POST /api/v1/daily-actions keeps routing fields server-side while returnin
 
   assertPublicActionShape(publicEvent);
   assert.equal('source' in publicEvent, false);
-  assert.equal('risk' in publicEvent, false);
+  assert.equal(publicEvent.category, pendingEvent.event.category);
+  assert.equal(publicEvent.risk, pendingEvent.choice.risk);
   assert.equal('eventId' in publicEvent, false);
   assert.equal('choiceId' in publicEvent, false);
   assert.equal('event' in publicEvent, false);
@@ -467,6 +468,24 @@ test('POST /api/v1/daily-actions keeps routing fields server-side while returnin
   assert.equal(typeof pendingEvent.choice?.id, 'string');
   assert.equal(pendingEvent.choice.label, publicEvent.title);
   assert.match(publicEvent.meta, new RegExp(pendingEvent.event.title));
+});
+
+test('public event actions expose cadence and risk without internal event rules', async () => {
+  const app = createBackendApp({ seed: 31, now: fixedNow });
+  app.getState().game.onboarding = completedOnboardingState();
+
+  const payload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+    viewId: 'realm',
+    gameVersion: app.getState().game.version
+  })));
+  const event = payload.data.actions.find((action) => action.cadence === 'mainline' || action.cadence === 'side');
+
+  assert.ok(event);
+  assert.ok(['low', 'medium', 'high'].includes(event.risk));
+  assert.ok(['mainline', 'side'].includes(event.cadence));
+  for (const key of ['eventId', 'choiceId', 'event', 'choice', 'trigger', 'effects', 'narrativeContext', 'narrativeIntent']) {
+    assert.equal(key in event, false, `${key} should remain server-side`);
+  }
 });
 
 test('POST /api/v1/daily-actions does not expose raw risk strings in public meta', async () => {
@@ -530,6 +549,87 @@ test('POST /api/v1/turns advances time and returns public time result for event 
   assert.equal(typeof turnPayload.data.turnResult.ruleResult.timeResult.label, 'string');
   assert.equal('deltaMonths' in turnPayload.data.turnResult.ruleResult.timeResult, false);
   assert.equal('effectHints' in turnPayload.data.turnResult.ruleResult.timeResult, false);
+});
+
+test('POST /api/v1/turns records event history and advances the authoritative chapter', async () => {
+  const app = createBackendApp({ seed: 31, now: fixedNow });
+  const game = app.getState().game;
+  game.onboarding = completedOnboardingState();
+  game.storyProgress = {
+    ...game.storyProgress,
+    chapterId: 'qi',
+    chapterIndex: 1,
+    status: 'active',
+    completedObjectiveIds: [],
+    truthFlags: [],
+    sectPath: null,
+    contractStance: null,
+    finalChoiceMade: false,
+    endingId: null
+  };
+  game.player = { ...game.player, realm: '炼气九层', lifespan: 40, maxLifespan: 100 };
+  game.flags = {};
+
+  const actionsPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+    viewId: 'home',
+    gameVersion: game.version
+  })));
+  const pendingAction = [...app.getState().pendingActions.values()].find(
+    (candidate) => candidate.eventId === 'qi_lifespan_alarm' && candidate.choiceId === 'seek_register'
+  );
+  const action = actionsPayload.data.actions.find((candidate) => candidate.id === pendingAction?.id);
+  assert.ok(action, 'qi lifespan alarm should be available at the low lifespan ratio');
+
+  const turnPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/turns', {
+    actionId: action.id,
+    clientTurn: game.turn
+  })));
+
+  assert.equal(turnPayload.ok, true);
+  assert.equal(turnPayload.data.game.eventHistory.resolved.includes('qi_lifespan_alarm'), true);
+  assert.equal(turnPayload.data.turnResult.chapter.id, 'foundation');
+  assert.equal(turnPayload.data.turnResult.chapterTransition.toChapterId, 'foundation');
+  assert.equal('eventId' in turnPayload.data.game.log.at(-1), false);
+});
+
+test('event resolution preserves a lifespan ending and deterministic fallback narration', async () => {
+  const app = createBackendApp({
+    seed: 31,
+    now: fixedNow,
+    storyGraph: {
+      async invoke() {
+        throw new Error('story graph unavailable');
+      }
+    },
+    llm: {
+      async generateNarration() {
+        throw new Error('model temporarily unavailable');
+      }
+    }
+  });
+  const game = app.getState().game;
+  game.onboarding = completedOnboardingState();
+  game.player = { ...game.player, lifespan: 1, maxLifespan: 100 };
+
+  const actionsPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+    viewId: 'home',
+    gameVersion: game.version
+  })));
+  const pendingAction = [...app.getState().pendingActions.values()].find(
+    (candidate) => candidate.eventId === 'cultivation_breathing' && candidate.choiceId === 'steady'
+  );
+  const action = actionsPayload.data.actions.find((candidate) => candidate.id === pendingAction?.id);
+  assert.ok(action);
+
+  const turnPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/turns', {
+    actionId: action.id,
+    clientTurn: game.turn
+  })));
+
+  assert.equal(turnPayload.data.turnResult.ending.type, 'lifespan_exhausted');
+  assert.equal(turnPayload.data.game.storyProgress.status, 'ended');
+  assert.equal(turnPayload.data.turnResult.narration.status, 'fallback');
+  assert.match(turnPayload.data.turnResult.narration.body, /收束杂念|灵气缓缓行过周天/);
 });
 
 test('POST /api/v1/daily-actions rejects after lifespan ending', async () => {
@@ -1007,7 +1107,7 @@ function assertPublicActionShape(action) {
 }
 
 function hasOnlyPublicActionFields(action) {
-  return JSON.stringify(Object.keys(action).sort()) === JSON.stringify([
+  const expected = [
     'command',
     'expiresAt',
     'icon',
@@ -1015,5 +1115,9 @@ function hasOnlyPublicActionFields(action) {
     'meta',
     'storyHook',
     'title'
-  ]);
+  ];
+  for (const key of ['category', 'risk', 'cadence']) {
+    if (key in action) expected.push(key);
+  }
+  return JSON.stringify(Object.keys(action).sort()) === JSON.stringify(expected.sort());
 }

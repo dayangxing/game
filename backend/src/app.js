@@ -3,9 +3,13 @@ import { normalizeStoryMemory, recordStoryMemoryTurn } from '../../src/storyMemo
 import { buildFallbackDirectorOutput, createStoryDirector } from './agents/storyDirector.js';
 import { buildUnavailableNarration, createStoryGraph, normalizeGeneratedNarration } from './agents/storyGraph.js';
 import { createDailyActions, hasView } from './domain/actions.js';
+import { resolveChapterProgress } from './domain/chapters/chapterProgression.js';
 import { applyCharacterToGame, rollCharacter } from './domain/characterCreation.js';
+import { applyEnding, resolveEnding } from './domain/endings/endingResolver.js';
+import { getPublicChapterSnapshot, normalizeStoryProgress } from './domain/chapters/storyProgress.js';
 import { resolveDirectorEffectHints } from './domain/director/effectHints.js';
 import { resolveChoice } from './domain/events/effectResolver.js';
+import { normalizeEventHistory } from './domain/events/eventHistory.js';
 import { selectEventActions } from './domain/events/eventSelector.js';
 import { eventNarrationFallback, stripInternalActionFields } from './domain/events/eventResult.js';
 import { ONBOARDING_STEPS, canCreateFormalCharacter, createOnboardingState, createTutorialAction, resolveTutorialAction } from './domain/onboarding.js';
@@ -13,102 +17,177 @@ import { resolveBreakthrough } from './domain/progression.js';
 import { applyTimePressure } from './domain/time/timePressure.js';
 import { buildTurnResult, publicTimeResult } from './domain/turnResult.js';
 import { createBailianClient } from './llm/bailianClient.js';
+import { getModelConfigFromEnv, normalizeModelConfig, toPublicModelConfig } from './llm/modelConfig.js';
 import { getModelSelection } from './llm/modelSelection.js';
 
 export function createBackendApp(options = {}) {
   const now = options.now ?? (() => new Date());
-  const llm = options.llm ?? createBailianClient({ env: options.env ?? process.env, fetchImpl: options.fetchImpl });
+  const env = options.env ?? process.env;
+  const modelConfig = options.modelConfig
+    ? normalizeModelConfig(options.modelConfig)
+    : getModelConfigFromEnv(env);
+  const createLlm = options.createLlm ?? ((configOptions) => createBailianClient(configOptions));
+  const llm = options.llm ?? createLlm({ env, fetchImpl: options.fetchImpl, config: modelConfig });
+  const persistGame = options.persistGame ?? null;
   const state = {
-    game: normalizeGame(createGame(options.seed ?? Date.now())),
+    game: normalizeGame(options.initialGame ?? createGame(options.seed ?? Date.now())),
     pendingActions: new Map(),
     pendingDirectorChoices: new Map(),
     turnSnapshots: new Map(),
     auditLog: [],
     requestSequence: 0,
     actionSequence: 0,
-    modelSelection: getModelSelection(options.env ?? process.env),
+    modelConfig,
+    modelSelection: getModelSelection(env, modelConfig),
     llm,
     storyGraph: options.storyGraph ?? createStoryGraph({ llm }),
-    storyDirector: options.storyDirector ?? createStoryDirector({ llm })
+    storyDirector: options.storyDirector ?? createStoryDirector({ llm }),
+    persistGame,
+    persistModelConfig: options.persistModelConfig ?? null,
+    createLlm,
+    env,
+    fetchImpl: options.fetchImpl
+  };
+
+  const handleRequest = async (request) => {
+    const requestId = nextRequestId(state);
+
+    try {
+      if (request.method === 'OPTIONS') {
+        return emptyResponse(204);
+      }
+
+      const url = new URL(request.url);
+      const route = `${request.method} ${url.pathname}`;
+
+      if (route === 'GET /api/v1/game/state') {
+        return jsonResponse(200, requestId, { game: state.game });
+      }
+
+      if (route === 'GET /api/v1/model-selection') {
+        return jsonResponse(200, requestId, { modelSelection: state.modelSelection });
+      }
+
+      if (route === 'GET /api/v1/model-config') {
+        return jsonResponse(200, requestId, { modelConfig: toPublicModelConfig(state.modelConfig) });
+      }
+
+      if (route === 'POST /api/v1/model-config') {
+        const body = await readJson(request);
+        return handleModelConfig({ body, requestId, state });
+      }
+
+      if (route === 'GET /api/v1/model-health') {
+        return jsonResponse(200, requestId, {
+          modelHealth: createModelHealth(state.modelSelection)
+        });
+      }
+
+      if (route === 'POST /api/v1/game/new') {
+        const body = await readJson(request);
+        return handleNewFormalGame({ body, requestId, state });
+      }
+
+      if (route === 'POST /api/v1/game/reset') {
+        const body = await readJson(request);
+        return handleResetGame({ body, requestId, state });
+      }
+
+      if (route === 'POST /api/v1/daily-actions') {
+        const body = await readJson(request);
+        return handleDailyActions({ body, requestId, state, now });
+      }
+
+      if (route === 'POST /api/v1/turns') {
+        const body = await readJson(request);
+        return handleTurn({ body, requestId, state, now });
+      }
+
+      if (route === 'POST /api/v1/turns/stream') {
+        const body = await readJson(request);
+        return handleTurnStream({ body, requestId, state, now });
+      }
+
+      const retryNarrationTurn = matchRetryNarrationRoute(request.method, url.pathname);
+      if (retryNarrationTurn !== null) {
+        return handleRetryNarration({ turn: retryNarrationTurn, requestId, state, now });
+      }
+
+      if (route === 'POST /api/v1/export-story') {
+        const body = await readJson(request);
+        return handleExportStory({ body, requestId, state });
+      }
+
+      return errorResponse(404, requestId, 'NOT_FOUND', '接口不存在。');
+    } catch (error) {
+      state.auditLog.push({
+        type: 'error',
+        requestId,
+        message: error.message,
+        at: now().toISOString()
+      });
+      return errorResponse(500, requestId, 'INTERNAL_ERROR', '后端处理请求时出现异常。');
+    }
   };
 
   return {
     async handle(request) {
-      const requestId = nextRequestId(state);
-
-      try {
-        if (request.method === 'OPTIONS') {
-          return emptyResponse(204);
-        }
-
-        const url = new URL(request.url);
-        const route = `${request.method} ${url.pathname}`;
-
-        if (route === 'GET /api/v1/game/state') {
-          return jsonResponse(200, requestId, { game: state.game });
-        }
-
-        if (route === 'GET /api/v1/model-selection') {
-          return jsonResponse(200, requestId, { modelSelection: state.modelSelection });
-        }
-
-        if (route === 'GET /api/v1/model-health') {
-          return jsonResponse(200, requestId, {
-            modelHealth: createModelHealth(state.modelSelection)
-          });
-        }
-
-        if (route === 'POST /api/v1/game/new') {
-          const body = await readJson(request);
-          return handleNewFormalGame({ body, requestId, state });
-        }
-
-        if (route === 'POST /api/v1/game/reset') {
-          const body = await readJson(request);
-          return handleResetGame({ body, requestId, state });
-        }
-
-        if (route === 'POST /api/v1/daily-actions') {
-          const body = await readJson(request);
-          return handleDailyActions({ body, requestId, state, now });
-        }
-
-        if (route === 'POST /api/v1/turns') {
-          const body = await readJson(request);
-          return handleTurn({ body, requestId, state, now });
-        }
-
-        if (route === 'POST /api/v1/turns/stream') {
-          const body = await readJson(request);
-          return handleTurnStream({ body, requestId, state, now });
-        }
-
-        const retryNarrationTurn = matchRetryNarrationRoute(request.method, url.pathname);
-        if (retryNarrationTurn !== null) {
-          return handleRetryNarration({ turn: retryNarrationTurn, requestId, state, now });
-        }
-
-        if (route === 'POST /api/v1/export-story') {
-          const body = await readJson(request);
-          return handleExportStory({ body, requestId, state });
-        }
-
-        return errorResponse(404, requestId, 'NOT_FOUND', '接口不存在。');
-      } catch (error) {
-        state.auditLog.push({
-          type: 'error',
-          requestId,
-          message: error.message,
-          at: now().toISOString()
-        });
-        return errorResponse(500, requestId, 'INTERNAL_ERROR', '后端处理请求时出现异常。');
+      const response = await handleRequest(request);
+      const pathname = new URL(request.url).pathname;
+      const isModelConfigRequest = pathname === '/api/v1/model-config';
+      if (!persistGame || isModelConfigRequest || request.method !== 'POST' || response.status < 200 || response.status >= 300) {
+        return response;
       }
+
+      if (response.headers.get('content-type')?.startsWith('text/event-stream')) {
+        return withCompletionPersistence(response, persistGame, state);
+      }
+
+      await persistGame(state.game);
+      return response;
     },
 
     getState() {
       return state;
     }
   };
+}
+
+async function handleModelConfig({ body, requestId, state }) {
+  try {
+    const input = body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+    const requested = { ...input };
+    delete requested.clearApiKey;
+
+    if (input.clearApiKey === true) {
+      requested.apiKey = '';
+    } else if (!Object.prototype.hasOwnProperty.call(input, 'apiKey') || !String(input.apiKey ?? '').trim()) {
+      requested.apiKey = state.modelConfig.apiKey;
+    }
+
+    const nextConfig = normalizeModelConfig(requested, state.modelConfig);
+    if (state.persistModelConfig) {
+      await state.persistModelConfig(nextConfig);
+    }
+
+    const nextLlm = state.createLlm({
+      env: state.env,
+      fetchImpl: state.fetchImpl,
+      config: nextConfig
+    });
+    state.modelConfig = nextConfig;
+    state.modelSelection = getModelSelection(state.env, nextConfig);
+    state.llm = nextLlm;
+    state.storyGraph = createStoryGraph({ llm: nextLlm });
+    state.storyDirector = createStoryDirector({ llm: nextLlm });
+
+    return jsonResponse(200, requestId, { modelConfig: toPublicModelConfig(nextConfig) });
+  } catch (error) {
+    if (error.message?.startsWith('MODEL_CONFIG_INVALID')) {
+      return errorResponse(400, requestId, 'MODEL_CONFIG_INVALID', error.message.replace(/^MODEL_CONFIG_INVALID:\s*/, ''));
+    }
+    throw error;
+  }
 }
 
 function handleDailyActions({ body, requestId, state, now }) {
@@ -450,6 +529,9 @@ function resolveDirectorTurn({ before, directorOutput, input, state, now }) {
     }
   });
 
+  const chapterResolution = applyTerminalResolution({ before, after: nextGame, turn });
+  nextGame = chapterResolution.game;
+
   const publicChoices = storeDirectorChoices({ state, directorOutput, turn });
   const action = { id: `director-${turn}`, title: entry.title, command: entry.command, source: 'director' };
 
@@ -458,9 +540,15 @@ function resolveDirectorTurn({ before, directorOutput, input, state, now }) {
     entry,
     action,
     publicStatePatch: pickPublicStatePatch(nextGame),
+    chapterTransition: chapterResolution.transition,
+    chapterMilestone: chapterResolution.milestone,
+    ending: chapterResolution.ending,
     turnResult: {
       turn,
       actionId: action.id,
+      chapter: nextGame.chapter ?? null,
+      chapterTransition: chapterResolution.transition,
+      ending: chapterResolution.ending,
       mode: publicChoices.length ? 'choice' : 'continue',
       narration: {
         status: directorOutput.status,
@@ -517,6 +605,7 @@ function pickPublicStatePatch(game) {
       sectRelation: game.player.sectRelation
     },
     timePressure: game.timePressure,
+    chapter: game.chapter,
     ending: game.ending
   };
 }
@@ -562,9 +651,10 @@ function resolveTurnRules({ body, requestId, state, now }) {
   const before = state.game;
   if (action.source === 'breakthrough') {
     const resolution = resolveBreakthrough(before, now());
+    const chapterResolution = applyTerminalResolution({ before, after: resolution.game, turn: resolution.game.turn });
 
     action.consumed = true;
-    state.game = normalizeGame(resolution.game);
+    state.game = chapterResolution.game;
     state.turnSnapshots.set(state.game.turn, {
       beforeGame: before,
       afterGame: state.game,
@@ -577,6 +667,9 @@ function resolveTurnRules({ body, requestId, state, now }) {
       action,
       ruleEntry: resolution.entry,
       ruleResult: resolution.ruleResult,
+      chapterTransition: chapterResolution.transition,
+      chapterMilestone: chapterResolution.milestone,
+      ending: chapterResolution.ending,
       fallbackNarration: eventNarrationFallback(resolution)
     };
   }
@@ -588,9 +681,10 @@ function resolveTurnRules({ body, requestId, state, now }) {
       choice: action.choice,
       now: now()
     });
+    const chapterResolution = applyTerminalResolution({ before, after: resolution.game, turn: resolution.game.turn });
 
     action.consumed = true;
-    state.game = normalizeGame(resolution.game);
+    state.game = chapterResolution.game;
     state.turnSnapshots.set(state.game.turn, {
       beforeGame: before,
       afterGame: state.game,
@@ -603,25 +697,46 @@ function resolveTurnRules({ body, requestId, state, now }) {
       action,
       ruleEntry: resolution.entry,
       ruleResult: resolution.ruleResult,
+      chapterTransition: chapterResolution.transition,
+      chapterMilestone: chapterResolution.milestone,
+      ending: chapterResolution.ending,
       fallbackNarration: eventNarrationFallback(resolution)
     };
   }
 
-  const after = normalizeGame(advanceTurn(before, action.command));
+  const after = applyTerminalResolution({
+    before,
+    after: advanceTurn(before, action.command),
+    turn: before.turn + 1
+  });
 
   action.consumed = true;
-  state.game = after;
-  state.turnSnapshots.set(after.turn, {
+  state.game = after.game;
+  state.turnSnapshots.set(after.game.turn, {
     beforeGame: before,
-    afterGame: after,
+    afterGame: after.game,
     action: { ...action },
-    ruleEntry: after.log.at(-1)
+    ruleEntry: after.game.log.at(-1)
   });
 
   return {
     before,
     action,
-    ruleEntry: after.log.at(-1)
+    ruleEntry: after.game.log.at(-1),
+    chapterTransition: after.transition,
+    chapterMilestone: after.milestone,
+    ending: after.ending
+  };
+}
+
+function applyTerminalResolution({ before, after, turn }) {
+  const chapterResolution = resolveChapterProgress({ before, after: normalizeGame(after), turn });
+  const candidate = resolveEnding(chapterResolution.game);
+  const game = candidate ? applyEnding(chapterResolution.game, candidate, turn) : chapterResolution.game;
+  return {
+    ...chapterResolution,
+    game: normalizeGame(game),
+    ending: game.ending ?? null
   };
 }
 
@@ -639,7 +754,9 @@ function finalizeTurn({ resolved, state, now }) {
     after: state.game,
     actionId: resolved.action.id,
     narration: resolved.narration,
-    timeResult: resolved.ruleResult?.timeResult
+    timeResult: resolved.ruleResult?.timeResult,
+    chapterTransition: resolved.chapterTransition ?? null,
+    ending: resolved.ending ?? state.game.ending ?? null
   });
   const { timeResult: _rawTimeResult, ...resolvedRuleResult } = resolved.ruleResult ?? {};
   const turnResult = resolved.ruleResult ? {
@@ -666,7 +783,7 @@ function finalizeTurn({ resolved, state, now }) {
 }
 
 function rejectIfGameEnded({ requestId, state }) {
-  if (!state.game.ending) return null;
+  if (!state.game.ending && state.game.storyProgress?.status !== 'ended') return null;
   return errorResponse(409, requestId, 'GAME_ENDED', '命簿已结，请重开后再行动。');
 }
 
@@ -740,6 +857,36 @@ async function resolveTurnNarration({ before, after, action, ruleEntry, state })
   return result.narration;
 }
 
+function withCompletionPersistence(response, persistGame, state) {
+  const reader = response.body?.getReader();
+  if (!reader) return response;
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (value) controller.enqueue(value);
+        }
+        await persistGame(state.game);
+        controller.close();
+      } catch (error) {
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      await reader.cancel(reason);
+    }
+  });
+
+  return new Response(stream, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers
+  });
+}
+
 function handleExportStory({ body, requestId, state }) {
   if (body.format !== undefined && body.format !== 'txt') {
     return errorResponse(400, requestId, 'UNSUPPORTED_EXPORT_FORMAT', '当前只支持 txt 导出。');
@@ -793,12 +940,25 @@ function normalizeGame(game) {
       futureEventFlags: []
     },
     flags: game.flags ?? {},
-    cooldowns: game.cooldowns ?? {}
+    cooldowns: game.cooldowns ?? {},
+    eventHistory: normalizeEventHistory(game.eventHistory),
+    progressionStats: {
+      breakthroughFailures: game.progressionStats?.breakthroughFailures ?? 0,
+      breakthroughFailuresByTier: { ...(game.progressionStats?.breakthroughFailuresByTier ?? {}) }
+    }
+  };
+
+  const storyProgress = normalizeStoryProgress(normalized);
+  const withStoryProgress = {
+    ...normalized,
+    storyProgress,
+    chapterHistory: storyProgress ? (game.chapterHistory ?? []) : []
   };
 
   return {
-    ...normalized,
-    storyMemory: normalizeStoryMemory(game.storyMemory, normalized)
+    ...withStoryProgress,
+    chapter: getPublicChapterSnapshot(withStoryProgress),
+    storyMemory: normalizeStoryMemory(game.storyMemory, withStoryProgress)
   };
 }
 

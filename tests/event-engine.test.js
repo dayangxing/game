@@ -192,7 +192,7 @@ test('bag selector filters out crafting choices that cannot pay their material c
   assert.equal(actions.some((action) => action.eventId === 'alchemy_make_qi_pill'), false);
 });
 
-test('bag selector filters out market offers that cannot pay their spirit stone cost', () => {
+test('bag selector filters unaffordable market choices while keeping a cheaper alternative', () => {
   const base = formalGame();
   const game = {
     ...base,
@@ -207,7 +207,8 @@ test('bag selector filters out market offers that cannot pay their spirit stone 
     now: new Date('2026-06-30T08:00:00.000Z')
   });
 
-  assert.equal(actions.some((action) => action.eventId === 'black_market_offer'), false);
+  assert.equal(actions.some((action) => action.eventId === 'black_market_offer' && action.choiceId === 'trade'), false);
+  assert.equal(actions.some((action) => action.eventId === 'black_market_offer' && action.choiceId === 'bargain'), true);
 });
 
 test('realm selector surfaces the unlocked mist step reward event', () => {
@@ -325,4 +326,114 @@ test('effect resolver grants treasure and technique rewards from event choices',
   assert.equal(afterQingmu.derivedBonuses.cultivationGain, 6);
   assert.equal(afterMistStep.techniques[0].id, 'mist_step');
   assert.equal(afterMistStep.derivedBonuses.damageReduction, 5);
+});
+
+test('story progress effects can only set whitelisted branch fields', () => {
+  const game = formalGame();
+  const next = applyEffects(game, [
+    { type: 'storyProgress', path: 'contractStance', value: 'reject' },
+    { type: 'storyProgress', path: 'finalChoiceMade', value: true }
+  ]);
+
+  assert.equal(next.storyProgress.contractStance, 'reject');
+  assert.equal(next.storyProgress.finalChoiceMade, true);
+  assert.throws(
+    () => applyEffects(game, [{ type: 'storyProgress', path: 'endingId', value: 'break_contract' }]),
+    /RULE_EFFECT_INVALID:storyProgress/
+  );
+});
+
+test('side event repeat rewards decay while costs and persistent flags remain intact', () => {
+  const game = {
+    ...formalGame(),
+    eventHistory: {
+      resolved: ['side'],
+      repeatCounts: { side: 1 },
+      lastResolvedTurn: { side: 2 }
+    }
+  };
+  const event = {
+    id: 'side',
+    category: 'social',
+    cadence: 'side',
+    oneShot: false,
+    cooldownTurns: 1,
+    choices: [{
+      id: 'help',
+      label: '援手',
+      command: '援手',
+      risk: 'low',
+      success: {
+        text: '帮助',
+        effects: [
+          { type: 'stat', path: 'player.qi', delta: 10 },
+          { type: 'stat', path: 'player.lifespan', delta: -2 },
+          { type: 'flag', id: 'helped', value: true }
+        ]
+      }
+    }]
+  };
+  const result = resolveChoice({
+    game,
+    event,
+    choice: event.choices[0],
+    now: new Date('2026-07-02T00:00:00.000Z')
+  });
+
+  assert.equal(result.game.player.qi, game.player.qi + 5);
+  assert.equal(
+    result.game.player.lifespan,
+    game.player.lifespan - 2 + result.ruleResult.timeResult.netLifespanDelta
+  );
+  assert.equal(result.game.flags.helped, true);
+  assert.equal(result.game.eventHistory.repeatCounts.side, 2);
+});
+
+test('resolved mainline events are never selected again in the same chapter', () => {
+  const base = formalGame();
+  const target = EVENT_CATALOG.find((event) => event.id === 'cultivation_breathing');
+  const previousOneShot = target.oneShot;
+  target.oneShot = true;
+  const game = {
+    ...base,
+    storyProgress: { ...base.storyProgress, chapterId: 'prologue' },
+    turn: 10,
+    eventHistory: {
+      resolved: ['cultivation_breathing'],
+      repeatCounts: { cultivation_breathing: 1 },
+      lastResolvedTurn: { cultivation_breathing: 0 }
+    }
+  };
+  try {
+    const actions = selectEventActions({
+      game,
+      viewId: 'home',
+      now: new Date('2026-07-03T00:00:00.000Z')
+    });
+    assert.equal(actions.some((action) => action.eventId === 'cultivation_breathing'), false);
+  } finally {
+    if (previousOneShot === undefined) delete target.oneShot;
+    else target.oneShot = previousOneShot;
+  }
+});
+
+test('side events respect event history recent-resolution protection', () => {
+  const base = formalGame();
+  const game = {
+    ...base,
+    storyProgress: { ...base.storyProgress, chapterId: 'prologue' },
+    turn: 5,
+    eventHistory: {
+      resolved: ['master_guidance'],
+      repeatCounts: { master_guidance: 1 },
+      lastResolvedTurn: { master_guidance: 4 }
+    }
+  };
+  const actions = selectEventActions({
+    game,
+    viewId: 'skills',
+    now: new Date('2026-07-03T00:00:00.000Z')
+  });
+
+  assert.equal(actions.some((action) => action.eventId === 'master_guidance'), false);
 });

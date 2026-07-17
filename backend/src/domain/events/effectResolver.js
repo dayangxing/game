@@ -1,10 +1,20 @@
 import { ATTRIBUTE_KEYS, deriveMaxHealth, deriveMaxLifespan } from '../attributes.js';
 import { calculateDerivedBonuses, grantTechnique, grantTreasure } from '../rewards.js';
 import { applyTimePressure } from '../time/timePressure.js';
+import {
+  getEventRepeatCount,
+  getRepeatRewardMultiplier,
+  recordEventResolution
+} from './eventHistory.js';
+
+const STORY_PROGRESS_EFFECT_PATHS = new Set(['sectPath', 'contractStance', 'finalChoiceMade']);
 
 export function resolveChoice({ game, event, choice, now }) {
   const outcome = choice.success;
-  const withEffects = applyEffects(game, outcome.effects);
+  const repeatCount = getEventRepeatCount(game, event.id);
+  const multiplier = event.cadence === 'side' ? getRepeatRewardMultiplier(repeatCount) : 1;
+  const effects = outcome.effects.map((effect) => scaleRepeatableReward(effect, multiplier));
+  const withEffects = applyEffects(game, effects);
   const pressure = game.onboarding?.completed === false
     ? { game: withEffects, timeResult: null }
     : applyTimePressure({
@@ -16,6 +26,7 @@ export function resolveChoice({ game, event, choice, now }) {
     });
   const next = pressure.game;
   const turn = game.turn + 1;
+  const eventHistory = recordEventResolution(next.eventHistory, event.id, turn);
   const entry = {
     id: `turn-${turn}`,
     title: event.title,
@@ -32,7 +43,8 @@ export function resolveChoice({ game, event, choice, now }) {
       log: [...next.log, entry],
       timeline: [...next.timeline, { type: event.category, title: event.title, detail: outcome.text }],
       worldEvents: [...next.worldEvents, { title: event.title, detail: outcome.text, turn }],
-      cooldowns: { ...next.cooldowns, [event.id]: turn }
+      cooldowns: { ...next.cooldowns, [event.id]: turn + (event.cooldownTurns ?? 0) },
+      eventHistory
     },
     entry,
     outcome,
@@ -79,6 +91,7 @@ function applyEffect(game, effect) {
       }
     };
   }
+  if (effect.type === 'storyProgress') return applyStoryProgressEffect(game, effect);
   if (effect.type === 'relation') {
     return {
       ...game,
@@ -146,6 +159,25 @@ function applyEffect(game, effect) {
   if (effect.type === 'karma') return { ...game, karma: { ...game.karma, karma: (game.karma?.karma ?? 0) + effect.delta } };
   if (effect.type === 'evil') return { ...game, karma: { ...game.karma, evil: (game.karma?.evil ?? 0) + effect.delta } };
   throw new Error(`RULE_EFFECT_INVALID:${effect.type}`);
+}
+
+function applyStoryProgressEffect(game, effect) {
+  if (!STORY_PROGRESS_EFFECT_PATHS.has(effect.path)) {
+    throw new Error(`RULE_EFFECT_INVALID:storyProgress:${effect.path}`);
+  }
+  return {
+    ...game,
+    storyProgress: {
+      ...(game.storyProgress ?? {}),
+      [effect.path]: effect.value
+    }
+  };
+}
+
+function scaleRepeatableReward(effect, multiplier) {
+  const scalable = new Set(['stat', 'item', 'relation', 'sect', 'karma', 'attribute']);
+  if (!scalable.has(effect.type) || effect.delta <= 0) return effect;
+  return { ...effect, delta: Math.max(1, Math.floor(effect.delta * multiplier)) };
 }
 
 function updatePath(game, path, delta) {

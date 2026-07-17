@@ -31,6 +31,36 @@ export function startBackendServer({
   return server;
 }
 
+export function waitForServerListening(server) {
+  if (server.listening) return Promise.resolve(server.address());
+
+  return new Promise((resolve, reject) => {
+    const onListening = () => {
+      cleanup();
+      resolve(server.address());
+    };
+    const onError = (error) => {
+      cleanup();
+      reject(error);
+    };
+    const cleanup = () => {
+      server.off('listening', onListening);
+      server.off('error', onError);
+    };
+
+    server.once('listening', onListening);
+    server.once('error', onError);
+  });
+}
+
+export function closeBackendServer(server) {
+  if (!server || !server.listening) return Promise.resolve();
+
+  return new Promise((resolve, reject) => {
+    server.close((error) => (error ? reject(error) : resolve()));
+  });
+}
+
 async function toWebRequest(incoming) {
   const chunks = [];
   for await (const chunk of incoming) {

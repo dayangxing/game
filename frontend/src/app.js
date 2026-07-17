@@ -1,5 +1,5 @@
 import { createGameApi } from './api/gameApi.js';
-import { getLayoutMode } from './ui/layoutModes.js';
+import { getLayoutMode } from './ui/layoutModes.js?v=20260719';
 import {
   getGuideStep,
   guideSteps,
@@ -14,13 +14,24 @@ import {
   remainingAllocationPoints,
   updateAllocation
 } from './ui/characterCreation.js';
+import { formatChapterTransition, renderChapterProgress } from './ui/chapterProgress.js';
 import { getView, visibleViewList } from './ui/views.js?v=20260703';
+import {
+  clearModelConfigSkip,
+  clearStoredModelConfig,
+  readStoredModelConfig,
+  shouldPromptModelConfig,
+  skipModelConfig,
+  writeStoredModelConfig
+} from './ui/modelConfig.js';
 
 const STORAGE_KEY = 'wendao-fusheng-frontend-save-v1';
 const MODE_KEY = 'wendao-fusheng-mode-v1';
 const HISTORY_SUMMARY_KEY = 'wendao-fusheng-history-summary-v1';
 const HISTORY_SUMMARY_SCOPE_KEY = 'wendao-fusheng-history-summary-scope-v1';
 const BACKEND_BASE_URL = window.WENDAO_API_BASE_URL ?? 'http://127.0.0.1:8787';
+const DEFAULT_MODEL_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+const DEFAULT_MODEL_NAME = 'qwen3.7-plus';
 const RANDOM_COMMANDS = [
   '闭关修炼三月，尝试突破',
   '前往后山探索灵脉',
@@ -37,6 +48,7 @@ let pendingApiImmediateActions = false;
 let streamingNarration = null;
 let storyChoices = [];
 let storyStepPending = false;
+let chapterTransitionNotice = '';
 let highlightedHistoryEntryId = null;
 let suppressNextHashChange = false;
 let pendingCharacterSeed = Number(localStorage.getItem('wendao-fusheng-character-seed') ?? Date.now());
@@ -47,6 +59,17 @@ const api = createGameApi({
   preferredMode: initialMode
 });
 const layoutMode = getLayoutMode();
+const isDesktopApp = Boolean(window.WENDAO_DESKTOP_APP);
+const storedModelConfig = isDesktopApp ? null : readStoredModelConfig(localStorage);
+if (storedModelConfig) {
+  await api.saveModelConfig(storedModelConfig).catch(() => {});
+}
+let modelConfig = await api.getModelConfig().catch(() => ({
+  baseUrl: DEFAULT_MODEL_BASE_URL,
+  chatModel: DEFAULT_MODEL_NAME,
+  configured: false,
+  apiKeyMasked: ''
+}));
 let game = await loadGame();
 let activeViewId = readInitialActiveViewId();
 let dailyActions = await loadDailyActionsForGame(game, getView(activeViewId)).catch((error) => {
@@ -67,6 +90,9 @@ const nodes = {
   logList: document.querySelector('#logList'),
   actionGrid: document.querySelector('#actionGrid'),
   activeViewContent: document.querySelector('#activeViewContent'),
+  utilityMenu: document.querySelector('#utilityMenu'),
+  utilityMenuBtn: document.querySelector('#utilityMenuBtn'),
+  utilityMenuPanel: document.querySelector('#utilityMenuPanel'),
   guideBtn: document.querySelector('#guideBtn'),
   guideOverlay: document.querySelector('#guideOverlay'),
   guideTitle: document.querySelector('#guideTitle'),
@@ -74,6 +100,15 @@ const nodes = {
   guideProgress: document.querySelector('#guideProgress'),
   guideNextBtn: document.querySelector('#guideNextBtn'),
   guideSkipBtn: document.querySelector('#guideSkipBtn'),
+  modelConfigBtn: document.querySelector('#modelConfigBtn'),
+  modelConfigOverlay: document.querySelector('#modelConfigOverlay'),
+  modelBaseUrlInput: document.querySelector('#modelBaseUrlInput'),
+  modelApiKeyInput: document.querySelector('#modelApiKeyInput'),
+  modelNameInput: document.querySelector('#modelNameInput'),
+  modelConfigStatus: document.querySelector('#modelConfigStatus'),
+  saveModelConfigBtn: document.querySelector('#saveModelConfigBtn'),
+  clearModelConfigBtn: document.querySelector('#clearModelConfigBtn'),
+  skipModelConfigBtn: document.querySelector('#skipModelConfigBtn'),
   saveBtn: document.querySelector('#saveBtn'),
   exportBtn: document.querySelector('#exportBtn'),
   resetBtn: document.querySelector('#resetBtn'),
@@ -108,7 +143,11 @@ if (game.character?.attributes) {
 
 render();
 if (startupNotice) showToast(startupNotice);
-if (!startupNotice && shouldAutoOpenGuide(localStorage)) openGuide();
+if (modelConfig && shouldPromptModelConfig(modelConfig, sessionStorage)) {
+  openModelConfig();
+} else {
+  if (!startupNotice && shouldAutoOpenGuide(localStorage)) openGuide();
+}
 
 nodes.activeViewContent.addEventListener('click', async (event) => {
   const exportButton = event.target.closest('button[data-export-story]');
@@ -144,6 +183,58 @@ nodes.topTabs.addEventListener('click', (event) => {
   setActiveView(button.dataset.view);
 });
 
+function setUtilityMenuOpen(isOpen) {
+  nodes.utilityMenuBtn.setAttribute('aria-expanded', String(isOpen));
+  nodes.utilityMenuPanel.setAttribute('aria-hidden', String(!isOpen));
+  nodes.utilityMenu.classList.toggle('is-open', isOpen);
+}
+
+function openUtilityMenu() {
+  setUtilityMenuOpen(true);
+}
+
+function closeUtilityMenu() {
+  setUtilityMenuOpen(false);
+}
+
+const utilityMenuMediaQuery = typeof window.matchMedia === 'function'
+  ? window.matchMedia('(max-width: 900px)')
+  : null;
+
+function syncUtilityMenuMode() {
+  if (utilityMenuMediaQuery?.matches) {
+    closeUtilityMenu();
+    return;
+  }
+
+  nodes.utilityMenuBtn.setAttribute('aria-expanded', 'false');
+  nodes.utilityMenuPanel.setAttribute('aria-hidden', 'false');
+  nodes.utilityMenu.classList.remove('is-open');
+}
+
+syncUtilityMenuMode();
+utilityMenuMediaQuery?.addEventListener('change', syncUtilityMenuMode);
+
+nodes.utilityMenuBtn.addEventListener('click', () => {
+  const isOpen = nodes.utilityMenuBtn.getAttribute('aria-expanded') === 'true';
+  setUtilityMenuOpen(!isOpen);
+});
+
+nodes.utilityMenuPanel.addEventListener('click', (event) => {
+  if (event.target.closest('button')) closeUtilityMenu();
+});
+
+document.addEventListener('click', (event) => {
+  if (!nodes.utilityMenu.contains(event.target)) closeUtilityMenu();
+});
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    closeUtilityMenu();
+    if (!nodes.modelConfigOverlay.hidden) closeModelConfig();
+  }
+});
+
 window.addEventListener('hashchange', () => {
   if (suppressNextHashChange) {
     suppressNextHashChange = false;
@@ -164,6 +255,51 @@ nodes.guideNextBtn.addEventListener('click', () => {
 });
 
 nodes.guideSkipBtn.addEventListener('click', () => completeGuide());
+
+nodes.modelConfigBtn.addEventListener('click', () => openModelConfig());
+
+nodes.saveModelConfigBtn.addEventListener('click', async () => {
+  const apiKey = nodes.modelApiKeyInput.value.trim();
+  const previousBrowserConfig = isDesktopApp ? null : readStoredModelConfig(localStorage);
+  try {
+    const nextConfig = await api.saveModelConfig({
+      baseUrl: nodes.modelBaseUrlInput.value.trim(),
+      chatModel: nodes.modelNameInput.value.trim(),
+      ...(apiKey ? { apiKey } : {})
+    });
+    if (!isDesktopApp) {
+      writeStoredModelConfig({
+        baseUrl: nodes.modelBaseUrlInput.value.trim(),
+        chatModel: nodes.modelNameInput.value.trim(),
+        apiKey: apiKey || previousBrowserConfig?.apiKey || ''
+      }, localStorage);
+    }
+    modelConfig = nextConfig;
+    clearModelConfigSkip(sessionStorage);
+    closeModelConfig();
+    showToast('模型配置已保存并生效');
+  } catch (error) {
+    nodes.modelConfigStatus.textContent = apiErrorMessage(error);
+  }
+});
+
+nodes.clearModelConfigBtn.addEventListener('click', async () => {
+  try {
+    modelConfig = await api.clearModelConfig();
+    if (!isDesktopApp) clearStoredModelConfig(localStorage);
+    nodes.modelApiKeyInput.value = '';
+    nodes.modelConfigStatus.textContent = 'API Key 已清除；下次打开仍会提示配置。';
+    showToast('模型配置已清除');
+  } catch (error) {
+    nodes.modelConfigStatus.textContent = apiErrorMessage(error);
+  }
+});
+
+nodes.skipModelConfigBtn.addEventListener('click', () => {
+  skipModelConfig(sessionStorage);
+  closeModelConfig();
+  showToast('本次先跳过模型配置');
+});
 
 nodes.saveBtn.addEventListener('click', () => {
   saveGame();
@@ -204,6 +340,7 @@ async function resetGameForCharacterCreation() {
     game = nextGame;
     dailyActions = nextActions;
     storyChoices = [];
+    chapterTransitionNotice = '';
     clearStreamingNarration();
     resetPendingCharacterPreview();
     saveGame();
@@ -285,6 +422,7 @@ nodes.startFormalGameBtn.addEventListener('click', async () => {
     game = hydrateHistorySummaries(game);
     dailyActions = await loadDailyActionsForGame(game, getView(activeViewId));
     storyChoices = [];
+    chapterTransitionNotice = '';
     actionRefreshSequence += 1;
     pendingApiImmediateActions = false;
     saveGame();
@@ -302,9 +440,14 @@ async function submitDailyAction(action) {
   beginStreamingNarration(action);
   try {
     const previousGame = game;
-    game = hydrateHistorySummaries(await api.submitDailyActionStream(game, action, {
+    const result = await api.submitDailyActionStream(game, action, {
       onNarrationPreview: updateStreamingNarration
-    }));
+    });
+    const nextGame = result?.game ?? result;
+    chapterTransitionNotice = formatChapterTransition(
+      result?.turnResult?.chapterTransition ?? inferChapterTransition(previousGame.chapter, nextGame.chapter)
+    );
+    game = hydrateHistorySummaries(nextGame);
     game = enrichGameHistory(game, previousGame);
     markHistoryRefreshed(game);
     persistHistorySummaryCache(game);
@@ -347,6 +490,7 @@ async function submitStoryStep(action) {
     game = hydrateHistorySummaries(result.game);
     game = enrichGameHistory(game, previousGame);
     storyChoices = normalizeStoryChoices(result.turnResult?.choices);
+    chapterTransitionNotice = formatChapterTransition(result.turnResult?.chapterTransition);
     markHistoryRefreshed(game);
     persistHistorySummaryCache(game);
     saveGame();
@@ -373,6 +517,7 @@ async function setMode(mode) {
     game = nextGame;
     dailyActions = nextActions;
     storyChoices = [];
+    chapterTransitionNotice = '';
     if (game.character?.attributes) {
       pendingAttributes = { ...game.character.attributes };
     }
@@ -598,6 +743,13 @@ function renderActiveView(viewId = activeViewId) {
 function renderHomeView() {
   nodes.activeViewContent.innerHTML = [
     renderStatusPanel(),
+    renderChapterProgress(game.chapter),
+    chapterTransitionNotice ? renderPanel({
+      className: 'chapter-transition-panel',
+      title: '篇章转折',
+      meta: '主线推进',
+      body: `<p>${escapeHtml(chapterTransitionNotice)}</p>`
+    }) : '',
     game.ending ? renderEndingPanel() : '',
     renderHistoryPanel(3),
     game.ending ? '' : renderActionPanel(),
@@ -671,12 +823,27 @@ function renderFocusPanel() {
 }
 
 function renderEndingPanel() {
+  const summary = game.ending?.summary ?? {};
+  const chapterIndex = Number(game.chapter?.index);
+  const historyCount = Array.isArray(game.chapterHistory) ? game.chapterHistory.length : 0;
+  const chapterCount = Math.max(
+    Number.isInteger(chapterIndex) ? chapterIndex + 1 : 0,
+    historyCount + (game.chapter ? 1 : 0)
+  );
+  const finalRealm = summary.finalRealm ?? game.player?.realm ?? '未知境界';
+  const truthClueCount = Number.isFinite(summary.truthFlags) ? summary.truthFlags : 0;
+
   return renderPanel({
     className: 'ending-section',
     title: game.ending?.title ?? '命簿终章',
     meta: '本局已结',
     body: `
-      <p>${game.ending?.body ?? '命火已尽。'}</p>
+      <p>${escapeHtml(game.ending?.body ?? '命火已尽。')}</p>
+      <dl class="ending-summary">
+        <div><dt>最终境界</dt><dd>${escapeHtml(finalRealm)}</dd></div>
+        <div><dt>章节数</dt><dd>${chapterCount || '暂无记录'}</dd></div>
+        <div><dt>真相线索</dt><dd>${truthClueCount}</dd></div>
+      </dl>
       <div class="ending-actions">
         <button type="button" data-export-story="true">查看传记</button>
         <button type="button" data-reset-game="true">重开</button>
@@ -1324,6 +1491,14 @@ function renderPanel({ className = '', title, meta, body }) {
   `;
 }
 
+function inferChapterTransition(previousChapter, nextChapter) {
+  if (!previousChapter?.title || !nextChapter?.title || previousChapter.title === nextChapter.title) return null;
+  return {
+    fromTitle: previousChapter.title,
+    toTitle: nextChapter.title
+  };
+}
+
 function renderSectionTitle(title, meta) {
   return `
     <div class="section-title">
@@ -1535,6 +1710,20 @@ function renderMode() {
   nodes.worldMode.textContent = isApi ? '云端存档' : '本地存档';
 }
 
+function openModelConfig() {
+  nodes.modelConfigOverlay.hidden = false;
+  nodes.modelBaseUrlInput.value = modelConfig?.baseUrl || DEFAULT_MODEL_BASE_URL;
+  nodes.modelNameInput.value = modelConfig?.chatModel || DEFAULT_MODEL_NAME;
+  nodes.modelApiKeyInput.value = '';
+  nodes.modelConfigStatus.textContent = modelConfig?.configured
+    ? '已配置 API Key；API Key 留空会保留当前 Key。'
+    : '首次进入建议先配置 API Key，也可以暂时跳过。';
+}
+
+function closeModelConfig() {
+  nodes.modelConfigOverlay.hidden = true;
+}
+
 function openGuide() {
   guideStepIndex = 0;
   nodes.guideOverlay.hidden = false;
@@ -1673,6 +1862,15 @@ function escapeAttribute(value) {
   return String(value ?? '').replaceAll('"', '&quot;');
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
 function renderHealthState() {
   const healthNow = game.player.health ?? game.player.maxHealth ?? 0;
   const healthMax = game.player.maxHealth ?? healthNow;
@@ -1762,8 +1960,9 @@ function shouldUseContinuousStory(targetGame = game) {
 
 function formatActionMeta(action) {
   const titleMeta = firstReadableMetaPart(action.meta);
+  const cadenceMeta = action.cadence === 'mainline' ? '主线' : action.cadence === 'side' ? '支线' : '';
   const riskMeta = riskLabel(action.risk);
-  return [titleMeta, riskMeta].filter(Boolean).join(' · ') || '今日抉择';
+  return [titleMeta, cadenceMeta, riskMeta].filter(Boolean).join(' · ') || '今日抉择';
 }
 
 function firstReadableMetaPart(meta) {

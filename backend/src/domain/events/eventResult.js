@@ -1,5 +1,5 @@
 export function stripInternalActionFields(action) {
-  return {
+  const publicAction = {
     id: action.id,
     title: action.title,
     icon: action.icon,
@@ -8,6 +8,14 @@ export function stripInternalActionFields(action) {
     storyHook: action.storyHook,
     expiresAt: action.expiresAt
   };
+
+  if (action.source === 'event') {
+    publicAction.category = action.category;
+    publicAction.risk = action.risk;
+    publicAction.cadence = action.cadence;
+  }
+
+  return publicAction;
 }
 
 export function eventNarrationFallback(resolution) {
