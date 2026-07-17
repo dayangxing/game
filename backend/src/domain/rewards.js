@@ -13,8 +13,8 @@ export function grantTreasure(game, id) {
     throw new Error(`RULE_EFFECT_INVALID:treasure:${id}`);
   }
 
-  const treasures = normalizeRewards(game.treasures, TREASURE_CATALOG);
-  const techniques = normalizeRewards(game.techniques, TECHNIQUE_CATALOG);
+  const treasures = normalizeRewards(game.treasures, TREASURE_CATALOG, { rejectUnknown: false });
+  const techniques = normalizeRewards(game.techniques, TECHNIQUE_CATALOG, { rejectUnknown: false });
   const previousDerivedBonuses = calculateDerivedBonuses({ treasures, techniques });
   if (treasures.some((entry) => entry.id === id)) {
     return syncRewardState({ ...game, treasures, techniques }, previousDerivedBonuses);
@@ -33,8 +33,8 @@ export function grantTechnique(game, id) {
     throw new Error(`RULE_EFFECT_INVALID:technique:${id}`);
   }
 
-  const treasures = normalizeRewards(game.treasures, TREASURE_CATALOG);
-  const techniques = normalizeRewards(game.techniques, TECHNIQUE_CATALOG);
+  const treasures = normalizeRewards(game.treasures, TREASURE_CATALOG, { rejectUnknown: false });
+  const techniques = normalizeRewards(game.techniques, TECHNIQUE_CATALOG, { rejectUnknown: false });
   const previousDerivedBonuses = calculateDerivedBonuses({ treasures, techniques });
   if (techniques.some((entry) => entry.id === id)) {
     return syncRewardState({ ...game, treasures, techniques }, previousDerivedBonuses);
@@ -96,12 +96,15 @@ export function calculateResonances(game = {}) {
   return { activeResonances, bonuses };
 }
 
-function normalizeRewards(entries, catalog) {
+function normalizeRewards(entries, catalog, { rejectUnknown = true } = {}) {
   return (entries ?? []).map((entry) => {
     if (typeof entry === 'string') {
       const reward = catalog[entry];
       if (!reward) {
-        throw new Error(`RULE_EFFECT_INVALID:reward:${entry}`);
+        if (rejectUnknown) {
+          throw new Error(`RULE_EFFECT_INVALID:reward:${entry}`);
+        }
+        return entry;
       }
       return reward;
     }
@@ -111,8 +114,8 @@ function normalizeRewards(entries, catalog) {
 }
 
 function syncRewardState(game, previousDerivedBonuses = game.derivedBonuses ?? {}) {
-  const treasures = normalizeRewards(game.treasures, TREASURE_CATALOG);
-  const techniques = normalizeRewards(game.techniques, TECHNIQUE_CATALOG);
+  const treasures = normalizeRewards(game.treasures, TREASURE_CATALOG, { rejectUnknown: false });
+  const techniques = normalizeRewards(game.techniques, TECHNIQUE_CATALOG, { rejectUnknown: false });
   const rewardState = { ...game, treasures, techniques };
   const derivedBonuses = calculateDerivedBonuses(rewardState);
   const activeResonances = calculateResonances(rewardState).activeResonances;
@@ -158,11 +161,18 @@ function syncRewardState(game, previousDerivedBonuses = game.derivedBonuses ?? {
 
 function resourceEntries(game = {}, { knownOnly = false } = {}) {
   const entries = [
-    ...normalizeRewards(game.treasures, TREASURE_CATALOG),
-    ...normalizeRewards(game.techniques, TECHNIQUE_CATALOG)
+    ...normalizeRewards(game.treasures, TREASURE_CATALOG, { rejectUnknown: false }),
+    ...normalizeRewards(game.techniques, TECHNIQUE_CATALOG, { rejectUnknown: false })
   ];
+  const seenKnownIds = new Set();
+  const uniqueEntries = entries.filter((entry) => {
+    if (!isKnownResource(entry)) return true;
+    if (seenKnownIds.has(entry.id)) return false;
+    seenKnownIds.add(entry.id);
+    return true;
+  });
 
-  return knownOnly ? entries.filter(isKnownResource) : entries;
+  return knownOnly ? uniqueEntries.filter(isKnownResource) : uniqueEntries;
 }
 
 function isKnownResource(resource) {

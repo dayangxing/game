@@ -84,3 +84,28 @@ test('unknown legacy resources do not create new bonuses or resonances', () => {
     damageReduction: 2
   });
 });
+
+test('unknown legacy string resources remain readable during reward calculations', () => {
+  const game = {
+    ...createGame(31),
+    techniques: ['legacy_manual'],
+    treasures: ['legacy_relic']
+  };
+
+  assert.deepEqual(calculateResonances(game), { activeResonances: [], bonuses: {} });
+  assert.deepEqual(calculateDerivedBonuses(game), {});
+});
+
+test('duplicate known resources count once for bonuses and resonances', () => {
+  const game = {
+    ...createGame(31),
+    techniques: [{ id: 'thunder_pulse_manual' }, { id: 'thunder_pulse_manual' }],
+    treasures: [{ id: 'bronze_bell_fragment' }, { id: 'bronze_bell_fragment' }]
+  };
+
+  assert.deepEqual(calculateDerivedBonuses(game), {
+    cultivationGain: 4,
+    breakthroughChance: 5,
+    damageReduction: 2
+  });
+});
