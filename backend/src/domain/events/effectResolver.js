@@ -77,7 +77,12 @@ export function canAffordEffects(game, effects) {
 }
 
 function applyEffect(game, effect) {
-  if (effect.type === 'stat') return updatePath(game, effect.path, effect.delta);
+  if (effect.type === 'stat') {
+    const delta = effect.path === 'player.cultivationProgress' && effect.delta > 0
+      ? effect.delta + (calculateDerivedBonuses(game).cultivationGain ?? 0)
+      : effect.delta;
+    return updatePath(game, effect.path, delta);
+  }
   if (effect.type === 'item') return updateItem(game, effect.path, effect.delta);
   if (effect.type === 'flag') return { ...game, flags: { ...game.flags, [effect.id]: effect.value } };
   if (effect.type === 'treasure') return grantTreasure(game, effect.id);

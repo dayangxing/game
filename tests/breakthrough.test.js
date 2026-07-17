@@ -92,12 +92,12 @@ test('higher comprehension rootBone and willpower increase breakthrough chance',
   assert.ok(calculateBreakthroughChance(high).chance > calculateBreakthroughChance(low).chance);
 });
 
-test('treasure and technique bonuses increase breakthrough chance', () => {
+test('treasure, technique, and resonance bonuses increase breakthrough chance', () => {
   const base = createFormalGame();
   const withTreasure = grantTreasure(base, 'calm_lotus_incense');
   const withRewards = grantTechnique(withTreasure, 'mist_step');
 
-  assert.equal(calculateBreakthroughChance(withRewards).chance, calculateBreakthroughChance(base).chance + 5);
+  assert.equal(calculateBreakthroughChance(withRewards).chance, calculateBreakthroughChance(base).chance + 7);
 });
 
 test('deterministic breakthrough seeds can produce both success and failure', () => {

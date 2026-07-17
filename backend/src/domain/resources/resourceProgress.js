@@ -1,5 +1,5 @@
 import { getChapterDefinition } from '../chapters/chapterCatalog.js';
-import { TECHNIQUE_CATALOG, TREASURE_CATALOG } from '../rewards.js';
+import { RESONANCE_CATALOG, TECHNIQUE_CATALOG, TREASURE_CATALOG } from '../rewards.js';
 
 export const EMPTY_RESOURCE_RUN = Object.freeze({
   pendingDraft: null,
@@ -123,7 +123,7 @@ function normalizeResourceRun(resourceRun) {
   const source = resourceRun ?? {};
   return {
     pendingDraft: source.pendingDraft ?? null,
-    activeResonances: uniqueKnownResourceIds(source.activeResonances, true),
+    activeResonances: normalizeActiveResonances(source.activeResonances),
     resolvedDraftIds: uniqueStrings(source.resolvedDraftIds),
     acquisitionLog: normalizeAcquisitionLog(source.acquisitionLog),
     finalizedRunId: source.finalizedRunId ?? null
@@ -209,6 +209,20 @@ function uniqueKnownResourceIds(entries, knownOnly = false) {
     if (knownOnly && !isKnownResourceId(resourceId)) continue;
     seen.add(resourceId);
     result.push(resourceId);
+  }
+
+  return result;
+}
+
+function normalizeActiveResonances(entries) {
+  const result = [];
+  const seen = new Set();
+
+  for (const entry of entries ?? []) {
+    const id = resourceIdFromEntry(entry);
+    if (!id || seen.has(id) || !RESONANCE_CATALOG[id]) continue;
+    seen.add(id);
+    result.push(typeof entry === 'object' ? { ...entry } : { id });
   }
 
   return result;

@@ -1,42 +1,11 @@
 import { deriveMaxHealth, deriveMaxLifespan } from './attributes.js';
+import {
+  RESONANCE_CATALOG,
+  TECHNIQUE_CATALOG,
+  TREASURE_CATALOG
+} from './resources/resourceCatalog.js';
 
-export const TREASURE_CATALOG = {
-  calm_lotus_incense: {
-    id: 'calm_lotus_incense',
-    name: '静心莲香',
-    rarity: '良品',
-    description: '点燃后可令识海宁静，突破时更易定神。',
-    bonuses: { breakthroughChance: 3 }
-  },
-  tiger_bone_guard: {
-    id: 'tiger_bone_guard',
-    name: '虎骨护腕',
-    rarity: '良品',
-    description: '赤焰虎骨制成，大幅增强体魄。',
-    bonuses: { damageReduction: 8, maxHealth: 8 }
-  }
-};
-
-export const TECHNIQUE_CATALOG = {
-  qingmu_jue: {
-    id: 'qingmu_jue',
-    name: '青木诀',
-    grade: '凡品',
-    type: '心法',
-    level: 1,
-    description: '以木息滋养经脉。',
-    bonuses: { cultivationGain: 6, maxHealth: 6 }
-  },
-  mist_step: {
-    id: 'mist_step',
-    name: '雾隐步',
-    grade: '良品',
-    type: '身法',
-    level: 1,
-    description: '借雾线藏身，秘境中更易避开杀机。',
-    bonuses: { damageReduction: 5, breakthroughChance: 2 }
-  }
-};
+export { RESONANCE_CATALOG, TECHNIQUE_CATALOG, TREASURE_CATALOG };
 
 export function grantTreasure(game, id) {
   const treasure = TREASURE_CATALOG[id];
@@ -81,16 +50,50 @@ export function grantTechnique(game, id) {
 export function calculateDerivedBonuses(game) {
   const derivedBonuses = {};
 
-  for (const reward of [
-    ...normalizeRewards(game.treasures, TREASURE_CATALOG),
-    ...normalizeRewards(game.techniques, TECHNIQUE_CATALOG)
-  ]) {
+  for (const reward of resourceEntries(game, { knownOnly: true })) {
     for (const [key, value] of Object.entries(reward.bonuses ?? {})) {
       derivedBonuses[key] = (derivedBonuses[key] ?? 0) + value;
     }
   }
 
+  mergeBonuses(derivedBonuses, calculateResonances(game).bonuses);
   return derivedBonuses;
+}
+
+export function calculateResonances(game = {}) {
+  const tagCounts = new Map();
+
+  for (const resource of resourceEntries(game, { knownOnly: true })) {
+    for (const tag of resource.tags ?? []) {
+      tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
+    }
+  }
+
+  const activeResonances = [];
+  const bonuses = {};
+
+  for (const resonance of Object.values(RESONANCE_CATALOG)) {
+    const count = tagCounts.get(resonance.tag) ?? 0;
+    const threshold = Object.values(resonance.thresholds)
+      .filter((entry) => count >= entry.count)
+      .sort((left, right) => right.count - left.count)[0];
+    if (!threshold) continue;
+
+    const active = {
+      id: resonance.id,
+      name: resonance.name,
+      tag: resonance.tag,
+      count,
+      threshold: threshold.count,
+      label: threshold.label,
+      effectText: threshold.effectText,
+      bonuses: { ...threshold.bonuses }
+    };
+    activeResonances.push(active);
+    mergeBonuses(bonuses, threshold.bonuses);
+  }
+
+  return { activeResonances, bonuses };
 }
 
 function normalizeRewards(entries, catalog) {
@@ -110,10 +113,16 @@ function normalizeRewards(entries, catalog) {
 function syncRewardState(game, previousDerivedBonuses = game.derivedBonuses ?? {}) {
   const treasures = normalizeRewards(game.treasures, TREASURE_CATALOG);
   const techniques = normalizeRewards(game.techniques, TECHNIQUE_CATALOG);
-  const derivedBonuses = calculateDerivedBonuses({ ...game, treasures, techniques });
+  const rewardState = { ...game, treasures, techniques };
+  const derivedBonuses = calculateDerivedBonuses(rewardState);
+  const activeResonances = calculateResonances(rewardState).activeResonances;
+  const resourceRun = {
+    ...(game.resourceRun ?? {}),
+    activeResonances
+  };
 
   if (!game.player) {
-    return { ...game, treasures, techniques, derivedBonuses };
+    return { ...game, treasures, techniques, derivedBonuses, resourceRun };
   }
 
   const attributeState = game.character?.attributes;
@@ -142,8 +151,28 @@ function syncRewardState(game, previousDerivedBonuses = game.derivedBonuses ?? {
     treasures,
     techniques,
     derivedBonuses,
+    resourceRun,
     player
   };
+}
+
+function resourceEntries(game = {}, { knownOnly = false } = {}) {
+  const entries = [
+    ...normalizeRewards(game.treasures, TREASURE_CATALOG),
+    ...normalizeRewards(game.techniques, TECHNIQUE_CATALOG)
+  ];
+
+  return knownOnly ? entries.filter(isKnownResource) : entries;
+}
+
+function isKnownResource(resource) {
+  return Boolean(resource && (TREASURE_CATALOG[resource.id] || TECHNIQUE_CATALOG[resource.id]));
+}
+
+function mergeBonuses(target, source = {}) {
+  for (const [key, value] of Object.entries(source)) {
+    target[key] = (target[key] ?? 0) + value;
+  }
 }
 
 function clamp(value, min, max) {

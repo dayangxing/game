@@ -7,6 +7,7 @@ import {
   recordResourceAcquisition,
   resetRunResources
 } from '../backend/src/domain/resources/resourceProgress.js';
+import { grantTechnique, grantTreasure } from '../backend/src/domain/rewards.js';
 
 test('legacy games receive empty resource run and meta progress state', () => {
   const normalized = normalizeResourceState({ ...createGame(17), techniques: undefined, treasures: undefined });
@@ -46,4 +47,14 @@ test('finalizing and resetting a run preserves meta progress but clears active r
   assert.equal(finalized.metaProgress.runCount, 1);
   assert.equal(finalized.metaProgress.bestChapter, 'foundation');
   assert.equal(resetRunResources(finalized).metaProgress.runCount, 1);
+});
+
+test('normalizing a reward state preserves active resonance display data', () => {
+  const base = normalizeResourceState(createGame(17));
+  const withTechnique = grantTechnique(base, 'thunder_pulse_manual');
+  const withResonance = grantTreasure(withTechnique, 'bronze_bell_fragment');
+  const normalized = normalizeResourceState(withResonance);
+
+  assert.deepEqual(normalized.resourceRun.activeResonances.map((entry) => entry.id), ['thunder_resonance']);
+  assert.equal(normalized.resourceRun.activeResonances[0].effectText, '突破 +2');
 });

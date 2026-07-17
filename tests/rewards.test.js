@@ -61,7 +61,7 @@ test('grantTechnique adds the seeded technique and updates cultivation gain bonu
   assert.equal(next.player.maxHealth, base.player.maxHealth + 6);
 });
 
-test('calculateDerivedBonuses sums treasure and technique bonuses together', () => {
+test('calculateDerivedBonuses sums resource and resonance bonuses together', () => {
   const game = {
     ...createFormalGame(),
     treasures: [TREASURE_CATALOG.calm_lotus_incense, TREASURE_CATALOG.tiger_bone_guard],
@@ -69,10 +69,11 @@ test('calculateDerivedBonuses sums treasure and technique bonuses together', () 
   };
 
   assert.deepEqual(calculateDerivedBonuses(game), {
-    breakthroughChance: 5,
+    breakthroughChance: 7,
     cultivationGain: 6,
     damageReduction: 13,
-    maxHealth: 14
+    maxHealth: 14,
+    maxLifespan: 4
   });
 });
 

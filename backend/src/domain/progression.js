@@ -2,6 +2,7 @@ import { calculateBreakthroughLongevityReward } from './time/longevity.js';
 import { calculateActionTimeCost } from './time/timeCost.js';
 import { applyTimePressure } from './time/timePressure.js';
 import { calculateLifespanCost, getRealmTier } from './realmRules.js';
+import { calculateDerivedBonuses } from './rewards.js';
 
 export { calculateLifespanCost, getRealmTier };
 
@@ -60,7 +61,7 @@ export function canAttemptBreakthrough(game) {
 
 export function calculateBreakthroughChance(game) {
   const attributes = game.character?.attributes ?? {};
-  const bonuses = game.derivedBonuses ?? {};
+  const bonuses = calculateDerivedBonuses(game);
   const base = realmBaseChance(game.player?.realm);
   const targetRealm = nextRealm(game.player?.realm);
   const attributeBonus = (attributes.comprehension ?? 0) * 2
@@ -195,7 +196,13 @@ function breakthroughPenalty(game) {
 }
 
 function describeFailureCost(game) {
-  return { ...BREAKTHROUGH_FAILURE_COSTS[getRealmTier(game.player?.realm)] };
+  const failureCost = BREAKTHROUGH_FAILURE_COSTS[getRealmTier(game.player?.realm)];
+  const mitigation = Math.floor((calculateDerivedBonuses(game).damageReduction ?? 0) / 2);
+
+  return {
+    ...failureCost,
+    health: Math.max(1, failureCost.health - mitigation)
+  };
 }
 
 function nextRealm(realm = '') {
