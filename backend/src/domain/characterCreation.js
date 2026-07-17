@@ -5,6 +5,7 @@ import {
   validateAttributeAllocation
 } from './attributes.js';
 import { createFormalStoryProgress } from './chapters/storyProgress.js';
+import { EMPTY_META_PROGRESS, EMPTY_RESOURCE_RUN, normalizeResourceState } from './resources/resourceProgress.js';
 
 const ORIGINS = ['山野孤子', '没落世家', '药铺学徒', '渔村遗孤', '外门杂役', '散修之后'];
 const ROOTS = ['雷木双灵根', '金火双灵根', '水木双灵根', '土灵根', '风雷异灵根', '五行杂灵根'];
@@ -55,7 +56,7 @@ export function assertPlayableCharacter(character) {
 }
 
 export function applyCharacterToGame(game, character, seed) {
-  return {
+  const gameState = {
     seed,
     turn: 0,
     mode: game.mode,
@@ -69,6 +70,10 @@ export function applyCharacterToGame(game, character, seed) {
     foreshadows: createFormalForeshadows(character),
     timeline: createFormalTimeline(game.calendar, character),
     suggestions: createFormalSuggestions(),
+    techniques: [],
+    treasures: [],
+    resourceRun: EMPTY_RESOURCE_RUN,
+    metaProgress: EMPTY_META_PROGRESS,
     inventory: {
       materials: character.startingResources.materials,
       pills: character.startingResources.pills
@@ -89,6 +94,8 @@ export function applyCharacterToGame(game, character, seed) {
     },
     log: [createFormalOpeningLog(character)]
   };
+
+  return normalizeResourceState(gameState);
 }
 
 function createRng(seed) {
