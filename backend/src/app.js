@@ -63,7 +63,7 @@ export function createBackendApp(options = {}) {
       const route = `${request.method} ${url.pathname}`;
 
       if (route === 'GET /api/v1/game/state') {
-        return jsonResponse(200, requestId, { game: state.game });
+        return jsonResponse(200, requestId, { game: publicGame(state.game) });
       }
 
       if (route === 'GET /api/v1/model-selection') {
@@ -370,7 +370,7 @@ function handleNewFormalGame({ body, requestId, state }) {
     state.game = nextGame;
     state.game.mode = 'api';
     return jsonResponse(200, requestId, {
-      game: state.game,
+      game: publicGame(state.game),
       character
     });
   } catch (error) {
@@ -397,7 +397,7 @@ function handleResetGame({ body, requestId, state }) {
   state.auditLog.length = 0;
   state.game = nextGame;
   return jsonResponse(200, requestId, {
-    game: state.game
+    game: publicGame(state.game)
   });
 }
 
@@ -500,7 +500,7 @@ function handleDirectorTurnStream({ body, requestId, state, now }) {
     emit('done', {
       ok: true,
       data: {
-        game: state.game,
+        game: publicGame(state.game),
         turnResult: resolution.turnResult
       },
       error: null,
@@ -910,8 +910,28 @@ function finalizeTurn({ resolved, state, now }) {
   });
 
   return {
-    game: state.game,
+    game: publicGame(state.game),
     turnResult
+  };
+}
+
+function publicGame(game) {
+  if (!game?.resourceRun) return game;
+
+  const activeResonances = (game.resourceRun.activeResonances ?? []).map((resonance) => {
+    const { bonuses: _bonuses, ...publicResonance } = resonance;
+    return publicResonance;
+  });
+
+  return {
+    ...game,
+    resourceRun: {
+      ...game.resourceRun,
+      pendingDraft: game.resourceRun.pendingDraft
+        ? getPublicResourceDraft(game.resourceRun.pendingDraft)
+        : null,
+      activeResonances
+    }
   };
 }
 

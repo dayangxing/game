@@ -58,6 +58,27 @@ test('pending resource draft blocks ordinary actions and exposes three public ch
   assert.equal(JSON.stringify(payload).includes('bonuses'), false);
 });
 
+test('game state sanitizes pending resource draft internals', async () => {
+  const app = createBackendApp({ seed: 73, now: fixedNow });
+  app.getState().game = createResourceDraft({
+    game: app.getState().game,
+    poolId: 'mistRelics',
+    sourceEventId: 'mist_relic_cache',
+    sourceEventTitle: '雾中遗物',
+    reason: '雾灯下的遗物',
+    turn: 0
+  });
+
+  const payload = await jsonResponse(app.handle(makeRequest('GET', '/api/v1/game/state')));
+  const pendingDraft = payload.data.game.resourceRun.pendingDraft;
+  const serialized = JSON.stringify(pendingDraft);
+
+  assert.equal(pendingDraft.poolId, undefined);
+  assert.equal(serialized.includes('resourceId'), false);
+  assert.equal(serialized.includes('bonuses'), false);
+  assert.equal(serialized.includes('realmAtLeast'), false);
+});
+
 test('selecting a resource draft changes the collection without spending a turn', async () => {
   const app = createBackendApp({ seed: 73, now: fixedNow });
   const state = app.getState();

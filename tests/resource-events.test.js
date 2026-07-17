@@ -46,3 +46,21 @@ test('ordinary cultivation events do not create a resource draft', () => {
 
   assert.equal(resolved.game.resourceRun?.pendingDraft, undefined);
 });
+
+test('a resource event that exhausts lifespan does not leave an unclaimable draft', () => {
+  const event = EVENT_CATALOG.find((entry) => entry.id === 'mist_relic_cache');
+  const base = createGame(73);
+  const resolved = resolveChoice({
+    game: {
+      ...base,
+      onboarding: { completed: true },
+      player: { ...base.player, lifespan: 1, maxLifespan: 100 }
+    },
+    event,
+    choice: event.choices[0],
+    now: new Date('2026-07-17T00:00:00.000Z')
+  });
+
+  assert.equal(resolved.game.ending.type, 'lifespan_exhausted');
+  assert.equal(resolved.game.resourceRun?.pendingDraft ?? null, null);
+});

@@ -1,4 +1,5 @@
 import { ATTRIBUTE_KEYS, deriveMaxHealth, deriveMaxLifespan } from '../attributes.js';
+import { isTerminalGame } from '../endings/endingResolver.js';
 import { calculateDerivedBonuses, grantTechnique, grantTreasure } from '../rewards.js';
 import { createResourceDraft } from '../resources/resourceDraft.js';
 import { applyTimePressure } from '../time/timePressure.js';
@@ -37,34 +38,26 @@ export function resolveChoice({ game, event, choice, now }) {
     worldEvent: event.title
   };
   const draftRequest = next.resourceRun?.draftRequest;
-  const resolvedGame = draftRequest
+  const completedGame = {
+    ...next,
+    turn,
+    version: turn,
+    log: [...next.log, entry],
+    timeline: [...next.timeline, { type: event.category, title: event.title, detail: outcome.text }],
+    worldEvents: [...next.worldEvents, { title: event.title, detail: outcome.text, turn }],
+    cooldowns: { ...next.cooldowns, [event.id]: turn + (event.cooldownTurns ?? 0) },
+    eventHistory
+  };
+  const resolvedGame = draftRequest && !isTerminalGame(completedGame)
     ? createResourceDraft({
-      game: {
-        ...next,
-        turn,
-        version: turn,
-        log: [...next.log, entry],
-        timeline: [...next.timeline, { type: event.category, title: event.title, detail: outcome.text }],
-        worldEvents: [...next.worldEvents, { title: event.title, detail: outcome.text, turn }],
-        cooldowns: { ...next.cooldowns, [event.id]: turn + (event.cooldownTurns ?? 0) },
-        eventHistory
-      },
+      game: completedGame,
       poolId: draftRequest.poolId,
       sourceEventId: event.id,
       sourceEventTitle: event.title,
       reason: draftRequest.reason,
       turn
     })
-    : {
-      ...next,
-      turn,
-      version: turn,
-      log: [...next.log, entry],
-      timeline: [...next.timeline, { type: event.category, title: event.title, detail: outcome.text }],
-      worldEvents: [...next.worldEvents, { title: event.title, detail: outcome.text, turn }],
-      cooldowns: { ...next.cooldowns, [event.id]: turn + (event.cooldownTurns ?? 0) },
-      eventHistory
-    };
+    : completedGame;
   return {
     game: resolvedGame,
     entry,
