@@ -28,11 +28,11 @@ const EVENT_METADATA = {
   xuanheng_private_confession: eventMetadata('golden_core', 'mainline', '玄衡长老旧院', '悲凉、克制', ['契痕', '旧伤', '风铃'], ['xuanheng']),
   mist_bronze_bell: eventMetadata('mist', 'mainline', '雾隐秘境边缘', '诡谲、克制', ['铜铃', '白雾', '残碑'], ['lin_shijie']),
   mist_archive_fragment: eventMetadata('mist', 'mainline', '雾隐秘境残碑林', '冷寂、怀疑', ['残碑', '石刻', '回声'], []),
-  mist_relic_cache: eventMetadata('mist', 'side', '雾隐秘境雾灯石径', '好奇、戒备', ['雾灯', '残匣', '铃声'], []),
-  scripture_archive_cache: eventMetadata('foundation', 'side', '青云宗藏经阁', '幽深、克制', ['尘埃', '残卷', '墨香'], ['lin_shijie']),
-  alchemy_hidden_fire: eventMetadata('qi', 'side', '青云宗丹房', '温热、谨慎', ['丹火', '炉灰', '药香'], []),
-  beast_bone_reliquary: eventMetadata('foundation', 'side', '青云宗巡山遗迹', '肃杀、贪念', ['兽骨', '旧匣', '山风'], []),
-  ancient_ruins_starfall: eventMetadata('mist', 'side', '雾隐秘境古修遗府', '宏大、失真', ['星盘', '裂墙', '冷光'], []),
+  mist_relic_cache: eventMetadata('mist', 'side', '雾隐秘境雾灯石径', '好奇、戒备', ['雾灯', '残匣', '铃声'], [], 3, 1),
+  scripture_archive_cache: eventMetadata('foundation', 'side', '青云宗藏经阁', '幽深、克制', ['尘埃', '残卷', '墨香'], ['lin_shijie'], 3, 1),
+  alchemy_hidden_fire: eventMetadata('qi', 'side', '青云宗丹房', '温热、谨慎', ['丹火', '炉灰', '药香'], [], 3, 1),
+  beast_bone_reliquary: eventMetadata('foundation', 'side', '青云宗巡山遗迹', '肃杀、贪念', ['兽骨', '旧匣', '山风'], [], 3, 1),
+  ancient_ruins_starfall: eventMetadata('mist', 'side', '雾隐秘境古修遗府', '宏大、失真', ['星盘', '裂墙', '冷光'], [], 3, 1),
   mist_lantern_path: eventMetadata('mist', 'mainline', '雾隐秘境雾灯石径', '诱导、危险', ['雾灯', '石径', '铃声'], []),
   mist_archive_full: eventMetadata('mist', 'mainline', '雾隐秘境深档库', '震骇、肃穆', ['石档', '白雾', '回声'], []),
   heaven_gate_key_fragment: eventMetadata('mist', 'mainline', '秘境天门残台', '冰冷、决绝', ['碎片', '雾门', '寒光'], []),
@@ -173,7 +173,7 @@ export const EVENT_CATALOG = [
       flag('mist_relic_cache_left', true)
     ], '你没有立刻伸手，先以符纸封住残匣，把这处机缘记在地图边角。')
   ]),
-  event('scripture_archive_cache', '藏经阁残卷', 'sect', ['home', 'realm'], [
+  event('scripture_archive_cache', '藏经阁残卷', 'realm', ['home', 'realm'], [
     choice('claim', '整理残卷', '在藏经阁尘封书架中整理可带走的残卷', 'medium', [
       resourceDraft('scriptureArchive', '残卷之间藏着几门尚未失传的修行法门。')
     ], '你拨开尘埃，发现几页旧注彼此呼应，像有人特意把它们留给后来者。'),
@@ -694,12 +694,13 @@ function choice(id, label, command, risk, effects, text, narrativeIntent = comma
   return { id, label, command, risk, narrativeIntent, success: { text, effects } };
 }
 
-function eventMetadata(chapterId, cadence, scene, mood, sensoryTags, npcRoles = [], cooldownTurns = 3) {
+function eventMetadata(chapterId, cadence, scene, mood, sensoryTags, npcRoles = [], cooldownTurns = 3, priority = 10) {
   return {
     chapterIds: [chapterId],
     cadence,
     oneShot: cadence === 'mainline',
     cooldownTurns,
+    priority,
     narrativeContext: { scene, mood, npcRoles, sensoryTags }
   };
 }
