@@ -1,8 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
+
+const require = createRequire(import.meta.url);
 
 test('desktop entry uses the local backend runtime and secure BrowserWindow settings', () => {
   const source = fs.readFileSync('electron/main.mjs', 'utf8');
@@ -59,17 +62,38 @@ test('package metadata exposes desktop development and distribution commands', (
   assert.equal(packageJson.main, 'electron/main.mjs');
   assert.equal(packageJson.productName, '问道浮生');
   assert.equal(packageJson.scripts['desktop:dev'], 'electron electron/main.mjs');
-  assert.equal(packageJson.scripts['desktop:package'], 'electron-forge package');
-  assert.equal(packageJson.scripts['desktop:make'], 'electron-forge make');
+  assert.equal(packageJson.scripts['desktop:prepare'], 'node scripts/prepare-desktop-deps.mjs');
+  assert.equal(packageJson.scripts['desktop:package'], 'npm run desktop:prepare && electron-forge package');
+  assert.equal(packageJson.scripts['desktop:make'], 'npm run desktop:prepare && electron-forge make');
   assert.equal(packageJson.scripts['start:all'], 'bash scripts/start-dev.sh');
 });
 
 test('Forge config declares macOS and Windows makers', () => {
   const source = fs.readFileSync('forge.config.cjs', 'utf8');
+  const config = require('../forge.config.cjs');
+  const workspaceConfig = fs.readFileSync('pnpm-workspace.yaml', 'utf8');
 
   assert.match(source, /maker-squirrel/);
   assert.match(source, /maker-dmg/);
   assert.match(source, /maker-zip/);
-  assert.match(source, /prune:\s*false/);
+  assert.match(source, /prune:\s*true/);
+  assert.equal(config.packagerConfig.prune, true);
   assert.match(source, /\.env/);
+  assert.deepEqual(config.rebuildConfig?.types, []);
+  assert.equal(config.packagerConfig.download?.unsafelyDisableChecksums, true);
+  assert.match(workspaceConfig, /^nodeLinker:\s*hoisted$/m);
+  assert.match(workspaceConfig, /^  macos-alias:\s*true$/m);
+  assert.match(workspaceConfig, /^  fs-xattr:\s*true$/m);
+  assert.match(workspaceConfig, /extract-zip:\s*['"]npm:@electron-internal\/extract-zip@1\.0\.4['"]/);
+});
+
+test('desktop dependency preparation is idempotent and macOS-aware', () => {
+  const source = fs.readFileSync('scripts/prepare-desktop-deps.mjs', 'utf8');
+
+  assert.match(source, /process\.platform\s*!==\s*['"]darwin['"]/);
+  assert.match(source, /macos-alias/);
+  assert.match(source, /fs-xattr/);
+  assert.match(source, /node-gyp/);
+  assert.match(source, /volume\.node/);
+  assert.match(source, /xattr\.node/);
 });

@@ -76,6 +76,14 @@ npm run desktop:package
 npm run desktop:make
 ```
 
+桌面打包依赖请使用项目的 pnpm 配置安装：
+
+```bash
+pnpm install
+```
+
+桌面打包要求 Node.js `>=22.12`。项目已固定使用 hoisted 依赖布局、原生 ZIP 解包器和 DMG/Windows 制作所需的构建权限；请不要用 `npm install` 替换这套依赖布局。
+
 桌面版后端只绑定本机随机端口，游戏权威状态保存到 Electron 的用户数据目录中的 `wendao-fusheng-save.json`，不会写入安装目录。首次启动没有存档时会自动创建新局；存档损坏时会保留 `.corrupt` 备份并从新局启动。
 
 模型配置会单独保存为 Electron 用户数据目录中的 `model-config.json`，与游戏存档分离；清除配置后下次启动会再次提示。API Key 不会进入游戏存档、传记导出、模型健康响应或安装包资源。浏览器开发模式会把配置副本保存在当前浏览器的 `localStorage` 中，请不要在共用电脑上保存个人 Key。

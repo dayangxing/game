@@ -11,8 +11,9 @@
     "start:backend": "node backend/src/server.js",
     "start:all": "bash scripts/start-dev.sh",
     "desktop:dev": "electron electron/main.mjs",
-    "desktop:package": "electron-forge package",
-    "desktop:make": "electron-forge make"
+    "desktop:prepare": "node scripts/prepare-desktop-deps.mjs",
+    "desktop:package": "npm run desktop:prepare && electron-forge package",
+    "desktop:make": "npm run desktop:prepare && electron-forge make"
   },
   "dependencies": {
     "@langchain/langgraph": "^1.4.7"
