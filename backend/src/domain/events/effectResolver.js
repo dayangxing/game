@@ -92,9 +92,12 @@ export function canAffordEffects(game, effects) {
 
 function applyEffect(game, effect) {
   if (effect.type === 'stat') {
-    const delta = effect.path === 'player.cultivationProgress' && effect.delta > 0
+    let delta = effect.path === 'player.cultivationProgress' && effect.delta > 0
       ? effect.delta + (calculateDerivedBonuses(game).cultivationGain ?? 0)
       : effect.delta;
+    if (effect.path === 'player.health' && delta < 0) {
+      delta = adjustHealthDamage(game, delta);
+    }
     return updatePath(game, effect.path, delta);
   }
   if (effect.type === 'item') return updateItem(game, effect.path, effect.delta);
@@ -134,11 +137,12 @@ function applyEffect(game, effect) {
   if (effect.type === 'vitality') {
     const currentHealth = game.player?.health ?? 0;
     const maxHealth = game.player?.maxHealth ?? currentHealth;
+    const delta = effect.delta < 0 ? adjustHealthDamage(game, effect.delta) : effect.delta;
     return {
       ...game,
       player: {
         ...game.player,
-        health: clamp(currentHealth + effect.delta, 0, maxHealth)
+        health: clamp(currentHealth + delta, 0, maxHealth)
       }
     };
   }
@@ -214,6 +218,12 @@ function scaleRepeatableReward(effect, multiplier) {
 function updatePath(game, path, delta) {
   const [scope, key] = path.split('.');
   return { ...game, [scope]: { ...game[scope], [key]: (game[scope]?.[key] ?? 0) + delta } };
+}
+
+function adjustHealthDamage(game, delta) {
+  const modifier = calculateDerivedBonuses(game).healthDamageTakenPercent ?? 0;
+  if (modifier === 0) return delta;
+  return Math.min(-1, Math.round(delta * (1 + modifier / 100)));
 }
 
 function updateItem(game, path, delta) {

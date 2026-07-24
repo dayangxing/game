@@ -1,12 +1,64 @@
 import { advanceTurn, createGame as createMockGame, exportNovel } from '../mock/engine.js';
 import { buildDailyActionsRequest } from '../ai/llmContracts.js';
 
+const MOCK_ORIGINS = [
+  '山野孤子', '没落世家', '药铺学徒', '渔村遗孤', '外门杂役', '散修之后',
+  '镖局遗脉', '河运船户', '旧城孤馆', '罪臣旁支', '牧原猎户', '机关匠户',
+  '古寺香火童', '商旅账房', '边关遗民', '秘境流民', '退隐修士后人', '宗门弃徒'
+];
+const MOCK_ROOTS = [
+  '雷木双灵根', '金火双灵根', '水木双灵根', '土灵根', '风雷异灵根', '五行杂灵根',
+  '金灵根', '木灵根', '水灵根', '火灵根', '雷灵根', '风灵根',
+  '冰灵根', '金水双灵根', '木火双灵根', '土金双灵根', '空明异灵根', '玄阴异灵根'
+];
+const MOCK_TRAITS = [
+  '早慧', '命火绵长', '经脉坚韧', '福缘深厚', '灵根不稳', '心魔易感', '丹道亲和', '剑心微明',
+  '听风识气', '静水心境', '百折不屈', '旧缘未断', '梦中观星', '血脉隐秘', '孤煞随身', '因果缠身',
+  '贪念难消', '兵刃亲和', '符箓悟性', '阵道敏锐', '灵兽亲和', '天生长息', '命宫有缺', '神魂易伤'
+];
+
 export function createGameApi(options = {}) {
   const seed = options.seed ?? Date.now();
   const preferredMode = options.preferredMode ?? 'mock';
   const baseUrl = normalizeBaseUrl(options.baseUrl ?? defaultBackendBaseUrl());
   const fetchImpl = options.fetchImpl ?? globalThis.fetch?.bind(globalThis);
   const canUseBackend = Boolean(baseUrl && fetchImpl);
+
+  async function loadDailyActionsWithState(game, view) {
+    if (shouldUseBackend(game, canUseBackend)) {
+      const data = await requestJson({
+        baseUrl,
+        fetchImpl,
+        path: '/api/v1/daily-actions',
+        method: 'POST',
+        body: { viewId: view.id, gameVersion: game.version }
+      });
+      return { actions: data.actions, game: data.game ? withMode(data.game, 'api') : game };
+    }
+
+    const llmRequest = buildDailyActionsRequest(game, view);
+    const cards = view.cards.map((card, index) => normalizeAction(card, view, index, 'view', llmRequest));
+    const suggested = game.suggestions.slice(0, 3).map((command, index) => normalizeAction({
+      title: '天机建议',
+      icon: '机',
+      command,
+      meta: '命途回响'
+    }, view, index + cards.length, 'suggestion', llmRequest));
+    return { actions: [...cards, ...suggested], game };
+  }
+
+  async function loadDailyActionsStreamWithState(game, view, handlers = {}) {
+    if (!shouldUseBackend(game, canUseBackend)) return loadDailyActionsWithState(game, view);
+    const data = await requestEventStream({
+      baseUrl,
+      fetchImpl,
+      path: '/api/v1/daily-actions/stream',
+      method: 'POST',
+      body: { viewId: view.id, gameVersion: game.version },
+      handlers
+    });
+    return { actions: data.actions, game: data.game ? withMode(data.game, 'api') : game };
+  }
 
   return {
     async createGame(mode = preferredMode) {
@@ -74,6 +126,27 @@ export function createGameApi(options = {}) {
       return withMode(createMockCharacterCreationShell(createMockGame(rerollSeed ?? seed)), 'mock');
     },
 
+    async getCharacterPreview({ name, rerollSeed, attributes } = {}) {
+      if (canUseBackend) {
+        const data = await requestJson({
+          baseUrl,
+          fetchImpl,
+          path: '/api/v1/game/character-preview',
+          method: 'POST',
+          body: { name, rerollSeed, attributes }
+        });
+        return data.character;
+      }
+
+      const formalSeed = rerollSeed ?? seed;
+      const mockGame = createMockGame(formalSeed);
+      return createMockFormalCharacter(mockGame, {
+        name,
+        rerollSeed: formalSeed,
+        attributes
+      });
+    },
+
     async createFormalGame({ name, rerollSeed, attributes } = {}) {
       if (canUseBackend) {
         const data = await requestJson({
@@ -118,30 +191,15 @@ export function createGameApi(options = {}) {
     },
 
     async getDailyActions(game, view) {
-      if (shouldUseBackend(game, canUseBackend)) {
-        const data = await requestJson({
-          baseUrl,
-          fetchImpl,
-          path: '/api/v1/daily-actions',
-          method: 'POST',
-          body: {
-            viewId: view.id,
-            gameVersion: game.version
-          }
-        });
-        return data.actions;
-      }
+      return (await loadDailyActionsWithState(game, view)).actions;
+    },
 
-      const llmRequest = buildDailyActionsRequest(game, view);
-      const cards = view.cards.map((card, index) => normalizeAction(card, view, index, 'view', llmRequest));
-      const suggested = game.suggestions.slice(0, 3).map((command, index) => normalizeAction({
-        title: '天机建议',
-        icon: '机',
-        command,
-        meta: '命途回响'
-      }, view, index + cards.length, 'suggestion', llmRequest));
+    async getDailyActionsWithState(game, view) {
+      return loadDailyActionsWithState(game, view);
+    },
 
-      return [...cards, ...suggested];
+    async getDailyActionsStreamWithState(game, view, handlers = {}) {
+      return loadDailyActionsStreamWithState(game, view, handlers);
     },
 
     async submitDailyAction(game, action) {
@@ -641,11 +699,12 @@ function createMockCharacterCreationShell(game) {
 
 function createMockFormalCharacter(game, { name, rerollSeed, attributes }) {
   const allocation = normalizeMockAllocation(attributes, rerollSeed);
+  const background = buildMockBackground(rerollSeed);
   return {
     name: String(name ?? '').trim() || game.player.name,
-    origin: game.player.origin,
-    spiritualRoot: game.player.spiritualRoot,
-    traits: buildMockTraits(rerollSeed),
+    origin: background.origin,
+    spiritualRoot: background.spiritualRoot,
+    traits: background.traits,
     attributes: allocation,
     comprehension: allocation.comprehension * 9,
     physique: allocation.rootBone * 9,
@@ -664,10 +723,20 @@ function createMockFormalCharacter(game, { name, rerollSeed, attributes }) {
 }
 
 function buildMockTraits(seed) {
-  const traitPool = ['早慧', '命火绵长', '经脉坚韧', '福缘深厚', '丹道亲和', '剑心微明'];
-  const firstIndex = Math.abs(seed) % traitPool.length;
-  const secondIndex = (firstIndex + 2) % traitPool.length;
-  return [traitPool[firstIndex], traitPool[secondIndex]];
+  const normalizedSeed = Math.abs(Number(seed)) || 0;
+  const count = 2 + (normalizedSeed % 2);
+  return Array.from({ length: count }, (_, index) => (
+    MOCK_TRAITS[(normalizedSeed * 5 + index * 7) % MOCK_TRAITS.length]
+  ));
+}
+
+function buildMockBackground(seed) {
+  const normalizedSeed = Math.abs(Number(seed)) || 0;
+  return {
+    origin: MOCK_ORIGINS[normalizedSeed % MOCK_ORIGINS.length],
+    spiritualRoot: MOCK_ROOTS[(normalizedSeed * 7) % MOCK_ROOTS.length],
+    traits: buildMockTraits(normalizedSeed)
+  };
 }
 
 function normalizeMockAllocation(attributes, seed) {

@@ -16,6 +16,16 @@ const RISK_LABELS = {
   high: '高风险'
 };
 
+const CATEGORY_ICONS = {
+  cultivation: '修',
+  economy: '丹',
+  sect: '宗',
+  realm: '境',
+  heaven: '天',
+  karma: '缘',
+  social: '友'
+};
+
 export function selectEventActions({ game, viewId, now, sequenceStart = 0 }) {
   const eligible = EVENT_CATALOG
     .map((event, index) => ({ event, index }))
@@ -42,9 +52,9 @@ export function selectEventActions({ game, viewId, now, sequenceStart = 0 }) {
       actions.push({
       id: `act_${game.turn}_${viewId}_${sequenceStart + eventIndex}_${choiceIndex}`,
       title: choice.label,
-      icon: event.category.slice(0, 1),
+      icon: CATEGORY_ICONS[event.category] ?? event.category.slice(0, 1),
       command: choice.command,
-      meta: `${event.title} / ${RISK_LABELS[choice.risk] ?? '未知风险'}`,
+      meta: event.title,
       category: event.category,
       source: 'event',
       risk: choice.risk,
@@ -73,9 +83,9 @@ export function selectEventActions({ game, viewId, now, sequenceStart = 0 }) {
   const breakthroughAction = {
     id: `act_${game.turn}_${viewId}_${sequenceStart}_bt`,
     title: '尝试突破',
-    icon: BREAKTHROUGH_EVENT.category.slice(0, 1),
+    icon: CATEGORY_ICONS[BREAKTHROUGH_EVENT.category] ?? '突',
     command: '尝试突破',
-    meta: `突破至${preview.targetRealm} / 成功率 ${preview.chance}% / ${RISK_LABELS.high}`,
+    meta: `突破至${preview.targetRealm} · 成功率 ${preview.chance}%`,
     source: 'breakthrough',
     risk: 'high',
     eventId: BREAKTHROUGH_EVENT.id,

@@ -59,7 +59,7 @@ test('at 100 progress the breakthrough preview includes target realm chance and 
     targetRealm: '炼气二层',
     chance: 82,
     failureCost: {
-      health: 18,
+      health: 20,
       lifespan: 1,
       progressLoss: 40
     },

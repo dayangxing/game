@@ -1,3 +1,5 @@
+import { calculateDerivedBonuses } from '../rewards.js';
+
 const BASE_BY_INTENSITY = {
   tiny: 1,
   small: 3,
@@ -53,8 +55,11 @@ export function calculateLongevityChange({
     sum + (BASE_BY_INTENSITY[hint.intensity] ?? BASE_BY_INTENSITY.small)
   ), 0);
   const lifeSeedBonus = Math.floor((game.character?.attributes?.lifeSeed ?? 1) / 4);
+  const medicineBonus = recoverySource === 'medicine'
+    ? calculateDerivedBonuses(game).medicineLongevityGain ?? 0
+    : 0;
   const penalty = fatigue * 2 + resistance * 2;
-  const longevityGain = Math.max(0, rawGain + lifeSeedBonus - penalty);
+  const longevityGain = Math.max(0, rawGain + lifeSeedBonus + medicineBonus - penalty);
 
   return {
     longevityGain,

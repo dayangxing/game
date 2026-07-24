@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog } from 'electron';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -6,11 +7,20 @@ import { startDesktopBackend } from './backendRuntime.mjs';
 
 const electronDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(electronDir, '..');
-const frontendIndexPath = path.join(projectRoot, 'frontend', 'index.html');
+const distIndexPath = path.join(projectRoot, 'frontend', 'dist', 'index.html');
+const legacyIndexPath = path.join(projectRoot, 'frontend', 'index.html');
 const preloadPath = path.join(electronDir, 'preload.cjs');
+
+const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || 'http://127.0.0.1:5173';
 
 let desktopBackend = null;
 let isQuitting = false;
+
+function resolveFrontendPath() {
+  if (fs.existsSync(distIndexPath)) return distIndexPath;
+  if (fs.existsSync(legacyIndexPath)) return legacyIndexPath;
+  return null;
+}
 
 async function createMainWindow() {
   desktopBackend = await startDesktopBackend({
@@ -31,10 +41,19 @@ async function createMainWindow() {
     }
   });
 
-  const frontendUrl = pathToFileURL(frontendIndexPath);
-  frontendUrl.searchParams.set('desktop', '1');
-  frontendUrl.searchParams.set('api', desktopBackend.baseUrl);
-  await window.loadURL(frontendUrl.toString());
+  const frontendPath = resolveFrontendPath();
+  if (frontendPath) {
+    const frontendUrl = pathToFileURL(frontendPath);
+    frontendUrl.searchParams.set('desktop', '1');
+    frontendUrl.searchParams.set('api', desktopBackend.baseUrl);
+    await window.loadURL(frontendUrl.toString());
+  } else {
+    const devUrl = new URL(VITE_DEV_SERVER_URL);
+    devUrl.searchParams.set('desktop', '1');
+    devUrl.searchParams.set('api', desktopBackend.baseUrl);
+    await window.loadURL(devUrl.toString());
+  }
+
   return window;
 }
 

@@ -4,6 +4,7 @@ import {
   TECHNIQUE_CATALOG,
   TREASURE_CATALOG
 } from './resources/resourceCatalog.js';
+import { calculateTraitBonuses } from './traitRules.js';
 
 export { RESONANCE_CATALOG, TECHNIQUE_CATALOG, TREASURE_CATALOG };
 
@@ -57,6 +58,7 @@ export function calculateDerivedBonuses(game) {
   }
 
   mergeBonuses(derivedBonuses, calculateResonances(game).bonuses);
+  mergeBonuses(derivedBonuses, calculateTraitBonuses(game));
   return derivedBonuses;
 }
 

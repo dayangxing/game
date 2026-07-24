@@ -1,3 +1,5 @@
+import { getStoryMemoryPromptContext } from '../../../../src/storyMemory.js';
+
 const EVENT_RULE_BOUNDARY = [
   '如果输入提示本回合来自已结算事件或已结算选择，你必须把它视为规则结果已经落定。',
   '只能润色已结算结果，不得新增奖励、道具、境界、关系、flag、futureEvent 或成功失败判定。',
@@ -17,7 +19,8 @@ const NARRATION_SYSTEM_PROMPT = [
   '6. 如果本回合不涉及 NPC，npcLine 必须返回空字符串。',
   '7. 必须参考 narrativeContext 中的剧情摘要、近期回合、未解伏笔与人物记忆，让本回合承接已有因果。',
   '8. 输出必须是合法 JSON object，不能包含 Markdown、解释文字、代码块或额外注释。',
-  `9. ${EVENT_RULE_BOUNDARY}`,
+  '9. 如果 narrativeContext.storyMemory.summaryWindowStale 为 true，必须忽略 longSummary，只依据 rollingWindowTurns 和当前权威事实承接剧情。',
+  `10. ${EVENT_RULE_BOUNDARY}`,
   '',
   '绝对禁止：',
   '1. 不得新增奖励、道具、境界提升、灵石收入、NPC 好感、关系、flag、futureEvent、世界事件或成功失败判定；afterGame 中不存在的结果一律不得补写。',
@@ -221,11 +224,13 @@ function pickNpcVoiceGuide(npc) {
 
 function pickNarrativeContext(game) {
   const storyMemory = game.storyMemory ?? {};
+  const memoryContext = getStoryMemoryPromptContext(game);
+  const summaryWindowStale = memoryContext.summaryWindowStale === true;
 
   return {
     storyMemory: {
-      longSummary: textOrEmpty(storyMemory.longSummary),
-      recentTurns: Array.isArray(storyMemory.recentTurns)
+      longSummary: memoryContext.longSummary,
+      recentTurns: !summaryWindowStale && Array.isArray(storyMemory.recentTurns)
         ? storyMemory.recentTurns.slice(-8).map(pickRecentTurnMemory)
         : [],
       openThreads: Array.isArray(storyMemory.openThreads)
@@ -237,7 +242,13 @@ function pickNarrativeContext(game) {
       characterNotes: Array.isArray(storyMemory.characterNotes)
         ? storyMemory.characterNotes.slice(-6).map(pickCharacterMemory)
         : game.npcs.map(pickCharacterMemory),
-      lastUpdatedTurn: Number.isFinite(storyMemory.lastUpdatedTurn) ? storyMemory.lastUpdatedTurn : game.turn
+      lastUpdatedTurn: Number.isFinite(storyMemory.lastUpdatedTurn) ? storyMemory.lastUpdatedTurn : game.turn,
+      summaryThroughTurn: memoryContext.summaryThroughTurn,
+      summaryWindowStartTurn: memoryContext.summaryWindowStartTurn,
+      summaryWindowStale,
+      unsummarizedTurns: memoryContext.unsummarizedTurns,
+      unsummarizedTurnsTruncated: memoryContext.unsummarizedTurnsTruncated,
+      ...(summaryWindowStale ? { rollingWindowTurns: memoryContext.rollingWindowTurns } : {})
     }
   };
 }

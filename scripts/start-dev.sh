@@ -10,7 +10,7 @@ RUN_DIR="${RUN_DIR:-$ROOT_DIR/.runtime}"
 BACKEND_LOG="$RUN_DIR/backend.log"
 FRONTEND_LOG="$RUN_DIR/frontend.log"
 BACKEND_URL="http://${BACKEND_HOST}:${BACKEND_PORT}"
-FRONTEND_URL="http://${FRONTEND_HOST}:${FRONTEND_PORT}/frontend/"
+FRONTEND_URL="http://${FRONTEND_HOST}:${FRONTEND_PORT}/"
 
 if [[ -n "${NODE_BIN:-}" ]]; then
   NODE_BIN="$NODE_BIN"
@@ -20,22 +20,13 @@ else
   NODE_BIN="$(command -v node || true)"
 fi
 
-if [[ -n "${PYTHON_BIN:-}" ]]; then
-  PYTHON_BIN="$PYTHON_BIN"
-elif [[ -x "$ROOT_DIR/.venv/bin/python" ]]; then
-  PYTHON_BIN="$ROOT_DIR/.venv/bin/python"
-else
-  PYTHON_BIN="$(command -v python3 || true)"
-fi
+
 
 if [[ -z "$NODE_BIN" ]]; then
   echo "找不到 Node.js。请先进入项目环境，或设置 NODE_BIN。" >&2
   exit 1
 fi
-if [[ -z "$PYTHON_BIN" ]]; then
-  echo "找不到 Python 3。请先进入项目环境，或设置 PYTHON_BIN。" >&2
-  exit 1
-fi
+
 if ! command -v curl >/dev/null 2>&1; then
   echo "找不到 curl，无法检查服务是否就绪。" >&2
   exit 1
@@ -114,7 +105,7 @@ echo "日志：$RUN_DIR"
 HOST="$BACKEND_HOST" PORT="$BACKEND_PORT" "$NODE_BIN" backend/src/server.js >"$BACKEND_LOG" 2>&1 &
 BACKEND_PID=$!
 
-"$PYTHON_BIN" -m http.server "$FRONTEND_PORT" --bind "$FRONTEND_HOST" --directory "$ROOT_DIR" >"$FRONTEND_LOG" 2>&1 &
+cd "$ROOT_DIR" && "$NODE_BIN" node_modules/.bin/vite --config frontend/vite.config.js --host "$FRONTEND_HOST" --port "$FRONTEND_PORT" >"$FRONTEND_LOG" 2>&1 &
 FRONTEND_PID=$!
 
 wait_for_http "$BACKEND_URL/api/v1/game/state" "$BACKEND_PID" "后端"

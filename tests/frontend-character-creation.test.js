@@ -70,6 +70,69 @@ test('frontend api forwards manual attribute allocation through backend formal c
   assert.equal(game.player.maxLifespan, game.character.initialLifespan + 32);
 });
 
+test('frontend api previews the same background that formal creation will use', async () => {
+  const backend = createBackendApp({ seed: 31, now: () => new Date('2026-06-29T08:00:00.000Z') });
+  backend.getState().game.onboarding = {
+    completed: true,
+    stepId: 'formal_life',
+    completedStepIds: [],
+    unlockedCharacterCreation: true
+  };
+  const api = createGameApi({
+    baseUrl: 'http://backend.test',
+    preferredMode: 'api',
+    fetchImpl: (input, init) => backend.handle(new Request(input, init))
+  });
+  const input = {
+    name: '顾清河',
+    rerollSeed: 52,
+    attributes: {
+      rootBone: 7,
+      comprehension: 6,
+      fortune: 4,
+      willpower: 4,
+      lifeSeed: 4
+    }
+  };
+
+  const preview = await api.getCharacterPreview(input);
+  const formal = await api.createFormalGame(input);
+
+  assert.equal(typeof preview.origin, 'string');
+  assert.equal(typeof preview.spiritualRoot, 'string');
+  assert.ok(Array.isArray(preview.traits));
+  assert.deepEqual({
+    origin: preview.origin,
+    spiritualRoot: preview.spiritualRoot,
+    traits: preview.traits
+  }, {
+    origin: formal.character.origin,
+    spiritualRoot: formal.character.spiritualRoot,
+    traits: formal.character.traits
+  });
+});
+
+test('mock frontend api exposes a deterministic character background preview', async () => {
+  const api = createGameApi({ seed: 21, preferredMode: 'mock' });
+
+  const preview = await api.getCharacterPreview({ name: '陆青玄', rerollSeed: 77 });
+
+  assert.equal(typeof preview.origin, 'string');
+  assert.equal(typeof preview.spiritualRoot, 'string');
+  assert.ok(Array.isArray(preview.traits));
+});
+
+test('mock formal characters draw from the expanded background pools', async () => {
+  const api = createGameApi({ seed: 21, preferredMode: 'mock' });
+  const characters = await Promise.all(Array.from({ length: 24 }, (_, index) => (
+    api.createFormalGame({ name: `角色${index}`, rerollSeed: index })
+  )));
+
+  assert.equal(new Set(characters.map((game) => game.character.origin)).size, 18);
+  assert.equal(new Set(characters.map((game) => game.character.spiritualRoot)).size, 18);
+  assert.equal(new Set(characters.flatMap((game) => game.character.traits)).size, 24);
+});
+
 test('mock formal game exposes a usable character object', async () => {
   const api = createGameApi({ seed: 21, preferredMode: 'mock' });
 
@@ -181,6 +244,24 @@ test('random allocation updates the pending stats preview and start action submi
   assert.match(renderFirstRunStage, /renderPendingCharacterStatus\(\);/);
   assert.match(startHandler, /game = await api\.createFormalGame\(\{/);
   assert.match(startHandler, /attributes:\s*pendingAttributes/);
+});
+
+test('Svelte character creation locks the start action while the game is being created', () => {
+  const source = fs.readFileSync('frontend/src/components/CharacterCreation.svelte', 'utf8');
+
+  assert.match(source, /getCharacterCreationPending/);
+  assert.match(source, /disabled=\{!canStart \|\| characterCreationPending\}/);
+});
+
+test('Svelte character creation renders the generated character background preview', () => {
+  const source = fs.readFileSync('frontend/src/components/CharacterCreation.svelte', 'utf8');
+
+  assert.match(source, /getPendingCharacterPreview/);
+  assert.match(source, /preview\?\.origin/);
+  assert.match(source, /preview\?\.spiritualRoot/);
+  assert.match(source, /preview\?\.traits/);
+  assert.match(source, /入山门后揭晓/);
+  assert.match(source, /命格尚未落定/);
 });
 
 function extractFunction(source, name) {

@@ -181,7 +181,7 @@ test('turn results include health and lifespan stat deltas after progression eff
   });
 
   assert.deepEqual(turnResult.ruleResult.statChanges, {
-    health: -18,
+    health: -20,
     maxHealth: -12,
     lifespan: -7,
     maxLifespan: -7

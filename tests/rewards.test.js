@@ -73,7 +73,9 @@ test('calculateDerivedBonuses sums resource and resonance bonuses together', () 
     cultivationGain: 6,
     damageReduction: 13,
     maxHealth: 14,
-    maxLifespan: 4
+    maxLifespan: 4,
+    healthDamageTakenPercent: -5,
+    startingMood: 4
   });
 });
 

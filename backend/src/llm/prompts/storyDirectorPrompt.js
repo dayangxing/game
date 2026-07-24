@@ -3,6 +3,7 @@ import {
   ALLOWED_EFFECT_INTENSITIES,
   ALLOWED_EFFECT_TARGETS
 } from '../../domain/director/effectHints.js';
+import { getStoryMemoryPromptContext } from '../../../../src/storyMemory.js';
 
 const SYSTEM_PROMPT = [
   '你是《问道浮生》的连续剧情导演。',
@@ -17,6 +18,7 @@ const SYSTEM_PROMPT = [
   'NPC 没有剧情必要时不要出场；出场时只能使用已知 NPC。',
   '章节由后端规则层决定。你只能描写当前章节和后端已经提供的章节转场。',
   '不得创建章节、完成章节目标、修改真相旗标、修改契约立场或宣布结局 id。',
+  '角色既定的身世、灵根和命格天赋是连续剧情事实，不得无依据改写或自相矛盾。',
   '如果当前状态已经结束，不得生成新的行动或继续推进剧情。',
   '输出必须是合法 JSON object，不要 Markdown、代码块、解释文字或系统提示。',
   '',
@@ -33,7 +35,7 @@ const SYSTEM_PROMPT = [
   '  "mode": "continue 或 choice",',
   '  "npcLines": [{"npcId":"string","speaker":"string","line":"string"}],',
   '  "effectHints": [{"target":"string","direction":"string","intensity":"string","topic":"string"}],',
-  '  "choices": [{"id":"string","text":"string","tone":"string","effectHints":[...]}],',
+  '  "choices": [{"id":"string","title":"string，2到8字短标题","text":"string，玩家可执行的行动描述","tone":"string","effectHints":[...]}],',
   '  "memoryHints": ["string"]',
   '}'
 ].join('\n');
@@ -54,9 +56,12 @@ export function buildStoryDirectorMessages({ game, input }) {
           '不得暴露 JSON 字段给玩家。',
           '章节由后端规则层决定。你只能描写当前章节和后端已经提供的章节转场。',
           '不得创建章节、完成章节目标、修改真相旗标、修改契约立场或宣布结局 id。',
+          '角色背景中的身世、灵根和命格天赋是既定事实，不得无依据改写。',
+          '如果 storyMemory.summaryWindowStale 为 true，必须忽略 longSummary，只依据 rollingWindowTurns 和当前权威状态生成剧情。',
           '如果当前状态已经结束，不得生成新的行动或继续推进剧情。',
           '没有 NPC 参与时 npcLines 必须为空数组。',
           'mode 为 choice 时 choices 必须有 2 到 4 项。',
+          '每个 choice 的 title 是简短摘要，不要直接重复 text；text 是完整的玩家行动描述。',
           'mode 为 continue 时 choices 必须为空数组。'
         ]
       })
@@ -74,6 +79,8 @@ function pickInput(input = {}) {
 
 function pickContext(game) {
   const memory = game.storyMemory ?? {};
+  const memoryContext = getStoryMemoryPromptContext(game);
+  const summaryWindowStale = memoryContext.summaryWindowStale === true;
   return {
     turn: game.turn,
     calendar: game.calendar,
@@ -92,6 +99,13 @@ function pickContext(game) {
       sectRelation: game.player?.sectRelation
     },
     attributes: game.character?.attributes ?? {},
+    characterBackground: {
+      origin: text(game.character?.origin),
+      spiritualRoot: text(game.character?.spiritualRoot),
+      traits: Array.isArray(game.character?.traits)
+        ? game.character.traits.slice(0, 6).map((trait) => text(trait)).filter(Boolean)
+        : []
+    },
     resources: {
       treasures: (game.treasures ?? []).slice(-4).map((item) => item.name),
       techniques: (game.techniques ?? []).slice(-4).map((item) => item.name),
@@ -106,12 +120,18 @@ function pickContext(game) {
       memories: (npc.memories ?? []).slice(-3)
     })),
     storyMemory: {
-      longSummary: text(memory.longSummary),
+      longSummary: memoryContext.longSummary,
       openThreads: (memory.openThreads ?? []).slice(-8).map(pickThread),
-      characterNotes: (memory.characterNotes ?? []).slice(-6).map(pickCharacterNote)
+      characterNotes: (memory.characterNotes ?? []).slice(-6).map(pickCharacterNote),
+      summaryThroughTurn: memoryContext.summaryThroughTurn,
+      summaryWindowStartTurn: memoryContext.summaryWindowStartTurn,
+      summaryWindowStale,
+      unsummarizedTurns: memoryContext.unsummarizedTurns,
+      unsummarizedTurnsTruncated: memoryContext.unsummarizedTurnsTruncated,
+      ...(summaryWindowStale ? { rollingWindowTurns: memoryContext.rollingWindowTurns } : {})
     },
     timePressure: pickTimePressure(game.timePressure, game),
-    recentTurns: (memory.recentTurns ?? []).slice(-10).map(pickRecentTurn)
+    recentTurns: summaryWindowStale ? [] : (memory.recentTurns ?? []).slice(-10).map(pickRecentTurn)
   };
 }
 

@@ -11,7 +11,8 @@ test('one-command startup script manages frontend and backend services', () => {
   assert.ok(mode & 0o111, 'startup script should be executable');
   assert.match(source, /set -Eeuo pipefail/);
   assert.match(source, /backend\/src\/server\.js/);
-  assert.match(source, /-m http\.server/);
+  assert.match(source, /node_modules\/\.bin\/vite/);
+  assert.match(source, /frontend\/vite\.config\.js/);
   assert.match(source, /api\/v1\/game\/state/);
   assert.match(source, /trap .*INT/);
   assert.match(source, /trap .*EXIT/);
@@ -25,5 +26,5 @@ test('package and readme expose the one-command startup entry', () => {
 
   assert.equal(packageJson.scripts['start:all'], 'bash scripts/start-dev.sh');
   assert.match(readme, /npm run start:all/);
-  assert.match(readme, /127\.0\.0\.1:5173\/frontend\//);
+  assert.match(readme, /127\.0\.0\.1:5173\//);
 });

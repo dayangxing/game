@@ -154,8 +154,10 @@ export function resolveTutorialAction({ game, action }) {
   const step = ONBOARDING_STEPS.find((candidate) => candidate.id === action.onboardingStepId);
   const onboarding = completeOnboardingStep(game.onboarding, action.onboardingStepId);
   const turn = game.turn + 1;
+  const player = onboarding.completed ? { ...game.player, name: '' } : game.player;
   return {
     ...game,
+    player,
     turn,
     version: turn,
     onboarding,

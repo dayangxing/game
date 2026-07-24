@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createGameApi } from '../frontend/src/api/gameApi.js';
+import { createGameApi as createSvelteGameApi } from '../frontend/src/lib/api/gameApi.js';
 
 test('frontend game api creates an initial game state', async () => {
   const api = createGameApi({ seed: 21 });
@@ -146,6 +147,88 @@ test('frontend api stops story preview once the scene text is complete', async (
   assert.deepEqual(previews, [
     '雾声贴近',
     '雾声贴近，命火回应'
+  ]);
+});
+
+test('svelte api clears story preview state when a streamed retry resets the attempt', async () => {
+  const api = createSvelteGameApi({
+    baseUrl: 'http://backend.test',
+    preferredMode: 'api',
+    fetchImpl: async () => sseResponse([
+      ['story_delta', { text: '{"scene":"旧尝试片段' }],
+      ['story_reset', { attempt: 1, maxRetries: 3 }],
+      ['story_delta', { text: '{"scene":"新尝试完整结果"}' }],
+      ['done', {
+        ok: true,
+        data: {
+          game: {
+            mode: 'api',
+            turn: 1,
+            version: 1,
+            player: { name: '顾清河' },
+            log: [{ id: 'turn-1', title: '命途续写', body: '新尝试完整结果' }]
+          },
+          turnResult: { mode: 'continue', choices: [] }
+        }
+      }]
+    ])
+  });
+  const previews = [];
+  const raws = [];
+  const resets = [];
+
+  await api.continueStoryStream({ mode: 'api', turn: 0, version: 0 }, {
+    onStoryPreview: (preview) => previews.push(preview),
+    onStoryDelta: (_delta, raw) => raws.push(raw),
+    onStoryReset: (retry) => resets.push(retry)
+  });
+
+  assert.deepEqual(resets, [{ attempt: 1, maxRetries: 3 }]);
+  assert.deepEqual(previews, ['旧尝试片段', '新尝试完整结果']);
+  assert.deepEqual(raws, ['{"scene":"旧尝试片段', '{"scene":"新尝试完整结果"}']);
+});
+
+test('svelte api clears narration preview state when a streamed retry resets the attempt', async () => {
+  const api = createSvelteGameApi({
+    baseUrl: 'http://backend.test',
+    preferredMode: 'api',
+    fetchImpl: async () => sseResponse([
+      ['narration_delta', { text: '{"title":"叙事","body":"旧尝试片段' }],
+      ['narration_reset', { attempt: 2, maxRetries: 3 }],
+      ['narration_delta', { text: '{"title":"叙事","body":"新尝试完整结果"}' }],
+      ['done', {
+        ok: true,
+        data: {
+          game: {
+            mode: 'api',
+            turn: 1,
+            version: 1,
+            player: { name: '顾清河' },
+            log: [{ id: 'turn-1', title: '叙事', body: '新尝试完整结果' }]
+          }
+        }
+      }]
+    ])
+  });
+  const previews = [];
+  const raws = [];
+  const resets = [];
+
+  await api.submitDailyActionStream(
+    { mode: 'api', turn: 0, version: 0 },
+    { id: 'act_1', source: 'event', command: '闭关' },
+    {
+      onNarrationPreview: (preview) => previews.push(preview),
+      onNarrationDelta: (_delta, raw) => raws.push(raw),
+      onNarrationReset: (retry) => resets.push(retry)
+    }
+  );
+
+  assert.deepEqual(resets, [{ attempt: 2, maxRetries: 3 }]);
+  assert.deepEqual(previews, ['旧尝试片段', '新尝试完整结果']);
+  assert.deepEqual(raws, [
+    '{"title":"叙事","body":"旧尝试片段',
+    '{"title":"叙事","body":"新尝试完整结果"}'
   ]);
 });
 

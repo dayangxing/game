@@ -19,6 +19,7 @@ import { finalizeRun, normalizeResourceState } from './domain/resources/resource
 import { applyTimePressure } from './domain/time/timePressure.js';
 import { buildTurnResult, publicTimeResult } from './domain/turnResult.js';
 import { createBailianClient } from './llm/bailianClient.js';
+import { createLongSummaryScheduler } from './memory/longSummaryScheduler.js';
 import { getModelConfigFromEnv, normalizeModelConfig, toPublicModelConfig } from './llm/modelConfig.js';
 import { getModelSelection } from './llm/modelSelection.js';
 
@@ -35,6 +36,7 @@ export function createBackendApp(options = {}) {
     game: normalizeGame(options.initialGame ?? createGame(options.seed ?? Date.now())),
     pendingActions: new Map(),
     pendingDirectorChoices: new Map(),
+    directorActionsInFlight: null,
     turnSnapshots: new Map(),
     auditLog: [],
     requestSequence: 0,
@@ -48,8 +50,37 @@ export function createBackendApp(options = {}) {
     persistModelConfig: options.persistModelConfig ?? null,
     createLlm,
     env,
-    fetchImpl: options.fetchImpl
+    fetchImpl: options.fetchImpl,
+    longSummaryScheduler: null
   };
+
+  state.longSummaryScheduler = createLongSummaryScheduler({
+    getGame: () => state.game,
+    commitGame: (nextGame) => {
+      state.game = normalizeGame(nextGame);
+    },
+    summarize: ({
+      game,
+      previousSummary,
+      sourceTurns,
+      summaryWindowStartTurn,
+      summaryWindowEndTurn,
+      rebase,
+      openingAnchor
+    }) => {
+      if (typeof state.llm?.generateLongSummary !== 'function') return null;
+      return state.llm.generateLongSummary({
+        game,
+        previousSummary,
+        sourceTurns,
+        summaryWindowStartTurn,
+        summaryWindowEndTurn,
+        rebase,
+        openingAnchor
+      });
+    },
+    persistGame: state.persistGame
+  });
 
   const handleRequest = async (request) => {
     const requestId = nextRequestId(state);
@@ -85,9 +116,14 @@ export function createBackendApp(options = {}) {
         });
       }
 
+      if (route === 'POST /api/v1/game/character-preview') {
+        const body = await readJson(request);
+        return handleCharacterPreview({ body, requestId, state });
+      }
+
       if (route === 'POST /api/v1/game/new') {
         const body = await readJson(request);
-        return handleNewFormalGame({ body, requestId, state });
+        return handleNewFormalGame({ body, requestId, state, now });
       }
 
       if (route === 'POST /api/v1/game/reset') {
@@ -98,6 +134,11 @@ export function createBackendApp(options = {}) {
       if (route === 'POST /api/v1/daily-actions') {
         const body = await readJson(request);
         return handleDailyActions({ body, requestId, state, now });
+      }
+
+      if (route === 'POST /api/v1/daily-actions/stream') {
+        const body = await readJson(request);
+        return handleDailyActionsStream({ body, requestId, state, now });
       }
 
       if (route === 'POST /api/v1/turns') {
@@ -137,15 +178,23 @@ export function createBackendApp(options = {}) {
       const response = await handleRequest(request);
       const pathname = new URL(request.url).pathname;
       const isModelConfigRequest = pathname === '/api/v1/model-config';
-      if (!persistGame || isModelConfigRequest || request.method !== 'POST' || response.status < 200 || response.status >= 300) {
+      if (isModelConfigRequest || request.method !== 'POST' || response.status < 200 || response.status >= 300) {
         return response;
       }
 
       if (response.headers.get('content-type')?.startsWith('text/event-stream')) {
-        return withCompletionPersistence(response, persistGame, state);
+        return withCompletionPersistence(
+          response,
+          persistGame,
+          state,
+          shouldTriggerLongSummary(pathname)
+        );
       }
 
-      await persistGame(state.game);
+      if (persistGame) await persistGame(state.game);
+      if (shouldTriggerLongSummary(pathname)) {
+        state.longSummaryScheduler?.consider({ reason: 'turn-complete' });
+      }
       return response;
     },
 
@@ -192,7 +241,7 @@ async function handleModelConfig({ body, requestId, state }) {
   }
 }
 
-function handleDailyActions({ body, requestId, state, now }) {
+async function handleDailyActions({ body, requestId, state, now }) {
   const viewId = body.viewId ?? 'home';
 
   if (!hasView(viewId)) {
@@ -226,23 +275,206 @@ function handleDailyActions({ body, requestId, state, now }) {
     return jsonResponse(200, requestId, { actions: [stripInternalActionFields(action)] });
   }
 
-  const eventActions = selectEventActions({
-    game: state.game,
+  const resolved = await resolveFormalDailyActions({
+    state,
     viewId,
-    now: now(),
-    sequenceStart: state.actionSequence
+    now: now()
   });
-  const actions = composeDailyActions({
-    game: state.game,
+  if (!resolved) return jsonResponse(200, requestId, { actions: [], game: publicGame(state.game) });
+
+  return jsonResponse(200, requestId, {
+    actions: resolved.actions.map(stripInternalActionFields),
+    game: publicGame(state.game)
+  });
+}
+
+async function resolveFormalDailyActions({ state, viewId, now, directorOutput }) {
+  const directorActions = await createDirectorDailyActions({
+    state,
     viewId,
     now,
+    directorOutput
+  });
+  const actions = directorActions ?? composeDailyActions({
+    game: state.game,
+    viewId,
+    now: () => now,
     sequenceStart: state.actionSequence,
-    eventActions
+    eventActions: selectEventActions({
+      game: state.game,
+      viewId,
+      now,
+      sequenceStart: state.actionSequence
+    })
   });
 
-  if (actions.length > 0) {
-    state.actionSequence += actions.length;
+  if (actions.length === 0) return null;
 
+  if (!directorActions) {
+    state.actionSequence += actions.length;
+    for (const action of actions) {
+      state.pendingActions.set(action.id, {
+        ...action,
+        turn: state.game.turn,
+        consumed: false
+      });
+    }
+  }
+
+  state.auditLog.push({
+    type: 'daily-actions',
+    viewId,
+    actionIds: actions.map((action) => action.id),
+    source: directorActions ? 'director' : 'event-catalog',
+    at: now.toISOString()
+  });
+
+  return { actions };
+}
+
+function handleDailyActionsStream({ body, requestId, state, now }) {
+  const viewId = body.viewId ?? 'home';
+
+  if (!hasView(viewId)) {
+    return errorResponse(400, requestId, 'UNKNOWN_VIEW', '未知界面，无法生成每日行动。');
+  }
+  if (body.gameVersion !== undefined && body.gameVersion !== state.game.version) {
+    return errorResponse(409, requestId, 'GAME_VERSION_MISMATCH', '客户端存档版本过旧，请刷新游戏状态。');
+  }
+  const ended = rejectIfGameEnded({ requestId, state });
+  if (ended) return ended;
+  if (state.game.resourceRun?.pendingDraft) {
+    return errorResponse(409, requestId, 'RESOURCE_DRAFT_PENDING', '请先选择当前机缘候选，再生成每日行动。');
+  }
+  if (!state.game.onboarding?.completed) {
+    return errorResponse(409, requestId, 'ONBOARDING_REQUIRED', '完成新手任务后才能生成正式行动。');
+  }
+
+  return sseResponse(async (emit) => {
+    let directorOutput = null;
+    const existing = [...state.pendingActions.values()]
+      .filter((action) => action.source === 'director')
+      .filter((action) => action.turn === state.game.turn && !action.consumed);
+
+    if (existing.length < 2) {
+      try {
+        for await (const event of state.storyDirector.stream({
+          game: state.game,
+          input: { type: 'continue' }
+        })) {
+          if (event.type === 'stream_reset') emit('story_reset', event.data);
+          if (event.type === 'story_delta') emit('story_delta', event.data);
+          if (event.type === 'director_result') directorOutput = event.data;
+        }
+      } catch (error) {
+        directorOutput = buildFallbackDirectorOutput({ game: state.game, input: { type: 'continue' }, error });
+      }
+    }
+
+    const resolved = await resolveFormalDailyActions({
+      state,
+      viewId,
+      now: now(),
+      directorOutput: existing.length >= 2 ? undefined : directorOutput
+    });
+    emit('done', {
+      ok: true,
+      data: {
+        game: publicGame(state.game),
+        actions: (resolved?.actions ?? []).map(stripInternalActionFields)
+      },
+      error: null,
+      requestId
+    });
+  });
+}
+
+async function createDirectorDailyActions({ state, viewId, now, directorOutput: providedDirectorOutput }) {
+  const existing = [...state.pendingActions.values()]
+    .filter((action) => action.source === 'director')
+    .filter((action) => action.turn === state.game.turn && !action.consumed)
+    .filter((action) => new Date(action.expiresAt).getTime() > now.getTime());
+  if (existing.length >= 2) return existing;
+
+  try {
+    const generationKey = `${state.game.id}:${state.game.turn}:${viewId}`;
+    let directorOutput;
+    if (providedDirectorOutput !== undefined) {
+      directorOutput = providedDirectorOutput;
+    } else {
+      const inFlight = state.directorActionsInFlight;
+      if (inFlight?.key === generationKey) {
+        directorOutput = await inFlight.promise;
+      } else {
+        const promise = state.storyDirector.invoke({
+          game: state.game,
+          input: { type: 'continue' }
+        });
+        state.directorActionsInFlight = { key: generationKey, promise };
+        try {
+          directorOutput = await promise;
+        } finally {
+          if (state.directorActionsInFlight?.promise === promise) {
+            state.directorActionsInFlight = null;
+          }
+        }
+      }
+    }
+    if (providedDirectorOutput === undefined && `${state.game.id}:${state.game.turn}:${viewId}` !== generationKey) {
+      return null;
+    }
+
+    const refreshedExisting = [...state.pendingActions.values()]
+      .filter((action) => action.source === 'director')
+      .filter((action) => action.turn === state.game.turn && !action.consumed)
+      .filter((action) => new Date(action.expiresAt).getTime() > now.getTime());
+    if (refreshedExisting.length >= 2) return refreshedExisting;
+
+    if (state.game.turn === 0 && state.game.log?.[0]?.id === 'formal-opening' && directorOutput.status === 'generated') {
+      state.game = applyInitialDirectorScene(state.game, directorOutput);
+    }
+
+    if (directorOutput?.mode !== 'choice' || directorOutput.choices?.length < 2) {
+      return null;
+    }
+
+    const expiresAt = new Date(now.getTime() + 30 * 60 * 1000).toISOString();
+    const sequenceStart = state.actionSequence;
+    state.pendingDirectorChoices.clear();
+    const actions = directorOutput.choices.slice(0, 4).map((choice, index) => {
+      const action = {
+        id: `act_${state.game.turn}_${viewId}_${sequenceStart + index}_director`,
+        title: choice.title && choice.title !== choice.text ? choice.title : `抉择 ${index + 1}`,
+        icon: '抉',
+        command: choice.text,
+        meta: directorOutput.scene.slice(0, 12) + (directorOutput.scene.length > 12 ? '…' : ''),
+        source: 'director',
+        risk: choice.tone === 'danger' ? 'high' : choice.tone === 'mystery' ? 'medium' : 'low',
+        category: 'director',
+        cadence: 'side',
+        choiceId: choice.id,
+        scene: directorOutput.scene,
+        effectHints: choice.effectHints,
+        storyHook: [
+          `场景：${directorOutput.scene}`,
+          `选项：${choice.text}`,
+          '规则边界：只能描述已解析效果。'
+        ].join('\n'),
+        expiresAt,
+        turn: state.game.turn,
+        consumed: false
+      };
+      state.pendingDirectorChoices.set(action.id, {
+        ...choice,
+        id: action.id,
+        scene: directorOutput.scene,
+        turn: state.game.turn,
+        consumed: false
+      });
+      return action;
+    });
+
+    state.actionSequence += actions.length;
     for (const action of actions) {
       state.pendingActions.set(action.id, {
         ...action,
@@ -251,17 +483,54 @@ function handleDailyActions({ body, requestId, state, now }) {
       });
     }
 
+    return actions;
+  } catch (error) {
     state.auditLog.push({
-      type: 'daily-actions',
+      type: 'director-fallback',
       viewId,
-      actionIds: actions.map((action) => action.id),
-      at: now().toISOString()
+      message: error?.message ?? 'storyDirector failed',
+      at: now.toISOString()
     });
-
-    return jsonResponse(200, requestId, {
-      actions: actions.map(stripInternalActionFields)
-    });
+    return null;
   }
+}
+
+function applyInitialDirectorScene(game, directorOutput) {
+  const opening = game.log?.[0];
+  if (!opening) return game;
+
+  const entry = {
+    ...opening,
+    body: directorOutput.scene,
+    npcLine: formatDirectorNpcLines(directorOutput.npcLines),
+    narrationSource: 'llm',
+    worldEvent: opening.worldEvent ?? '命簿初开'
+  };
+  const nextGame = {
+    ...game,
+    log: [entry, ...game.log.slice(1)],
+    worldEvents: (game.worldEvents ?? []).map((event, index) => (
+      index === 0 ? { ...event, detail: directorOutput.scene } : event
+    )),
+    timeline: (game.timeline ?? []).map((item, index) => (
+      index === 0 ? { ...item, detail: directorOutput.scene } : item
+    )),
+    storyMemory: null
+  };
+
+  return recordStoryMemoryTurn({
+    before: nextGame,
+    after: nextGame,
+    action: { title: entry.title, command: entry.command },
+    entry,
+    narration: {
+      status: directorOutput.status,
+      title: entry.title,
+      body: entry.body,
+      npcLine: entry.npcLine,
+      foreshadow: directorOutput.memoryHints?.at(0) ?? ''
+    }
+  });
 }
 
 function composeDailyActions({ game, viewId, now, sequenceStart, eventActions }) {
@@ -345,7 +614,7 @@ function hasOnlyBreakthroughAction(actions) {
   return actions.length === 1 && actions[0].source === 'breakthrough';
 }
 
-function handleNewFormalGame({ body, requestId, state }) {
+async function handleNewFormalGame({ body, requestId, state, now }) {
   if (!canCreateFormalCharacter(state.game.onboarding)) {
     return errorResponse(409, requestId, 'ONBOARDING_REQUIRED', '完成新手任务后才能创建正式角色。');
   }
@@ -361,11 +630,12 @@ function handleNewFormalGame({ body, requestId, state }) {
     const preservedMetaProgress = finalizeActiveResourceRun(state.game).metaProgress;
     const nextGame = normalizeGame({
       ...applyCharacterToGame(createGame(seed), character, seed),
-      metaProgress: preservedMetaProgress
+      metaProgress: preservedMetaProgress,
+      onboarding: createCompletedFormalOnboardingState()
     });
-    nextGame.onboarding = createCompletedFormalOnboardingState();
     state.pendingActions.clear();
     state.pendingDirectorChoices.clear();
+    state.directorActionsInFlight = null;
     state.turnSnapshots.clear();
     state.game = nextGame;
     state.game.mode = 'api';
@@ -387,18 +657,48 @@ function handleNewFormalGame({ body, requestId, state }) {
 function handleResetGame({ body, requestId, state }) {
   const seed = Number.isInteger(body.rerollSeed) ? body.rerollSeed : state.game.seed + state.requestSequence + 101;
   const preservedMetaProgress = finalizeActiveResourceRun(state.game).metaProgress;
-  const nextGame = normalizeGame({ ...createGame(seed), metaProgress: preservedMetaProgress });
-  nextGame.onboarding = createCompletedFormalOnboardingState();
+  const nextGame = normalizeGame({
+    ...createGame(seed),
+    metaProgress: preservedMetaProgress,
+    onboarding: createCompletedFormalOnboardingState()
+  });
   delete nextGame.characterSeed;
+  nextGame.player.name = '';
   nextGame.mode = 'api';
   state.pendingActions.clear();
   state.pendingDirectorChoices.clear();
+  state.directorActionsInFlight = null;
   state.turnSnapshots.clear();
   state.auditLog.length = 0;
   state.game = nextGame;
   return jsonResponse(200, requestId, {
     game: publicGame(state.game)
   });
+}
+
+function handleCharacterPreview({ body, requestId, state }) {
+  if (!canCreateFormalCharacter(state.game.onboarding)) {
+    return errorResponse(409, requestId, 'ONBOARDING_REQUIRED', '完成新手任务后才能预览正式角色。');
+  }
+
+  const name = String(body.name ?? '').trim();
+  if (name.length > 12) {
+    return errorResponse(400, requestId, 'CHARACTER_NAME_INVALID', '角色名最多 12 个字符。');
+  }
+
+  try {
+    const seed = Number.isInteger(body.rerollSeed) ? body.rerollSeed : state.game.seed + 101;
+    const character = rollCharacter({ seed, name, attributes: body.attributes });
+    return jsonResponse(200, requestId, { character });
+  } catch (error) {
+    if (error.message.startsWith('ATTRIBUTE_ALLOCATION_INVALID')) {
+      return errorResponse(400, requestId, 'CHARACTER_ATTRIBUTES_INVALID', '角色属性分配无效。');
+    }
+    if (error.message.startsWith('CHARACTER_ROLL_INVALID')) {
+      return errorResponse(500, requestId, 'CHARACTER_ROLL_INVALID', '角色随机属性超出可玩范围，请重新生成。');
+    }
+    throw error;
+  }
 }
 
 async function handleTurn({ body, requestId, state, now }) {
@@ -473,6 +773,7 @@ function handleDirectorTurnStream({ body, requestId, state, now }) {
 
     try {
       for await (const event of state.storyDirector.stream({ game: before, input })) {
+        if (event.type === 'stream_reset') emit('story_reset', event.data);
         if (event.type === 'story_delta') emit('story_delta', event.data);
         if (event.type === 'director_result') directorOutput = event.data;
       }
@@ -484,6 +785,7 @@ function handleDirectorTurnStream({ body, requestId, state, now }) {
       before,
       directorOutput: directorOutput ?? buildFallbackDirectorOutput({ game: before, input }),
       input,
+      pendingChoice: validation.pendingChoice,
       state,
       now: now()
     });
@@ -523,8 +825,15 @@ function validateDirectorTurnRequest({ body, requestId, state }) {
   }
   if (body.type === 'choice') {
     const pendingChoice = state.pendingDirectorChoices.get(body.choiceId);
-    if (!pendingChoice || pendingChoice.turn !== state.game.turn) {
+    if (!pendingChoice || pendingChoice.consumed || pendingChoice.turn !== state.game.turn) {
       return errorResponse(404, requestId, 'CHOICE_NOT_FOUND', '该选择已失效，请继续推演。');
+    }
+    pendingChoice.consumed = true;
+    state.pendingDirectorChoices.delete(body.choiceId);
+    const pendingAction = state.pendingActions.get(body.choiceId);
+    if (pendingAction) {
+      pendingAction.consumed = true;
+      state.pendingActions.delete(body.choiceId);
     }
     return { pendingChoice };
   }
@@ -543,8 +852,10 @@ function buildDirectorInput({ body, pendingChoice }) {
   return { type: 'continue' };
 }
 
-function resolveDirectorTurn({ before, directorOutput, input, state, now }) {
-  const pendingChoice = input.type === 'choice' ? state.pendingDirectorChoices.get(input.choiceId) : null;
+function resolveDirectorTurn({ before, directorOutput, input, pendingChoice: requestedChoice, state, now }) {
+  const pendingChoice = input.type === 'choice'
+    ? requestedChoice ?? state.pendingDirectorChoices.get(input.choiceId)
+    : null;
   const choiceHints = pendingChoice?.effectHints ?? [];
   const effectHints = input.type === 'choice'
     ? [...choiceHints, ...directorOutput.effectHints]
@@ -795,6 +1106,37 @@ function resolveTurnRules({ body, requestId, state, now }) {
     };
   }
 
+  if (action.source === 'director') {
+    const resolution = resolveDirectorAction({ game: before, action, now: now() });
+    const chapterResolution = applyTerminalResolution({ before, after: resolution.game, turn: before.turn + 1 });
+
+    action.consumed = true;
+    state.game = chapterResolution.game;
+    state.turnSnapshots.set(state.game.turn, {
+      beforeGame: before,
+      afterGame: state.game,
+      action: { ...action },
+      ruleEntry: resolution.entry
+    });
+
+    return {
+      before,
+      action,
+      ruleEntry: resolution.entry,
+      ruleResult: resolution.ruleResult,
+      chapterTransition: chapterResolution.transition,
+      chapterMilestone: chapterResolution.milestone,
+      ending: chapterResolution.ending,
+      fallbackNarration: {
+        status: 'fallback',
+        title: resolution.entry.title,
+        body: resolution.entry.body,
+        npcLine: resolution.entry.npcLine,
+        foreshadow: state.game.foreshadows.at(-1) ?? ''
+      }
+    };
+  }
+
   if (action.source === 'event') {
     const resolution = resolveChoice({
       game: before,
@@ -847,6 +1189,59 @@ function resolveTurnRules({ body, requestId, state, now }) {
     chapterTransition: after.transition,
     chapterMilestone: after.milestone,
     ending: after.ending
+  };
+}
+
+function resolveDirectorAction({ game, action, now }) {
+  const effectResolution = resolveDirectorEffectHints({
+    game,
+    effectHints: action.effectHints ?? [],
+    now
+  });
+  const title = '命途分岔';
+  const pressure = applyTimePressure({
+    game: effectResolution.game,
+    action: { title, command: action.command, source: 'director' },
+    command: action.command,
+    category: 'story',
+    effectHints: effectResolution.accepted,
+    source: 'director'
+  });
+  const turn = game.turn + 1;
+  const entry = {
+    id: `turn-${turn}`,
+    title,
+    command: action.command,
+    body: action.scene,
+    npcLine: '',
+    worldEvent: effectResolution.summary
+  };
+  const nextGame = {
+    ...pressure.game,
+    turn,
+    version: turn,
+    log: [...pressure.game.log, entry],
+    timeline: [
+      ...pressure.game.timeline,
+      { type: 'director', title: entry.title, detail: entry.body }
+    ],
+    worldEvents: [
+      ...pressure.game.worldEvents,
+      { title: entry.title, detail: effectResolution.summary, turn }
+    ]
+  };
+
+  return {
+    game: nextGame,
+    entry,
+    ruleResult: {
+      success: true,
+      eventId: 'story_director',
+      choiceId: action.choiceId,
+      resolvedAt: now.toISOString(),
+      rejectedEffectHints: effectResolution.rejected.length,
+      timeResult: publicTimeResult(pressure.timeResult)
+    }
   };
 }
 
@@ -959,7 +1354,8 @@ async function resolveTurnNarrationStream({ resolved, state, emit }) {
     beforeGame: resolved.before,
     afterGame: state.game,
     action: resolved.action,
-    ruleEntry: resolved.ruleEntry ?? state.game.log.at(-1)
+    ruleEntry: resolved.ruleEntry ?? state.game.log.at(-1),
+    onRetry: (retry) => emit('narration_reset', retry)
   })) {
     const text = String(chunk ?? '');
     if (!text) continue;
@@ -1013,7 +1409,7 @@ async function resolveTurnNarration({ before, after, action, ruleEntry, state })
   return result.narration;
 }
 
-function withCompletionPersistence(response, persistGame, state) {
+function withCompletionPersistence(response, persistGame, state, shouldConsiderSummary = true) {
   const reader = response.body?.getReader();
   if (!reader) return response;
 
@@ -1025,7 +1421,10 @@ function withCompletionPersistence(response, persistGame, state) {
           if (done) break;
           if (value) controller.enqueue(value);
         }
-        await persistGame(state.game);
+        if (persistGame) await persistGame(state.game);
+        if (shouldConsiderSummary) {
+          state.longSummaryScheduler?.consider({ reason: 'turn-complete' });
+        }
         controller.close();
       } catch (error) {
         controller.error(error);
@@ -1041,6 +1440,16 @@ function withCompletionPersistence(response, persistGame, state) {
     statusText: response.statusText,
     headers: response.headers
   });
+}
+
+function shouldTriggerLongSummary(pathname) {
+  return pathname === '/api/v1/game/new'
+    || pathname === '/api/v1/game/reset'
+    || pathname === '/api/v1/daily-actions'
+    || pathname === '/api/v1/daily-actions/stream'
+    || pathname === '/api/v1/turns'
+    || pathname === '/api/v1/turns/stream'
+    || /^\/api\/v1\/turns\/\d+\/narration$/.test(pathname);
 }
 
 function handleExportStory({ body, requestId, state }) {

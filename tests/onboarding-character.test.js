@@ -83,6 +83,26 @@ test('character generation is seeded and stays in playable ranges', () => {
   assert.doesNotThrow(() => assertPlayableCharacter(first));
 });
 
+test('character background pools expose the large origin root and trait variety', () => {
+  const characters = Array.from({ length: 20000 }, (_, index) => rollCharacter({
+    seed: index + 1,
+    name: `角色${index + 1}`
+  }));
+  const origins = new Set(characters.map((character) => character.origin));
+  const roots = new Set(characters.map((character) => character.spiritualRoot));
+  const traits = new Set(characters.flatMap((character) => character.traits));
+
+  assert.equal(origins.size, 18);
+  assert.equal(roots.size, 18);
+  assert.equal(traits.size, 24);
+  assert.ok(characters.every((character) => {
+    const uniqueTraits = new Set(character.traits);
+    return character.traits.length >= 2
+      && character.traits.length <= 3
+      && uniqueTraits.size === character.traits.length;
+  }));
+});
+
 test('character generation accepts a validated manual attribute allocation', () => {
   const character = rollCharacter({
     seed: 52,

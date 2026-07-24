@@ -168,6 +168,113 @@ test('bailian client exposes story director generation and streaming wrappers', 
   ]);
 });
 
+test('bailian client generates long summaries with the fast model and returns only summary fields', async () => {
+  let captured;
+  const client = createBailianClient({
+    env: { BAILIAN_API_KEY: 'unit-test-token' },
+    async fetchImpl(url, init) {
+      captured = { url, body: JSON.parse(init.body) };
+      return {
+        ok: true,
+        async json() {
+          return {
+            choices: [{
+              message: {
+                content: JSON.stringify({
+                  summary: '顾清河追查雾隐秘境，尚未解开飞升传闻。',
+                  coveredThroughTurn: 12,
+                  ignoredField: '不得透传'
+                })
+              }
+            }]
+          };
+        }
+      };
+    }
+  });
+
+  const result = await client.generateLongSummary({
+    game: minimalGame(),
+    previousSummary: '青云宗新生入门。',
+    sourceTurns: [{ turn: 12, title: '雾隐回响', outcome: '发现残契' }]
+  });
+
+  assert.equal(captured.url, 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions');
+  assert.equal(captured.body.model, 'qwen3.6-flash');
+  assert.equal(captured.body.response_format.type, 'json_object');
+  assert.ok(captured.body.temperature <= 0.3);
+  assert.deepEqual(result, {
+    summary: '顾清河追查雾隐秘境，尚未解开飞升传闻。',
+    coveredThroughTurn: 12
+  });
+});
+
+test('bailian client accepts a long summary at the 420-character limit', async () => {
+  const client = createBailianClient({
+    env: { BAILIAN_API_KEY: 'unit-test-token' },
+    async fetchImpl() {
+      return {
+        ok: true,
+        async json() {
+          return {
+            choices: [{
+              message: {
+                content: JSON.stringify({
+                  summary: '甲'.repeat(420),
+                  coveredThroughTurn: 12
+                })
+              }
+            }]
+          };
+        }
+      };
+    }
+  });
+
+  const result = await client.generateLongSummary({
+    game: minimalGame(),
+    sourceTurns: [{ turn: 12, title: '雾隐回响', outcome: '发现残契' }]
+  });
+
+  assert.equal(result.summary.length, 420);
+});
+
+test('bailian client rejects an overlong summary after reusing the existing retries', async () => {
+  let calls = 0;
+  const client = createBailianClient({
+    env: { BAILIAN_API_KEY: 'unit-test-token' },
+    retryDelayMs: 0,
+    sleepImpl: async () => {},
+    async fetchImpl() {
+      calls += 1;
+      return {
+        ok: true,
+        async json() {
+          return {
+            choices: [{
+              message: {
+                content: JSON.stringify({
+                  summary: '甲'.repeat(421),
+                  coveredThroughTurn: 12
+                })
+              }
+            }]
+          };
+        }
+      };
+    }
+  });
+
+  await assert.rejects(
+    () => client.generateLongSummary({
+      game: minimalGame(),
+      sourceTurns: [{ turn: 12, title: '雾隐回响', outcome: '发现残契' }]
+    }),
+    /420/
+  );
+  assert.equal(calls, 4);
+});
+
 test('bailian client fails closed when no api key is configured', async () => {
   const client = createBailianClient({
     env: {},
@@ -180,6 +287,99 @@ test('bailian client fails closed when no api key is configured', async () => {
     () => client.chatJson({ messages: [] }),
     /BAILIAN_API_KEY is not configured/
   );
+});
+
+test('bailian client retries a transient json request before succeeding', async () => {
+  let calls = 0;
+  const waits = [];
+  const client = createBailianClient({
+    env: { BAILIAN_API_KEY: 'unit-test-token' },
+    retryDelayMs: 10,
+    sleepImpl: async (delay) => waits.push(delay),
+    async fetchImpl() {
+      calls += 1;
+      if (calls === 1) throw new Error('temporary network failure');
+      return {
+        ok: true,
+        async json() {
+          return { choices: [{ message: { content: '{"ok":true}' } }] };
+        }
+      };
+    }
+  });
+
+  assert.deepEqual(await client.chatJson({ messages: [] }), { ok: true });
+  assert.equal(calls, 2);
+  assert.deepEqual(waits, [10]);
+});
+
+test('bailian client retries a malformed json response up to three times', async () => {
+  let calls = 0;
+  const client = createBailianClient({
+    env: { BAILIAN_API_KEY: 'unit-test-token' },
+    retryDelayMs: 0,
+    sleepImpl: async () => {},
+    async fetchImpl() {
+      calls += 1;
+      return {
+        ok: true,
+        async json() {
+          return { choices: [{ message: { content: calls === 4 ? '{"ok":true}' : '{broken' } }] };
+        }
+      };
+    }
+  });
+
+  assert.deepEqual(await client.chatJson({ messages: [] }), { ok: true });
+  assert.equal(calls, 4);
+});
+
+test('bailian client does not retry authentication failures', async () => {
+  let calls = 0;
+  const client = createBailianClient({
+    env: { BAILIAN_API_KEY: 'unit-test-token' },
+    retryDelayMs: 0,
+    sleepImpl: async () => {},
+    async fetchImpl() {
+      calls += 1;
+      return { ok: false, status: 401, async json() { return {}; } };
+    }
+  });
+
+  await assert.rejects(() => client.chatJson({ messages: [] }), /HTTP 401/);
+  assert.equal(calls, 1);
+});
+
+test('bailian client retries a stream and reports reset attempts', async () => {
+  let calls = 0;
+  const retries = [];
+  const chunks = [
+    'data: {"choices":[{"delta":{"content":"{\\"ok\\":true}"}}]}\n\n',
+    'data: [DONE]\n\n'
+  ];
+  const client = createBailianClient({
+    env: { BAILIAN_API_KEY: 'unit-test-token' },
+    retryDelayMs: 0,
+    sleepImpl: async () => {},
+    async fetchImpl() {
+      calls += 1;
+      if (calls === 1) throw new Error('stream connection reset');
+      return { ok: true, body: streamFromStrings(chunks) };
+    }
+  });
+
+  const deltas = [];
+  for await (const delta of client.streamChatContent({
+    messages: [],
+    onRetry: (retry) => retries.push(retry)
+  })) {
+    deltas.push(delta);
+  }
+
+  assert.deepEqual(deltas, ['{"ok":true}']);
+  assert.equal(calls, 2);
+  assert.equal(retries.length, 1);
+  assert.equal(retries[0].attempt, 1);
 });
 
 function streamFromStrings(chunks) {

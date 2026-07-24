@@ -16,11 +16,30 @@ export function createStoryDirector({ llm }) {
       }
 
       let rawText = '';
-      for await (const chunk of llm.streamStoryDirector({ game, input })) {
+      let pendingReset = null;
+      const stream = llm.streamStoryDirector({
+        game,
+        input,
+        onRetry: (retry) => {
+          pendingReset = retry;
+        }
+      });
+
+      for await (const chunk of stream) {
+        if (pendingReset) {
+          yield { type: 'stream_reset', data: pendingReset };
+          pendingReset = null;
+          rawText = '';
+        }
         const text = String(chunk ?? '');
         if (!text) continue;
         rawText += text;
         yield { type: 'story_delta', data: { text } };
+      }
+
+      if (pendingReset) {
+        rawText = '';
+        yield { type: 'stream_reset', data: pendingReset };
       }
 
       yield { type: 'director_result', data: normalizeDirectorOutput(JSON.parse(rawText), game) };
@@ -71,14 +90,21 @@ function normalizeChoices(choices = [], game) {
 
   return choices.map((choice, index) => {
     const normalized = normalizeEffectHints(choice?.effectHints, game);
+    const choiceText = text(choice?.text, `顺势观察第${index + 1}处异动`);
     return {
       id: safeChoiceId(choice?.id, index),
-      text: text(choice?.text, `顺势观察第${index + 1}处异动`),
+      title: choiceTitle(choice?.title, choiceText, index),
+      text: choiceText,
       tone: text(choice?.tone, 'mystery'),
       effectHints: normalized.accepted,
       rejectedEffectHints: normalized.rejected
     };
   }).filter((choice) => choice.text.length > 0);
+}
+
+function choiceTitle(value, choiceText, index) {
+  const title = text(value, '');
+  return title && title !== choiceText ? title : `抉择 ${index + 1}`;
 }
 
 function normalizeNpcLines(lines = [], game) {

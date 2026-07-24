@@ -6,10 +6,23 @@ import {
 } from './attributes.js';
 import { createFormalStoryProgress } from './chapters/storyProgress.js';
 import { EMPTY_META_PROGRESS, EMPTY_RESOURCE_RUN, normalizeResourceState } from './resources/resourceProgress.js';
+import { calculateTraitBonuses } from './traitRules.js';
 
-const ORIGINS = ['山野孤子', '没落世家', '药铺学徒', '渔村遗孤', '外门杂役', '散修之后'];
-const ROOTS = ['雷木双灵根', '金火双灵根', '水木双灵根', '土灵根', '风雷异灵根', '五行杂灵根'];
-const TRAITS = ['早慧', '命火绵长', '经脉坚韧', '福缘深厚', '灵根不稳', '心魔易感', '丹道亲和', '剑心微明'];
+const ORIGINS = [
+  '山野孤子', '没落世家', '药铺学徒', '渔村遗孤', '外门杂役', '散修之后',
+  '镖局遗脉', '河运船户', '旧城孤馆', '罪臣旁支', '牧原猎户', '机关匠户',
+  '古寺香火童', '商旅账房', '边关遗民', '秘境流民', '退隐修士后人', '宗门弃徒'
+];
+const ROOTS = [
+  '雷木双灵根', '金火双灵根', '水木双灵根', '土灵根', '风雷异灵根', '五行杂灵根',
+  '金灵根', '木灵根', '水灵根', '火灵根', '雷灵根', '风灵根',
+  '冰灵根', '金水双灵根', '木火双灵根', '土金双灵根', '空明异灵根', '玄阴异灵根'
+];
+const TRAITS = [
+  '早慧', '命火绵长', '经脉坚韧', '福缘深厚', '灵根不稳', '心魔易感', '丹道亲和', '剑心微明',
+  '听风识气', '静水心境', '百折不屈', '旧缘未断', '梦中观星', '血脉隐秘', '孤煞随身', '因果缠身',
+  '贪念难消', '兵刃亲和', '符箓悟性', '阵道敏锐', '灵兽亲和', '天生长息', '命宫有缺', '神魂易伤'
+];
 
 export function rollCharacter({ seed, name, attributes }) {
   const rng = createRng(seed);
@@ -56,6 +69,7 @@ export function assertPlayableCharacter(character) {
 }
 
 export function applyCharacterToGame(game, character, seed) {
+  const traitBonuses = calculateTraitBonuses({ character });
   const gameState = {
     seed,
     turn: 0,
@@ -65,6 +79,7 @@ export function applyCharacterToGame(game, character, seed) {
     characterSeed: seed,
     character,
     player: createFormalPlayer(character),
+    derivedBonuses: traitBonuses,
     npcs: createFormalNpcs(character),
     worldEvents: createFormalWorldEvents(character),
     foreshadows: createFormalForeshadows(character),
@@ -134,23 +149,25 @@ function sanitizeName(name) {
 }
 
 function createFormalPlayer(character) {
+  const traitBonuses = calculateTraitBonuses({ character });
   const maxHealth = deriveMaxHealth(character.attributes);
-  const maxLifespan = deriveMaxLifespan(character.initialLifespan, character.attributes);
+  const maxLifespan = deriveMaxLifespan(character.initialLifespan, character.attributes)
+    + (traitBonuses.maxLifespan ?? 0);
 
   return {
     name: character.name,
     origin: character.origin,
     realm: '炼气一层',
     spiritualRoot: character.spiritualRoot,
-    maxHealth,
-    health: maxHealth,
+    maxHealth: maxHealth + (traitBonuses.maxHealth ?? 0),
+    health: maxHealth + (traitBonuses.maxHealth ?? 0),
     maxLifespan,
     lifespan: maxLifespan,
-    spiritStones: character.startingResources.spiritStones,
+    spiritStones: character.startingResources.spiritStones + (traitBonuses.startingSpiritStones ?? 0),
     qi: 50,
-    mood: 50,
+    mood: Math.max(0, Math.min(100, 50 + (traitBonuses.startingMood ?? 0))),
     cultivationProgress: 0,
-    sectRelation: 0,
+    sectRelation: Math.max(0, Math.min(100, traitBonuses.startingSectRelation ?? 0)),
     location: '青云宗山门'
   };
 }

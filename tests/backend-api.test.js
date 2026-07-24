@@ -186,6 +186,82 @@ test('POST /api/v1/game/new is locked until onboarding is complete', async () =>
   assert.equal(payload.error.code, 'ONBOARDING_REQUIRED');
 });
 
+test('POST /api/v1/game/character-preview matches formal creation without mutating the game', async () => {
+  const app = createBackendApp({ seed: 31, now: fixedNow });
+  const state = app.getState();
+  state.game.onboarding = completedOnboardingState();
+  const attributes = {
+    rootBone: 7,
+    comprehension: 6,
+    fortune: 4,
+    willpower: 4,
+    lifeSeed: 4
+  };
+  const before = {
+    turn: state.game.turn,
+    version: state.game.version,
+    character: structuredClone(state.game.character),
+    pendingActions: state.pendingActions.size
+  };
+
+  const previewPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/game/character-preview', {
+    name: '顾清河',
+    rerollSeed: 52,
+    attributes
+  })));
+
+  assert.equal(previewPayload.ok, true);
+  assert.equal(previewPayload.data.character.name, '顾清河');
+  assert.equal(typeof previewPayload.data.character.origin, 'string');
+  assert.equal(typeof previewPayload.data.character.spiritualRoot, 'string');
+  assert.ok(Array.isArray(previewPayload.data.character.traits));
+  assert.deepEqual(previewPayload.data.character.attributes, attributes);
+  assert.equal(state.game.turn, before.turn);
+  assert.equal(state.game.version, before.version);
+  assert.deepEqual(state.game.character, before.character);
+  assert.equal(state.pendingActions.size, before.pendingActions);
+
+  const formalPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/game/new', {
+    name: '顾清河',
+    rerollSeed: 52,
+    attributes
+  })));
+
+  assert.deepEqual(
+    {
+      origin: previewPayload.data.character.origin,
+      spiritualRoot: previewPayload.data.character.spiritualRoot,
+      traits: previewPayload.data.character.traits
+    },
+    {
+      origin: formalPayload.data.character.origin,
+      spiritualRoot: formalPayload.data.character.spiritualRoot,
+      traits: formalPayload.data.character.traits
+    }
+  );
+});
+
+test('POST /api/v1/game/character-preview validates manual attributes', async () => {
+  const app = createBackendApp({ seed: 31, now: fixedNow });
+  app.getState().game.onboarding = completedOnboardingState();
+
+  const response = await app.handle(makeRequest('POST', '/api/v1/game/character-preview', {
+    name: '顾清河',
+    rerollSeed: 52,
+    attributes: {
+      rootBone: 7,
+      comprehension: 6,
+      fortune: 4,
+      willpower: 4,
+      lifeSeed: 5
+    }
+  }));
+  const payload = await response.json();
+
+  assert.equal(response.status, 400);
+  assert.equal(payload.error.code, 'CHARACTER_ATTRIBUTES_INVALID');
+});
+
 test('POST /api/v1/game/new creates a seeded formal character after onboarding', async () => {
   const app = createBackendApp({ seed: 31, now: fixedNow });
   app.getState().game.onboarding = completedOnboardingState();
@@ -219,6 +295,321 @@ test('POST /api/v1/game/new creates a seeded formal character after onboarding',
   assert.equal(payload.data.game.onboarding.stepId, 'formal_life');
   assert.equal(payload.data.game.onboarding.unlockedCharacterCreation, true);
   assert.deepEqual(payload.data.game.onboarding.completedStepIds, completedOnboardingState().completedStepIds);
+});
+
+test('POST /api/v1/game/new uses the story director to write the formal turn-zero opening', async () => {
+  let directorCalls = 0;
+  const app = createBackendApp({
+    seed: 31,
+    now: fixedNow,
+    llm: {
+      async generateStoryDirector({ game, input }) {
+        directorCalls += 1;
+        assert.equal(game.turn, 0);
+        assert.equal(input.type, 'continue');
+        return {
+          scene: 'LLM 开篇：命簿上的墨迹尚未干透，山门晨雾便沿着你的土灵根气息缓缓聚拢。',
+          mode: 'choice',
+          npcLines: [{ npcId: 'xuanheng', speaker: '玄衡长老', line: '命簿只记来处，不替你决定去处。' }],
+          effectHints: [],
+          choices: [
+            { id: 'enter_gate', title: '入山门', text: '沿着青云石阶走入外门', tone: 'cautious', effectHints: [] },
+            { id: 'ask_elder', title: '问长老', text: '先向玄衡长老询问命簿异样', tone: 'sect', effectHints: [] }
+          ],
+          memoryHints: ['土灵根入山后的命簿异样。']
+        };
+      }
+    }
+  });
+  app.getState().game.onboarding = completedOnboardingState();
+
+  const payload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/game/new', {
+    name: '顾清河',
+    rerollSeed: 52
+  })));
+
+  assert.equal(payload.ok, true);
+  assert.equal(directorCalls, 0);
+  assert.equal(payload.data.game.turn, 0);
+
+  const actions = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+    viewId: 'home',
+    gameVersion: 0
+  })));
+  assert.equal(directorCalls, 1);
+  assert.match(actions.data.game.log[0].body, /^LLM 开篇/);
+  assert.match(actions.data.game.log[0].npcLine, /命簿只记来处/);
+  assert.deepEqual(actions.data.actions.map((action) => action.command), [
+    '沿着青云石阶走入外门',
+    '先向玄衡长老询问命簿异样'
+  ]);
+});
+
+test('POST /api/v1/game/new does not wait for director generation', async () => {
+  let directorCalls = 0;
+  const app = createBackendApp({
+    seed: 31,
+    now: fixedNow,
+    llm: {
+      async generateStoryDirector() {
+        directorCalls += 1;
+        return {
+          scene: '延后抵达的开场',
+          mode: 'choice',
+          npcLines: [],
+          effectHints: [],
+          choices: [
+            { id: 'one', text: '沿山道前行', tone: 'mystery', effectHints: [] },
+            { id: 'two', text: '回山门求助', tone: 'sect', effectHints: [] }
+          ],
+          memoryHints: []
+        };
+      }
+    }
+  });
+  app.getState().game.onboarding = completedOnboardingState();
+
+  const responsePromise = app.handle(makeRequest('POST', '/api/v1/game/new', {
+    name: '顾清河',
+    rerollSeed: 52
+  }));
+  const returnedQuickly = await Promise.race([
+    responsePromise.then(() => true),
+    new Promise((resolve) => setTimeout(() => resolve(false), 25))
+  ]);
+
+  assert.equal(returnedQuickly, true);
+  assert.equal(directorCalls, 0);
+  await responsePromise;
+});
+
+test('POST /api/v1/daily-actions/stream streams the formal turn-zero scene before returning choices', async () => {
+  const streamedChunks = [
+    '{"scene":"第0回合流式开篇：山门晨雾沿着命簿上的墨痕缓缓聚拢，',
+    '你尚未迈步，便听见远处传来一声沉钟。","mode":"choice",',
+    '"npcLines":[],"effectHints":[],"choices":[',
+    '{"id":"enter","title":"入山门","text":"沿山道走入青云外门","tone":"cautious","effectHints":[]},',
+    '{"id":"ask","title":"问长老","text":"先向玄衡长老询问命簿异样","tone":"sect","effectHints":[]}],',
+    '"memoryHints":[]}'
+  ];
+  const app = createBackendApp({
+    seed: 31,
+    now: fixedNow,
+    llm: {
+      async *streamStoryDirector() {
+        for (const chunk of streamedChunks) yield chunk;
+      }
+    }
+  });
+  app.getState().game.onboarding = completedOnboardingState();
+  await jsonResponse(app.handle(makeRequest('POST', '/api/v1/game/new', {
+    name: '顾清河',
+    rerollSeed: 52
+  })));
+
+  const response = await app.handle(makeRequest('POST', '/api/v1/daily-actions/stream', {
+    viewId: 'home',
+    gameVersion: 0
+  }));
+  const body = await response.text();
+  const done = parseSseEvent(body, 'done');
+
+  assert.equal(response.status, 200);
+  assert.ok(body.indexOf('event: story_delta') > -1);
+  assert.ok(body.indexOf('event: story_delta') < body.indexOf('event: done'));
+  assert.equal(done.ok, true);
+  assert.equal(done.data.game.turn, 0);
+  assert.match(done.data.game.log[0].body, /第0回合流式开篇/);
+  assert.deepEqual(done.data.actions.map((action) => action.command), [
+    '沿山道走入青云外门',
+    '先向玄衡长老询问命簿异样'
+  ]);
+});
+
+test('daily action story stream forwards an LLM retry reset before the next attempt', async () => {
+  const app = createBackendApp({
+    seed: 31,
+    now: fixedNow,
+    llm: {
+      async *streamStoryDirector({ onRetry }) {
+        onRetry?.({ attempt: 1, maxRetries: 3 });
+        yield JSON.stringify({
+          scene: '重试后的开局场景',
+          mode: 'choice',
+          npcLines: [],
+          effectHints: [],
+          choices: [
+            { id: 'one', text: '沿山道前行', tone: 'mystery', effectHints: [] },
+            { id: 'two', text: '回山门求助', tone: 'sect', effectHints: [] }
+          ],
+          memoryHints: []
+        });
+      }
+    }
+  });
+  app.getState().game.onboarding = completedOnboardingState();
+  await jsonResponse(app.handle(makeRequest('POST', '/api/v1/game/new', {
+    name: '顾清河',
+    rerollSeed: 52
+  })));
+
+  const response = await app.handle(makeRequest('POST', '/api/v1/daily-actions/stream', {
+    viewId: 'home',
+    gameVersion: 0
+  }));
+  const body = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.ok(body.includes('event: story_reset'));
+  assert.ok(body.indexOf('event: story_reset') < body.indexOf('event: story_delta'));
+  assert.match(body, /"attempt":1/);
+});
+
+test('turn narration stream forwards an LLM retry reset before the next attempt', async () => {
+  const app = createBackendApp({
+    seed: 31,
+    now: fixedNow,
+    llm: {
+      async *streamNarration({ onRetry }) {
+        onRetry?.({ attempt: 1, maxRetries: 3 });
+        yield JSON.stringify({
+          title: '重试后的叙事',
+          body: '山门雨声重新落定，规则结算已经保存，模型只负责把这一回合写成连贯而清晰的修行见闻。',
+          npcLine: '',
+          foreshadow: '',
+          continuityNotes: [],
+          safetyFlags: []
+        });
+      }
+    }
+  });
+  app.getState().game.onboarding = completedOnboardingState();
+  const actions = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+    viewId: 'home',
+    gameVersion: 0
+  })));
+  const action = actions.data.actions[0];
+
+  const response = await app.handle(makeRequest('POST', '/api/v1/turns/stream', {
+    actionId: action.id,
+    clientTurn: 0
+  }));
+  const body = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.ok(body.includes('event: narration_reset'));
+  assert.ok(body.includes('event: done'));
+});
+
+test('concurrent daily-action refreshes share one director generation and action set', async () => {
+  let directorCalls = 0;
+  let releaseGeneration;
+  let markGenerationStarted;
+  const generationStarted = new Promise((resolve) => { markGenerationStarted = resolve; });
+  const generationGate = new Promise((resolve) => { releaseGeneration = resolve; });
+  const app = createBackendApp({
+    seed: 31,
+    now: fixedNow,
+    llm: {
+      async generateStoryDirector() {
+        directorCalls += 1;
+        markGenerationStarted();
+        await generationGate;
+        return {
+          scene: '同一批导演选项场景',
+          mode: 'choice',
+          npcLines: [],
+          effectHints: [],
+          choices: [
+            { id: 'one', text: '沿山道前行', tone: 'mystery', effectHints: [] },
+            { id: 'two', text: '回山门求助', tone: 'sect', effectHints: [] }
+          ],
+          memoryHints: []
+        };
+      }
+    }
+  });
+  app.getState().game.onboarding = completedOnboardingState();
+  const request = () => app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+    viewId: 'home',
+    gameVersion: 0
+  }));
+
+  const firstResponsePromise = request();
+  const secondResponsePromise = request();
+  await generationStarted;
+  releaseGeneration();
+  const [first, second] = await Promise.all([
+    jsonResponse(firstResponsePromise),
+    jsonResponse(secondResponsePromise)
+  ]);
+
+  assert.equal(directorCalls, 1);
+  assert.deepEqual(first.data.actions.map((action) => action.id), second.data.actions.map((action) => action.id));
+  assert.equal(app.getState().pendingActions.size, 2);
+});
+
+test('the same director choice cannot open two concurrent turn settlements', async () => {
+  let streamCalls = 0;
+  let releaseStream;
+  let streamStarted;
+  const started = new Promise((resolve) => { streamStarted = resolve; });
+  const gate = new Promise((resolve) => { releaseStream = resolve; });
+  const app = createBackendApp({
+    seed: 31,
+    now: fixedNow,
+    llm: {
+      async generateStoryDirector() {
+        return {
+          scene: '开局场景',
+          mode: 'choice',
+          npcLines: [],
+          effectHints: [],
+          choices: [
+            { id: 'first', title: '先行', text: '先沿山道观察', tone: 'mystery', effectHints: [] },
+            { id: 'second', title: '求助', text: '先向宗门求助', tone: 'sect', effectHints: [] }
+          ],
+          memoryHints: []
+        };
+      },
+      async *streamStoryDirector() {
+        streamCalls += 1;
+        if (streamCalls === 1) streamStarted();
+        await gate;
+        yield JSON.stringify({
+          scene: '结算后的连续剧情',
+          mode: 'continue',
+          npcLines: [],
+          effectHints: [],
+          choices: [],
+          memoryHints: []
+        });
+      }
+    }
+  });
+  app.getState().game.onboarding = completedOnboardingState();
+  const actions = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+    viewId: 'home',
+    gameVersion: 0
+  })));
+  const choiceId = actions.data.actions[0].id;
+  const request = () => app.handle(makeRequest('POST', '/api/v1/turns/stream', {
+    type: 'choice',
+    choiceId,
+    clientTurn: 0
+  }));
+
+  const firstResponsePromise = request();
+  const secondResponsePromise = request();
+  const [firstResponse, secondResponse] = await Promise.all([firstResponsePromise, secondResponsePromise]);
+  await started;
+  releaseStream();
+  const [firstBody, secondBody] = await Promise.all([firstResponse.text(), secondResponse.text()]);
+
+  assert.equal(streamCalls, 1);
+  assert.equal(app.getState().game.turn, 1);
+  assert.equal([firstResponse.status, secondResponse.status].filter((status) => status === 409 || status === 404).length, 1);
+  assert.ok(firstBody.includes('event: done') || secondBody.includes('event: done'));
 });
 
 test('POST /api/v1/game/new accepts a manual attribute allocation after onboarding', async () => {
@@ -366,7 +757,7 @@ test('POST /api/v1/game/reset clears records and returns to formal character cre
   assert.equal(resetPayload.data.game.mode, 'api');
   assert.equal(resetPayload.data.game.turn, 0);
   assert.equal(resetPayload.data.game.log.length, 1);
-  assert.equal(resetPayload.data.game.player.name, '陆青玄');
+  assert.equal(resetPayload.data.game.player.name, '');  // empty to trigger character creation UI
   assert.equal(resetPayload.data.game.onboarding.completed, true);
   assert.equal(resetPayload.data.game.onboarding.unlockedCharacterCreation, true);
   assert.equal(resetPayload.data.game.characterSeed, undefined);
@@ -458,6 +849,166 @@ test('POST /api/v1/daily-actions returns event choices for formal games', async 
   assert.ok(payload.data.actions.some((action) => action.title === '靠近铜铃'));
 });
 
+test('POST /api/v1/daily-actions uses storyDirector from turn zero and after each settlement', async () => {
+  const directorInputs = [];
+  const narrationInputs = [];
+  const app = createBackendApp({
+    seed: 31,
+    now: fixedNow,
+    llm: {
+      async generateNarration(input) {
+        narrationInputs.push(input);
+        return {
+          status: 'generated',
+          title: '命途分岔',
+          body: `LLM 已续写第${input.afterGame.turn}回合的命途。`,
+          npcLine: '',
+          foreshadow: ''
+        };
+      },
+      async generateStoryDirector(input) {
+        directorInputs.push(input);
+        return {
+          scene: '雾中铜铃再次响起，窗纸上的水痕像一行未写完的旧契，提醒你必须决定下一步如何追查。',
+          mode: 'choice',
+          npcLines: [],
+          effectHints: [],
+          choices: [
+            { id: 'follow_bell', text: '循着铜铃前往后山', tone: 'mystery', effectHints: [] },
+            { id: 'report_bell', text: '先向玄衡长老禀报', tone: 'sect', effectHints: [] }
+          ],
+          memoryHints: ['雾中铜铃再次响起。']
+        };
+      }
+    }
+  });
+  app.getState().game.onboarding = completedOnboardingState();
+
+  const initial = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+    viewId: 'realm',
+    gameVersion: 0
+  })));
+  const firstAction = initial.data.actions.find((action) => action.command === '循着铜铃前往后山');
+
+  assert.ok(firstAction);
+  assert.equal(directorInputs.length, 1);
+  assert.equal(directorInputs[0].game.turn, 0);
+  assert.equal(directorInputs[0].input.type, 'continue');
+  assert.deepEqual(initial.data.actions.map((action) => action.title), [
+    '抉择 1',
+    '抉择 2'
+  ]);
+  assert.deepEqual(initial.data.actions.map((action) => action.command), [
+    '循着铜铃前往后山',
+    '先向玄衡长老禀报'
+  ]);
+  assert.ok(initial.data.actions.every((action) => action.title !== action.command));
+
+  const firstTurn = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/turns', {
+    actionId: firstAction.id,
+    clientTurn: 0
+  })));
+  assert.equal(firstTurn.ok, true);
+  assert.equal(firstTurn.data.game.turn, 1);
+  assert.equal(firstTurn.data.turnResult.ruleResult.eventId, 'story_director');
+  assert.equal(firstTurn.data.turnResult.narration.status, 'generated');
+  assert.equal(narrationInputs.length, 1);
+  assert.equal(narrationInputs[0].action.source, 'director');
+
+  const next = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+    viewId: 'realm',
+    gameVersion: 1
+  })));
+
+  assert.equal(directorInputs.length, 2);
+  assert.equal(directorInputs[1].game.turn, 1);
+  assert.equal(directorInputs[1].input.type, 'continue');
+  assert.deepEqual(next.data.actions.map((action) => action.title), [
+    '抉择 1',
+    '抉择 2'
+  ]);
+  assert.ok(next.data.actions.every((action) => action.id.startsWith('act_')));
+  assert.ok(next.data.actions.every((action) => action.category === 'director'));
+
+  const refreshed = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+    viewId: 'realm',
+    gameVersion: 1
+  })));
+  assert.equal(directorInputs.length, 2);
+  assert.deepEqual(refreshed.data.actions.map((action) => action.id), next.data.actions.map((action) => action.id));
+
+  const directorTurn = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/turns', {
+    actionId: next.data.actions[0].id,
+    clientTurn: 1
+  })));
+
+  assert.equal(directorTurn.ok, true);
+  assert.equal(directorTurn.data.game.turn, 2);
+  assert.equal(directorTurn.data.turnResult.ruleResult.eventId, 'story_director');
+});
+
+test('daily director actions continue through the streamed choice path', async () => {
+  const nextDirectorOutput = {
+    scene: '你循着铜铃踏入后山，雾线在脚边裂开一道细缝，露出残缺符纹。',
+    mode: 'choice',
+    npcLines: [],
+    effectHints: [],
+    choices: [
+      { id: 'enter_mist', title: '深入雾线', text: '沿着符纹进入雾隐秘境', tone: 'mystery', effectHints: [] },
+      { id: 'mark_path', title: '留下记号', text: '先在石门外刻下回返记号', tone: 'cautious', effectHints: [] }
+    ],
+    memoryHints: ['雾隐秘境入口已经显形。']
+  };
+  const app = createBackendApp({
+    seed: 31,
+    now: fixedNow,
+    llm: {
+      async generateStoryDirector() {
+        return {
+          scene: '雾中铜铃在窗外再响一声，水痕沿着窗纸聚成一枚残契。',
+          mode: 'choice',
+          npcLines: [],
+          effectHints: [],
+          choices: [
+            { id: 'follow_bell', title: '追查铜铃', text: '循着铜铃前往后山', tone: 'mystery', effectHints: [] },
+            { id: 'report_bell', title: '求助宗门', text: '先向玄衡长老禀报', tone: 'sect', effectHints: [] }
+          ],
+          memoryHints: ['雾中铜铃再次响起。']
+        };
+      },
+      async *streamStoryDirector({ input }) {
+        assert.equal(input.type, 'choice');
+        yield JSON.stringify(nextDirectorOutput);
+      }
+    }
+  });
+  app.getState().game.onboarding = completedOnboardingState();
+
+  const actionsPayload = await jsonResponse(app.handle(makeRequest('POST', '/api/v1/daily-actions', {
+    viewId: 'realm',
+    gameVersion: 0
+  })));
+  const [action] = actionsPayload.data.actions;
+
+  const response = await app.handle(makeRequest('POST', '/api/v1/turns/stream', {
+    type: 'choice',
+    choiceId: action.id,
+    clientTurn: 0
+  }));
+  const body = await response.text();
+  const done = parseSseEvent(body, 'done');
+
+  assert.equal(response.status, 200);
+  assert.ok(body.indexOf('event: story_delta') > -1);
+  assert.ok(body.indexOf('event: story_delta') < body.indexOf('event: done'));
+  assert.equal(done.ok, true);
+  assert.equal(done.data.game.turn, 1);
+  assert.deepEqual(done.data.turnResult.choices.map((choice) => choice.text), [
+    '沿着符纹进入雾隐秘境',
+    '先在石门外刻下回返记号'
+  ]);
+});
+
 test('POST /api/v1/daily-actions returns at least three eligible skills event actions', async () => {
   const app = createBackendApp({ seed: 31, now: fixedNow });
   app.getState().game.onboarding = completedOnboardingState();
@@ -492,7 +1043,6 @@ test('POST /api/v1/daily-actions inserts a breakthrough action before normal cul
   assert.equal(payload.data.actions[0].title, '尝试突破');
   assert.match(payload.data.actions[0].meta, /突破至炼气二层/);
   assert.match(payload.data.actions[0].meta, /成功率 \d+%/);
-  assert.match(payload.data.actions[0].meta, /高风险/);
   assert.doesNotMatch(payload.data.actions[0].meta, /breakthrough|attempt|choice/i);
   assertPublicActionShape(payload.data.actions[0]);
 });
@@ -550,7 +1100,6 @@ test('POST /api/v1/daily-actions returns breakthrough plus fallback actions when
   assert.equal(payload.data.actions[0].title, '尝试突破');
   assert.match(payload.data.actions[0].meta, /突破至炼气二层/);
   assert.match(payload.data.actions[0].meta, /成功率 \d+%/);
-  assert.match(payload.data.actions[0].meta, /高风险/);
   assert.ok(payload.data.actions.slice(1).some((action) => action.command.includes('闭关修炼三月')));
   assert.ok(payload.data.actions.every((action) => hasOnlyPublicActionFields(action)));
 });

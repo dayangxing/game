@@ -78,7 +78,9 @@ const SUMMARY_LABELS = {
   foreshadow: '伏笔',
   sect_reputation: '宗门声望',
   injury: '伤势',
-  karma: '因果'
+  karma: '因果',
+  item: '物品',
+  technique: '功法',
 };
 
 export function normalizeEffectHints(effectHints = [], game = {}) {

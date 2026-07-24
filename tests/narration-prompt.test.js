@@ -130,7 +130,12 @@ test('narration prompt includes compact deterministic state for attributes, vita
         memories: ['见证陆青玄闭关后气息更趋凝实。']
       }
     ],
-    lastUpdatedTurn: 1
+    lastUpdatedTurn: 1,
+    summaryThroughTurn: 0,
+    summaryWindowStartTurn: 0,
+    summaryWindowStale: false,
+    unsummarizedTurns: [],
+    unsummarizedTurnsTruncated: false
   });
   assert.deepEqual(user.ruleEntry.breakthrough, {
     succeeded: false,
@@ -164,6 +169,60 @@ test('narration prompt forbids changing event rule effects', () => {
   });
   assert.doesNotMatch(payload, /eventId|choiceId|act_0_cultivation_0|mist_bronze_bell|approach|medium|breakthroughPreview|breakthroughResult/);
   assert.doesNotMatch(payload, /raw_story_memory_id|internal_thread_id/);
+});
+
+test('narration prompt includes authoritative turns newer than the summary checkpoint', () => {
+  const input = makePromptInput();
+  input.afterGame = {
+    ...input.afterGame,
+    turn: 4,
+    log: [
+      { id: 'turn-1', title: '旧一', command: '旧行动一', body: '旧结果一' },
+      { id: 'turn-2', title: '旧二', command: '旧行动二', body: '旧结果二' },
+      { id: 'turn-3', title: '新一', command: '追查钟声', body: '发现残契', npcLine: '', worldEvent: '雾隐回响' },
+      { id: 'turn-4', title: '新二', command: '询问师姐', body: '得知旧案', npcLine: '小心飞升传闻。', worldEvent: '师姐来信' }
+    ],
+    storyMemory: {
+      ...input.afterGame.storyMemory,
+      summaryThroughTurn: 2,
+      summaryRevision: 3
+    }
+  };
+
+  const user = JSON.parse(buildNarrationMessages(input)[1].content);
+  assert.equal(user.narrativeContext.storyMemory.summaryThroughTurn, 2);
+  assert.deepEqual(user.narrativeContext.storyMemory.unsummarizedTurns.map((turn) => turn.turn), [3, 4]);
+  assert.equal(user.narrativeContext.storyMemory.unsummarizedTurns[0].outcome, '发现残契');
+  assert.equal(user.narrativeContext.storyMemory.unsummarizedTurns[1].npcLine, '小心飞升传闻。');
+});
+
+test('narration prompt drops a stale long summary and sends only the rolling 50-turn window', () => {
+  const input = makePromptInput();
+  input.afterGame = {
+    ...input.afterGame,
+    turn: 55,
+    log: Array.from({ length: 55 }, (_, index) => ({
+      id: `turn-${index + 1}`,
+      turn: index + 1,
+      title: `回合${index + 1}`,
+      command: `行动${index + 1}`,
+      body: `结果${index + 1}`
+    })),
+    storyMemory: {
+      ...input.afterGame.storyMemory,
+      longSummary: '窗口外的旧摘要，不应继续发送',
+      summaryThroughTurn: 54,
+      summaryWindowStartTurn: 0,
+      summaryRevision: 4
+    }
+  };
+
+  const user = JSON.parse(buildNarrationMessages(input)[1].content);
+  const memory = user.narrativeContext.storyMemory;
+  assert.equal(memory.summaryWindowStale, true);
+  assert.equal(memory.longSummary, '');
+  assert.deepEqual(memory.rollingWindowTurns.map((turn) => turn.turn), Array.from({ length: 50 }, (_, index) => index + 6));
+  assert.deepEqual(memory.unsummarizedTurns, []);
 });
 
 test('repair prompt asks the model to only repair invalid json output', () => {

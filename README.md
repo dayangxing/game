@@ -4,9 +4,9 @@ AI 文字修仙 Web 原型。当前调试版已经进入连续剧情导演模式
 
 ## 当前入口
 
-- 上线分支：`main`
+- 发布基线分支：`main`；当前开发同步分支：`dev`
 - 前端页面：`frontend/index.html`
-- 前端开发 URL：`http://127.0.0.1:5173/frontend/`
+- 前端开发 URL：`http://127.0.0.1:5173/`
 - 后端入口：`backend/src/server.js`
 - 后端 API：`http://127.0.0.1:8787`
 - 根入口：`index.html` 会跳转到 `frontend/`
@@ -35,7 +35,7 @@ BAILIAN_PREMIUM_MODEL=qwen3.7-max
 npm run start:backend
 ```
 
-另开一个终端启动前端静态服务：
+另开一个终端启动前端开发服务：
 
 ```bash
 npm run start:frontend
@@ -56,10 +56,10 @@ OPEN_BROWSER=1 npm run start:all
 然后打开：
 
 ```text
-http://127.0.0.1:5173/frontend/
+http://127.0.0.1:5173/
 ```
 
-如果 `5173` 被占用，可以临时换端口运行静态服务，但 `file:` 自动跳转默认仍指向 `5173`。
+如果 `5173` 被占用，可以使用 `npm run dev -- --port 5174` 启动 Vite，再访问 `http://127.0.0.1:5174/`。
 
 ## macOS / Windows 单机 App
 
@@ -154,7 +154,7 @@ curl -s -X POST http://127.0.0.1:8787/api/v1/game/reset \
 
 ### 前端调试
 
-启动前端静态服务：
+启动前端开发服务：
 
 ```bash
 npm run start:frontend
@@ -163,7 +163,7 @@ npm run start:frontend
 浏览器访问：
 
 ```text
-http://127.0.0.1:5173/frontend/
+http://127.0.0.1:5173/
 ```
 
 检查前端服务是否监听 `5173`：
@@ -172,23 +172,23 @@ http://127.0.0.1:5173/frontend/
 lsof -nP -iTCP:5173 -sTCP:LISTEN
 ```
 
-如果 `5173` 被占用，可以临时换端口启动静态服务：
+如果 `5173` 被占用，可以临时换端口启动 Vite：
 
 ```bash
-python3 -m http.server 5174
+npm run dev -- --port 5174
 ```
 
 然后访问：
 
 ```text
-http://127.0.0.1:5174/frontend/
+http://127.0.0.1:5174/
 ```
 
 前端默认连接 `http://127.0.0.1:8787`。如果换了后端端口，需要在页面加载前覆盖 `window.WENDAO_API_BASE_URL`，或直接把后端仍跑在 `8787`。修改前端代码后，Chrome 建议用 `Cmd + Shift + R` 强刷新。
 
 ## 当前上线版本
 
-- 页面入口：`http://127.0.0.1:5173/frontend/`
+- 页面入口：`http://127.0.0.1:5173/`
 - 默认页签：`洞府`
 - 调试分支：`dev`
 - 顶部页签：`洞府`、`命簿`、`天机录`、`行囊`
@@ -228,6 +228,14 @@ http://127.0.0.1:5174/frontend/
 
 数值变化、境界进度、资源消耗、气血寿元、法宝功法、NPC 好感和世界事件不能由前端或 LLM 直接决定。
 
+## 长期剧情记忆
+
+- `game.log` 是不可丢失的权威历史；长期摘要只用于控制发送给剧情模型的上下文长度，不会删除存档、历史行为或传记导出。
+- 长期摘要采用最近 50 个正式回合的滚动窗口，并保留第 0 回合开局锚点；资源领取等非正式记录不会重复计入正式回合窗口。
+- 摘要由 `qwen3.6-flash` 异步生成，持久化摘要最多 420 个 Unicode 字符。普通回合按增量压缩，窗口首次越界或累计移动达到阈值时重新构建摘要。
+- 摘要重建期间，如果旧窗口已经过期，narration 和 storyDirector 会清空旧 `longSummary`，直接读取最近 50 回合的原始投影，避免使用过期剧情上下文。
+- 异步结果提交带有回合版本与摘要 revision 校验；失败、超时或版本冲突不会推进摘要窗口元数据。
+
 ## 稳定版联调说明
 
 - 前端 API client 集中在 `frontend/src/api/gameApi.js`，页面层不直接拼后端 URL。
@@ -260,6 +268,7 @@ GET  /api/v1/model-health
 POST /api/v1/model-config
 POST /api/v1/game/new
 POST /api/v1/daily-actions
+POST /api/v1/daily-actions/stream
 POST /api/v1/turns
 POST /api/v1/turns/stream
 POST /api/v1/turns/:turn/narration

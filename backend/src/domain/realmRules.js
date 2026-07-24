@@ -1,3 +1,5 @@
+import { calculateDerivedBonuses } from './rewards.js';
+
 export const REALM_COSTS = {
   炼气: 1,
   筑基: 2,
@@ -14,7 +16,7 @@ export function calculateLifespanCost(game) {
   const tier = getRealmTier(game.player?.realm);
   const base = REALM_COSTS[tier];
   const lifeSeed = game.character?.attributes?.lifeSeed ?? 1;
-  const reduction = Math.floor(lifeSeed / 4) + (game.derivedBonuses?.lifespanCostReduction ?? 0);
+  const reduction = Math.floor(lifeSeed / 4) + (calculateDerivedBonuses(game).lifespanCostReduction ?? 0);
 
   return Math.max(1, base - reduction);
 }

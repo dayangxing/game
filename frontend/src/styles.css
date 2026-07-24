@@ -650,7 +650,11 @@ button {
 
 .active-view-content[data-active-view="home"] > .story-section,
 .active-view-content[data-active-view="home"] > .action-section {
-  grid-column: auto;
+  grid-column: 1 / -1;
+}
+
+.active-view-content[data-active-view="home"] {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .active-view-content[data-active-view="home"] > .ending-section {
@@ -659,6 +663,19 @@ button {
 
 .active-view-content[data-active-view="home"] > .action-note {
   grid-column: 1 / -1;
+}
+
+.home-story-actions {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  min-width: 0;
+}
+
+.home-story-actions > .paper-card {
+  grid-column: 1 / -1;
+  min-width: 0;
 }
 
 .active-view-content[data-active-view="home"] .stage-status {
@@ -704,7 +721,11 @@ button {
 }
 
 .active-view-content[data-active-view="home"] .log-list {
-  max-height: 220px;
+  max-height: clamp(140px, 22vh, 220px);
+}
+
+.active-view-content[data-active-view="home"] .action-card {
+  min-height: clamp(72px, 9vh, 86px);
 }
 
 .hero-scroll,
@@ -789,6 +810,37 @@ button {
   border-radius: 8px;
   color: var(--ink);
   background: rgba(255, 252, 240, 0.76);
+}
+
+.character-background-preview {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(181, 139, 63, 0.24);
+  border-radius: 8px;
+  background: rgba(255, 252, 240, 0.58);
+}
+
+.background-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.background-grid > div {
+  display: grid;
+  gap: 4px;
+}
+
+.background-grid span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.background-grid strong {
+  color: var(--ink);
+  font-size: 15px;
 }
 
 .allocation-summary {
@@ -1251,7 +1303,8 @@ button {
 }
 
 .log-card {
-  padding: 12px;
+  min-height: var(--action-card-min-height);
+  padding: 10px;
   border: 1px solid rgba(61, 68, 56, 0.14);
   border-radius: 8px;
   background: rgba(255, 252, 240, 0.48);
@@ -1586,6 +1639,7 @@ blockquote {
 }
 
 .personal-relationship-section,
+.personal-relation-section,
 .personal-technique-section {
   grid-column: 1 / -1;
 }
@@ -1773,6 +1827,84 @@ blockquote {
   grid-column: 1 / -1;
   padding: 0;
   overflow: hidden;
+}
+
+.story-archive-panel .section-title {
+  padding: 16px 16px 0;
+}
+
+.timeline-list {
+  display: grid;
+  gap: 0;
+  padding: 16px;
+}
+
+.timeline-list .timeline-item + .timeline-item {
+  border-top: 1px solid rgba(61, 68, 56, 0.1);
+}
+
+.memory-card {
+  padding: 10px;
+  border: 1px solid rgba(61, 68, 56, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 252, 240, 0.48);
+  color: var(--ink-soft);
+  line-height: 1.58;
+}
+
+.foreshadow-list .memory-card + .memory-card {
+  margin-top: 8px;
+}
+
+.empty-hint {
+  margin: 0;
+  padding: 16px;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.story-archive-panel .foreshadow-list,
+.story-archive-panel .personal-section-title {
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+.story-archive-panel .foreshadow-list {
+  padding-bottom: 16px;
+}
+
+.timeline-list {
+  display: grid;
+  gap: 0;
+  padding: 16px;
+}
+
+.memory-card {
+  padding: 10px;
+  border: 1px solid rgba(61, 68, 56, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 252, 240, 0.48);
+  color: var(--ink-soft);
+  line-height: 1.58;
+}
+
+.foreshadow-list .memory-card + .memory-card {
+  margin-top: 8px;
+}
+
+.empty-hint {
+  margin: 0;
+  padding: 16px;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.resource-draft-empty p {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.6;
 }
 
 .archive-sheet {
@@ -2260,6 +2392,17 @@ blockquote {
   }
 }
 
+@media (min-width: 901px) and (max-height: 820px) {
+  .active-view-content[data-active-view="home"] .log-list {
+    max-height: clamp(112px, 20vh, 170px);
+  }
+
+  .active-view-content[data-active-view="home"] .action-card {
+    min-height: clamp(64px, 8vh, 76px);
+    padding: 8px;
+  }
+}
+
 @media (max-width: 767px) {
   body {
     overflow-x: hidden;
@@ -2312,11 +2455,14 @@ blockquote {
   .view-grid,
   .view-grid.compact,
   .view-grid.split,
+  .log-list,
   .action-grid,
   .resource-draft-grid,
+  .collection-grid,
   .status-overview,
   .attribute-summary,
   .ending-summary,
+  .background-grid,
   .personal-sections,
   .personal-attribute-grid,
   .personal-status-grid,

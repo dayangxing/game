@@ -197,11 +197,13 @@ function breakthroughPenalty(game) {
 
 function describeFailureCost(game) {
   const failureCost = BREAKTHROUGH_FAILURE_COSTS[getRealmTier(game.player?.realm)];
-  const mitigation = Math.floor((calculateDerivedBonuses(game).damageReduction ?? 0) / 2);
+  const bonuses = calculateDerivedBonuses(game);
+  const mitigation = Math.floor((bonuses.damageReduction ?? 0) / 2);
+  const traitDamage = Math.round(failureCost.health * (1 + (bonuses.healthDamageTakenPercent ?? 0) / 100));
 
   return {
     ...failureCost,
-    health: Math.max(1, failureCost.health - mitigation)
+    health: Math.max(1, traitDamage - mitigation)
   };
 }
 

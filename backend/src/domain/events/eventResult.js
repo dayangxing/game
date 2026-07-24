@@ -9,7 +9,7 @@ export function stripInternalActionFields(action) {
     expiresAt: action.expiresAt
   };
 
-  if (action.source === 'event') {
+  if (action.source === 'event' || action.source === 'director') {
     publicAction.category = action.category;
     publicAction.risk = action.risk;
     publicAction.cadence = action.cadence;

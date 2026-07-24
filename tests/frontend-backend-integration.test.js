@@ -43,6 +43,41 @@ test('frontend api client plays one turn through the backend contract', async ()
   assert.match(story, /问道浮生/);
 });
 
+test('frontend api streams the formal turn-zero scene before exposing its daily choices', async () => {
+  const backend = createBackendApp({
+    seed: 41,
+    now: () => new Date('2026-06-29T08:00:00.000Z'),
+    llm: {
+      async *streamStoryDirector() {
+        yield '{"scene":"第0回合先到达前端的流式场景：山门钟声贴着晨雾落下。","mode":"choice","npcLines":[],"effectHints":[],"choices":[';
+        yield '{"id":"enter","title":"入门","text":"沿山道走入外门","tone":"cautious","effectHints":[]},{"id":"ask","title":"问询","text":"先向玄衡长老问询","tone":"sect","effectHints":[]}],"memoryHints":[]}';
+      }
+    }
+  });
+  backend.getState().game.onboarding = completedOnboardingState();
+  const api = createGameApi({
+    baseUrl: 'http://backend.test',
+    preferredMode: 'api',
+    fetchImpl: (input, init) => backend.handle(new Request(input, init))
+  });
+
+  const game = await api.createFormalGame({ name: '顾清河', rerollSeed: 52 });
+  const previews = [];
+  const result = await api.getDailyActionsStreamWithState(game, getView('home'), {
+    onStoryPreview(preview) {
+      previews.push(preview);
+    }
+  });
+
+  assert.equal(result.game.turn, 0);
+  assert.ok(previews.some((preview) => preview.includes('第0回合先到达前端')));
+  assert.match(result.game.log[0].body, /第0回合先到达前端/);
+  assert.deepEqual(result.actions.map((action) => action.command), [
+    '沿山道走入外门',
+    '先向玄衡长老问询'
+  ]);
+});
+
 test('frontend api client receives streamed narration before the final game result', async () => {
   const streamedChunks = [
     '{"title":"前端流式续写","body":"',

@@ -491,7 +491,7 @@ async function submitDailyAction(action) {
 }
 
 async function submitStoryStep(action) {
-  if (!shouldUseContinuousStory(game)) {
+  if (!shouldUseContinuousStory(game) && action.category !== 'director') {
     await submitDailyAction(action);
     return;
   }
@@ -502,7 +502,9 @@ async function submitStoryStep(action) {
 
   const selectedChoice = action.source === 'story-choice'
     ? storyChoices.find((choice) => choice.id === action.id)
-    : null;
+    : action.category === 'director'
+      ? { id: action.id, text: action.command }
+      : null;
   storyStepPending = true;
   beginStreamingNarration({
     title: selectedChoice ? '命途抉择' : '下一步',
@@ -2012,7 +2014,7 @@ function buildActionCards(actions) {
     icon: displayActionIcon(action),
     meta: formatActionMeta(action),
     kind: kindForCommand(action.command),
-    storyAction: action.source === 'story-continue' || action.source === 'story-choice',
+    storyAction: action.source === 'story-continue' || action.source === 'story-choice' || action.category === 'director',
     disabled: storyStepPending || shouldBlockImmediateApiAction(action)
   })).slice(0, 6);
 }
