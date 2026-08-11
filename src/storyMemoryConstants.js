@@ -1,0 +1,1 @@
+export const LONG_SUMMARY_CHAR_LIMIT = 10_000;

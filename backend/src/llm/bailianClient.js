@@ -5,6 +5,7 @@ import {
 } from './prompts/narrationPrompt.js';
 import { buildStoryDirectorMessages } from './prompts/storyDirectorPrompt.js';
 import { buildLongSummaryMessages } from './prompts/longSummaryPrompt.js';
+import { LONG_SUMMARY_CHAR_LIMIT } from '../../../src/storyMemoryConstants.js';
 
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_RETRY_DELAY_MS = 500;
@@ -244,8 +245,8 @@ function validateLongSummaryResult(result) {
   if (!summary) {
     throw new Error('Bailian long summary response must include a non-empty summary');
   }
-  if (Array.from(summary).length > 420) {
-    throw new Error('Bailian long summary response must not exceed 420 characters');
+  if (Array.from(summary).length > LONG_SUMMARY_CHAR_LIMIT) {
+    throw new Error(`Bailian long summary response must not exceed ${LONG_SUMMARY_CHAR_LIMIT} characters`);
   }
   if (!Number.isInteger(result.coveredThroughTurn) || result.coveredThroughTurn < 0) {
     throw new Error('Bailian long summary response must include an integer coveredThroughTurn');

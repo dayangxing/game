@@ -12,7 +12,7 @@
 
 - `game.log` remains lossless and is never deleted by this feature.
 - Exactly the latest 50 formal turns are the rolling summary input; opening turn zero remains an anchor fact.
-- `longSummary` must be bounded to 420 Chinese characters before it is persisted or exposed.
+- `longSummary` must be bounded to 10,000 Unicode characters before it is persisted or exposed.
 - A stale/failed rebase must not advance `summaryThroughTurn` or `summaryWindowStartTurn`.
 - During a stale rebase, prompts must not send the old `longSummary` as if it were current.
 - Existing game version, summary revision, latest-wins, timeout, retry, Mock-mode, and persistence behavior remains intact.
@@ -30,7 +30,7 @@
 | `backend/src/llm/prompts/narrationPrompt.js` | Replace stale summary with bounded rolling raw turns |
 | `backend/src/llm/prompts/storyDirectorPrompt.js` | Same freshness behavior for continuous story generation |
 | `tests/story-memory.test.js` | Window selection, migration, and stale context |
-| `tests/long-summary-prompt.test.js` | Rolling prompt payload and 420-char contract |
+| `tests/long-summary-prompt.test.js` | Rolling prompt payload and 10,000-char contract |
 | `tests/bailian-client.test.js` | Long summary length validation |
 | `tests/long-summary-scheduler.test.js` | Rebase scheduling, commit metadata, failure safety |
 | `tests/narration-prompt.test.js` | Stale-summary fallback context |
@@ -78,9 +78,9 @@ getStoryMemoryPromptContext(game) -> {
 
 **Files:** `backend/src/llm/prompts/longSummaryPrompt.js`, `backend/src/llm/bailianClient.js`, `tests/long-summary-prompt.test.js`, `tests/bailian-client.test.js`
 
-- [x] **Step 1: Add failing tests** asserting the prompt says the source is a rolling 50-turn window and the client rejects summaries longer than 420 characters.
+- [x] **Step 1: Add failing tests** asserting the prompt says the source is a rolling 50-turn window and the client rejects summaries longer than 10,000 characters.
 - [x] **Step 2: Run the prompt/client tests** and confirm the length/rebase contract fails.
-- [x] **Step 3: Implement** prompt fields `summaryWindowStartTurn`, `summaryWindowEndTurn`, `rebase`, and `openingAnchor`; require the model to omit facts outside the supplied window while preserving current authoritative facts. Add a 420-character validation bound in `validateLongSummaryResult()`.
+- [x] **Step 3: Implement** prompt fields `summaryWindowStartTurn`, `summaryWindowEndTurn`, `rebase`, and `openingAnchor`; require the model to omit facts outside the supplied window while preserving current authoritative facts. Add a 10,000-character validation bound in `validateLongSummaryResult()`.
 - [x] **Step 4: Run `node --test tests/long-summary-prompt.test.js tests/bailian-client.test.js`** and confirm pass.
 
 ## Task 3: Rebase the asynchronous scheduler safely

@@ -1,3 +1,5 @@
+import { LONG_SUMMARY_CHAR_LIMIT } from '../../../../src/storyMemoryConstants.js';
+
 const LONG_SUMMARY_SYSTEM_PROMPT = [
   '你是《问道浮生》的长期记忆压缩 agent。',
   '请把输入中的已知剧情事实压缩为简洁、连贯的中文长期摘要，供后续剧情模型读取。',
@@ -16,12 +18,12 @@ const LONG_SUMMARY_SYSTEM_PROMPT = [
   '写作要求：',
   '1. 使用中文，优先保留身份事实、重要因果、关键人物关系和未解决主线。',
   '2. 只保留对后续剧情有用的长期信息，避免逐字复述普通行动。',
-  '3. summary 必须控制在 420 个字符以内。',
+  `3. summary 必须控制在 ${LONG_SUMMARY_CHAR_LIMIT} 个字符以内。`,
   '4. coveredThroughTurn 必须是实际被摘要覆盖的 sourceTurns 中最高回合号；没有可覆盖回合时返回 0。',
   '',
   '输出 schema：',
   '{',
-  '  "summary": "string，420 字符以内的中文长期剧情事实摘要",',
+  `  "summary": "string，${LONG_SUMMARY_CHAR_LIMIT} 字符以内的中文长期剧情事实摘要",`,
   '  "coveredThroughTurn": "integer，实际覆盖的最高 sourceTurns.turn，不得超过输入回合"',
   '}'
 ].join('\n');
@@ -71,7 +73,7 @@ export function buildLongSummaryMessages({
           ? []
           : (Array.isArray(storyMemory.openThreads) ? storyMemory.openThreads : []),
         outputSchema: {
-          summary: 'string，420 字符以内的中文长期剧情事实摘要',
+          summary: `string，${LONG_SUMMARY_CHAR_LIMIT} 字符以内的中文长期剧情事实摘要`,
           coveredThroughTurn: 'integer，实际覆盖的最高 sourceTurns.turn；不得超过输入回合'
         },
         hardConstraints: [
@@ -80,7 +82,7 @@ export function buildLongSummaryMessages({
           '不得改变 game.player 或其他当前事实中的数字状态。',
           '必须保留角色出身、灵根、命格天赋和未解决主线。',
           '必须保留 currentFacts 中的当前权威事实。',
-          'summary 必须不超过 420 个字符。',
+          `summary 必须不超过 ${LONG_SUMMARY_CHAR_LIMIT} 个字符。`,
           ...(isRebase ? ['rebase=true 时不得使用 previousSummary，只能依据 sourceTurns、openingAnchor 和 currentFacts。'] : []),
           'coveredThroughTurn 只能表示本次实际摘要覆盖到的输入回合。'
         ]

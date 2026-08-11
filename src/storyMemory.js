@@ -1,3 +1,7 @@
+import { LONG_SUMMARY_CHAR_LIMIT } from './storyMemoryConstants.js';
+
+export { LONG_SUMMARY_CHAR_LIMIT } from './storyMemoryConstants.js';
+
 const RECENT_TURN_LIMIT = 8;
 const THREAD_LIMIT = 8;
 export const SUMMARY_WINDOW_TURNS = 50;
@@ -280,11 +284,11 @@ function initialLongSummary(game) {
 function normalizeLongSummary(summary, game) {
   const existing = meaningfulText(summary, '');
   if (!existing) return initialLongSummary(game);
-  if (!existing.includes(LEGACY_LONG_SUMMARY)) return truncateText(existing, 420);
+  if (!existing.includes(LEGACY_LONG_SUMMARY)) return truncateText(existing, LONG_SUMMARY_CHAR_LIMIT);
 
   return truncateText(
     existing.replace(LEGACY_LONG_SUMMARY, characterIdentitySummary(game)).trim(),
-    420
+    LONG_SUMMARY_CHAR_LIMIT
   );
 }
 
@@ -329,13 +333,13 @@ function openingRecentTurns(game) {
 }
 
 function appendOverflowSummary(summary, overflow) {
-  if (!overflow.length) return truncateText(summary, 420);
+  if (!overflow.length) return truncateText(summary, LONG_SUMMARY_CHAR_LIMIT);
 
   const compact = overflow
     .map((entry) => `第${entry.turn}回合「${entry.title}」：${truncateText(entry.outcome, 44)}`)
     .join('；');
 
-  return truncateText(`${summary} 早前 ${compact}`, 420);
+  return truncateText(`${summary} 早前 ${compact}`, LONG_SUMMARY_CHAR_LIMIT);
 }
 
 function threadsFromForeshadows(foreshadows = []) {

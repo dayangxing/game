@@ -25,7 +25,7 @@
 
 当前 `storyMemory` 由 `src/storyMemory.js` 和前端镜像实现维护，主要包含：
 
-- `longSummary`：初始 360 字符、后续最多 420 字符的机械摘要。
+- `longSummary`：初始 360 字符、后续最多 10,000 字符的 LLM 长期摘要。
 - `recentTurns`：最近 8 回合。
 - `openThreads`：合并后最多 8 个未解伏笔，每个伏笔最多 4 条线索。
 - `resolvedThreads`：已解决伏笔的保留字段。

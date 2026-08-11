@@ -56,6 +56,8 @@ test('long summary prompt carries authoritative facts and a strict JSON schema',
   assert.match(system, /合法 JSON object|JSON-only|JSON/);
   assert.match(system, /不得创造事实/);
   assert.match(system, /不得改变数字状态/);
+  assert.match(system, /10000 个字符以内/);
+  assert.doesNotMatch(system, /420/);
   assert.match(system, /出身|身世/);
   assert.match(system, /灵根/);
   assert.match(system, /命格天赋/);
@@ -75,7 +77,7 @@ test('long summary prompt carries authoritative facts and a strict JSON schema',
   assert.equal(user.currentFacts.player.health, 82);
   assert.equal(user.currentFacts.player.lifespan, 74);
   assert.deepEqual(user.outputSchema, {
-    summary: 'string，420 字符以内的中文长期剧情事实摘要',
+    summary: 'string，10000 字符以内的中文长期剧情事实摘要',
     coveredThroughTurn: 'integer，实际覆盖的最高 sourceTurns.turn；不得超过输入回合'
   });
   assert.doesNotMatch(JSON.stringify(user), /apiKey|baseUrl|response_format/i);

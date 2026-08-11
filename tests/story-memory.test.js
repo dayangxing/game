@@ -246,6 +246,18 @@ test('story summary follows current character and migrates legacy fixed text', (
   }
 });
 
+test('story memory keeps normalized long summaries within the 10000-character limit', () => {
+  const game = createCurrentCharacterGame();
+  const oversizedSummary = '甲'.repeat(10001);
+
+  for (const normalize of [normalizeStoryMemory, normalizeFrontendStoryMemory]) {
+    const memory = normalize({ longSummary: oversizedSummary }, game);
+
+    assert.equal(Array.from(memory.longSummary).length, 10000);
+    assert.equal(memory.longSummary.endsWith('…'), true);
+  }
+});
+
 test('initial story memory does not invent an ascension thread without evidence', () => {
   const game = createCurrentCharacterGame();
 

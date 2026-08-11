@@ -209,7 +209,7 @@ test('bailian client generates long summaries with the fast model and returns on
   });
 });
 
-test('bailian client accepts a long summary at the 420-character limit', async () => {
+test('bailian client accepts a long summary at the 10000-character limit', async () => {
   const client = createBailianClient({
     env: { BAILIAN_API_KEY: 'unit-test-token' },
     async fetchImpl() {
@@ -220,7 +220,7 @@ test('bailian client accepts a long summary at the 420-character limit', async (
             choices: [{
               message: {
                 content: JSON.stringify({
-                  summary: '甲'.repeat(420),
+                  summary: '甲'.repeat(10000),
                   coveredThroughTurn: 12
                 })
               }
@@ -236,7 +236,7 @@ test('bailian client accepts a long summary at the 420-character limit', async (
     sourceTurns: [{ turn: 12, title: '雾隐回响', outcome: '发现残契' }]
   });
 
-  assert.equal(result.summary.length, 420);
+  assert.equal(result.summary.length, 10000);
 });
 
 test('bailian client rejects an overlong summary after reusing the existing retries', async () => {
@@ -254,7 +254,7 @@ test('bailian client rejects an overlong summary after reusing the existing retr
             choices: [{
               message: {
                 content: JSON.stringify({
-                  summary: '甲'.repeat(421),
+                  summary: '甲'.repeat(10001),
                   coveredThroughTurn: 12
                 })
               }
@@ -270,7 +270,7 @@ test('bailian client rejects an overlong summary after reusing the existing retr
       game: minimalGame(),
       sourceTurns: [{ turn: 12, title: '雾隐回响', outcome: '发现残契' }]
     }),
-    /420/
+    /10000/
   );
   assert.equal(calls, 4);
 });
